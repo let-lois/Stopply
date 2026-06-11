@@ -2,7 +2,7 @@
 # nightly backups. Secrets mirror the API Worker: CF_API_TOKEN,
 # CF_ACCOUNT_ID, CRED_MASTER_KEY.
 
-name = "letlois-bi-sync"
+name = "bi-dashboard-sync-worker"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
