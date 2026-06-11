@@ -2,7 +2,7 @@
 # never committed: CF_API_TOKEN, CF_ACCOUNT_ID, CF_ZONE_ID, CRED_MASTER_KEY,
 # ANTHROPIC_API_KEY, INGEST_PEPPER.
 
-name = "letlois-bi-api"
+name = "business-intelligence-dashboard"
 main = "workers/api/src/index.ts"
 compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
