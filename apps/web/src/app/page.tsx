@@ -1,66 +1,64 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+'use client';
 
-export default function Home() {
+// Entry point. Host awareness is server side; the client just asks who it
+// is. Agency users on the agency host see the overview grid with the
+// tenant switcher; tenant users land straight in their dashboard.
+
+import { useCallback, useEffect, useState } from 'react';
+import { api, fetchMe, setCsrf, type Me } from '@/lib/api';
+import { Login } from '@/components/Login';
+import { AppShell } from '@/components/AppShell';
+import { AgencyOverview } from '@/components/AgencyOverview';
+import { ToastProvider } from '@/components/Toasts';
+
+export default function Page() {
+  const [me, setMe] = useState<Me | null | 'loading'>('loading');
+  const [agencyTenant, setAgencyTenant] = useState<{ id: string; slug: string; name: string } | null>(null);
+
+  const refresh = useCallback(() => {
+    fetchMe().then(setMe);
+  }, []);
+
+  useEffect(refresh, [refresh]);
+
+  const logout = async () => {
+    await api('/api/auth/logout', { method: 'POST', json: {} }).catch(() => undefined);
+    setCsrf(null);
+    setAgencyTenant(null);
+    setMe(null);
+  };
+
+  if (me === 'loading') {
+    return (
+      <div className="shell stack">
+        <div className="skeleton" style={{ minHeight: 50 }} />
+        <div className="skeleton" style={{ minHeight: 240 }} />
+      </div>
+    );
+  }
+
+  if (!me) return <ToastProvider><Login onLoggedIn={refresh} /></ToastProvider>;
+
+  const isAgencyUser = me.userType === 'agency';
+  // Agency users drive tenant context through the switcher; tenant users
+  // are always in their own context.
+  const inTenantContext = !isAgencyUser || agencyTenant !== null;
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <ToastProvider>
+      {isAgencyUser && !inTenantContext && (
+        <AgencyOverview
+          role={me.role as 'agency_admin' | 'agency_staff'}
+          onEnterTenant={(t) => setAgencyTenant(t)}
         />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.tsx file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+      )}
+      {inTenantContext && (
+        <AppShell
+          agencyContext={isAgencyUser ? { name: me.userId } : null}
+          onExitTenant={isAgencyUser ? () => setAgencyTenant(null) : null}
+          onLogout={logout}
+        />
+      )}
+    </ToastProvider>
   );
 }
