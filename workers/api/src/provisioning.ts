@@ -8,7 +8,7 @@ import {
 import { TENANT_MIGRATIONS, splitStatements } from '@letlois/db/migrations';
 import { TenantD1, createTenantDatabase } from '@letlois/tenant-d1';
 import type { Env } from './env';
-import { hashPassword, randomToken, sha256Hex } from './crypto';
+import { hashPassword, hmacSha256Hex, randomToken, sha256Hex } from './crypto';
 import { writeAudit } from './audit';
 import { clearResolverCache } from './tenantResolver';
 
@@ -35,6 +35,10 @@ export interface ProvisionResult {
 }
 
 export function tenantD1Client(env: Env): TenantD1 {
+  // Tests inject an in memory client; production always builds the real
+  // HTTP client from the account secrets.
+  const override = (env as unknown as { __tenantD1?: TenantD1 }).__tenantD1;
+  if (override) return override;
   return new TenantD1({ accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN });
 }
 
@@ -216,18 +220,31 @@ export async function provisionTenant(env: Env, input: ProvisionInput): Promise<
   return { tenantId, slug, databaseId, adminEmail, tempPassword, resumed: !!existing };
 }
 
-// Generates a signing secret for a webhook source. The plaintext is shown
-// once; only its hash is stored.
+// Signing secrets are derived from INGEST_PEPPER plus a per source nonce,
+// so the server can recompute the secret for HMAC verification while only
+// the nonce and a hash of the secret are stored. Rotation issues a new
+// nonce. The plaintext secret is shown exactly once.
+export async function deriveSourceSecret(
+  env: Env,
+  tenantId: string,
+  sourceKey: string,
+  nonce: string
+): Promise<string> {
+  return hmacSha256Hex(env.INGEST_PEPPER, `${tenantId}:${sourceKey}:${nonce}`);
+}
+
 export async function rotateSourceSecret(
   env: Env,
+  tenantId: string,
   databaseId: string,
   sourceKey: string
 ): Promise<string> {
-  const secret = randomToken(24);
-  const hash = await sha256Hex(secret);
+  const nonce = randomToken(12);
+  const secret = await deriveSourceSecret(env, tenantId, sourceKey, nonce);
+  const stored = `v1$${nonce}$${await sha256Hex(secret)}`;
   const d1 = tenantD1Client(env);
   await d1.query(databaseId, `UPDATE sources SET signing_secret_hash = ? WHERE key = ?`, [
-    hash,
+    stored,
     sourceKey,
   ]);
   return secret;

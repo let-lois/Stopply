@@ -163,7 +163,7 @@ tenantRoutes.post('/sources/:key/verify', tenantWrite, async (c) => {
 tenantRoutes.post('/sources/:key/secret', tenantWrite, async (c) => {
   const tenant = c.get('tenant')!;
   const session = c.get('session')!;
-  const secret = await rotateSourceSecret(c.env, dbId(c), c.req.param('key') ?? '');
+  const secret = await rotateSourceSecret(c.env, tenant.id, dbId(c), c.req.param('key') ?? '');
   await writeAudit(c.env, {
     actorType: session.userType,
     actorId: session.userId,

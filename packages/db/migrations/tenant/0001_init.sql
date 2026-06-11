@@ -232,6 +232,19 @@ CREATE TABLE IF NOT EXISTS funnel_stage_map (
   PRIMARY KEY (integration_key, external_event)
 );
 
+-- Identity bridge from integration client ids (for example Boulevard
+-- ClientRecord ids) to contact identities. Appointment Client Id equals
+-- ClientRecord id.
+CREATE TABLE IF NOT EXISTS client_records (
+  client_id TEXT PRIMARY KEY,
+  email_norm TEXT,
+  phone_last10 TEXT,
+  name_norm TEXT,
+  source_key TEXT,
+  imported_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_client_records_name ON client_records (name_norm);
+
 -- Tenant local settings, key value. Holds tracking selectors and similar knobs.
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
