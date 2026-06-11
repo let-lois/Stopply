@@ -287,7 +287,7 @@ function MonthSection({
                     <td className="num">{fmtNum(ch.purchases)}</td>
                     <td className="num">{fmtMoney(ch.revenue)}</td>
                     <td className="num">{fmtMoney(ch.spend)}</td>
-                    <td className="num">{ch.spend > 0 ? (ch.revenue / ch.spend).toFixed(1) + 'x' : '–'.replace('–', '-')}</td>
+                    <td className="num">{ch.spend > 0 ? (ch.revenue / ch.spend).toFixed(1) + 'x' : '-'}</td>
                   </tr>
                 ))}
               </tbody>
