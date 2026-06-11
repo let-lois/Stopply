@@ -1,0 +1,22 @@
+{
+  "name": "letlois-bi",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LetLois BI: multi tenant marketing attribution platform",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @letlois/api --filter web dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r --no-bail test",
+    "migrate:control": "node scripts/migrate-control.mjs",
+    "migrate:tenants": "node scripts/migrate-tenants.mjs",
+    "seed": "node scripts/seed.mjs",
+    "provision:tenant": "node scripts/provision-tenant.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
