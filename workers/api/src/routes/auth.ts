@@ -35,6 +35,11 @@ authRoutes.post('/login', async (c) => {
   const emailOk = await rateLimit(c.env, LIMITS.loginEmail, email);
   if (!ipOk || !emailOk) return c.json({ error: 'too many attempts, try again later' }, 429);
 
+  // Session fixation defense: any token presented at login is destroyed
+  // and a fresh one minted on success.
+  const presentedToken = c.get('sessionToken');
+  if (presentedToken) await destroySession(c.env, presentedToken);
+
   const secure = new URL(c.req.url).protocol === 'https:';
 
   if (c.get('hostContext') === 'tenant') {

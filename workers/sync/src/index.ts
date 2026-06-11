@@ -16,6 +16,8 @@ export interface SyncEnv {
   CF_API_TOKEN: string;
   CF_ACCOUNT_ID: string;
   CRED_MASTER_KEY: string;
+  // Database id of the control plane, for the nightly backup.
+  CONTROL_DB_ID?: string;
 }
 
 interface TenantRow {
@@ -223,6 +225,21 @@ export async function runNightly(env: SyncEnv): Promise<void> {
     }
   }
   // Back up the control plane alongside the tenants.
+  if (env.CONTROL_DB_ID) {
+    try {
+      const url = await exportDatabase(
+        { accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN },
+        env.CONTROL_DB_ID
+      );
+      const res = await fetch(url);
+      if (res.ok && res.body) {
+        const date = new Date().toISOString().slice(0, 10);
+        await env.CSV_BUCKET.put(`backups/control/${date}.sql`, res.body);
+      }
+    } catch (err) {
+      console.error('control plane backup failed', err instanceof Error ? err.message : err);
+    }
+  }
   await pruneBackups(env);
   // Email report scheduling stub. A future cron entry would render each
   // tenant's monthly summary and send it. Intentionally absent in v1:

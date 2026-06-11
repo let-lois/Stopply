@@ -111,6 +111,105 @@ export function AgencyOverview({
       </div>
 
       {provisioning && <ProvisionForm onDone={() => setProvisioning(false)} />}
+
+      {role === 'agency_admin' && <AuditViewer tenants={tenants} />}
+    </div>
+  );
+}
+
+// Agency audit viewer with filters by tenant, actor, action, and date.
+function AuditViewer({ tenants }: { tenants: TenantCard[] }) {
+  const [open, setOpen] = useState(false);
+  const [filters, setFilters] = useState({ tenantId: '', actor: '', action: '', from: '', to: '' });
+  const [entries, setEntries] = useState<Array<Record<string, unknown>>>([]);
+
+  const load = async () => {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(filters)) if (v) params.set(k, v);
+    const res = await api<{ entries: Array<Record<string, unknown>> }>(`/api/agency/audit?${params}`);
+    setEntries(res.entries);
+  };
+
+  if (!open) {
+    return (
+      <button className="small" style={{ alignSelf: 'flex-start' }} onClick={() => { setOpen(true); load(); }}>
+        Audit log
+      </button>
+    );
+  }
+
+  return (
+    <div className="card stack">
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <h3>Audit log</h3>
+        <button className="small" onClick={() => setOpen(false)}>
+          Close
+        </button>
+      </div>
+      <div className="row">
+        <select
+          value={filters.tenantId}
+          style={{ width: 'auto' }}
+          onChange={(e) => setFilters((f) => ({ ...f, tenantId: e.target.value }))}
+        >
+          <option value="">All tenants</option>
+          {tenants.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+        <input
+          placeholder="Actor id"
+          style={{ maxWidth: 140 }}
+          value={filters.actor}
+          onChange={(e) => setFilters((f) => ({ ...f, actor: e.target.value }))}
+        />
+        <input
+          placeholder="Action prefix"
+          style={{ maxWidth: 160 }}
+          value={filters.action}
+          onChange={(e) => setFilters((f) => ({ ...f, action: e.target.value }))}
+        />
+        <input type="date" style={{ maxWidth: 160 }} value={filters.from} onChange={(e) => setFilters((f) => ({ ...f, from: e.target.value }))} />
+        <input type="date" style={{ maxWidth: 160 }} value={filters.to} onChange={(e) => setFilters((f) => ({ ...f, to: e.target.value }))} />
+        <button className="small primary" onClick={load}>
+          Filter
+        </button>
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="data">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Actor</th>
+              <th>Tenant</th>
+              <th>Action</th>
+              <th>Target</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((e) => (
+              <tr key={String(e.id)}>
+                <td className="num">{String(e.created_at).slice(0, 19).replace('T', ' ')}</td>
+                <td>
+                  {String(e.actor_type)}:{String(e.actor_id ?? '')}
+                </td>
+                <td>{String(e.tenant_id ?? '')}</td>
+                <td>{String(e.action)}</td>
+                <td>{String(e.target ?? '')}</td>
+              </tr>
+            ))}
+            {entries.length === 0 && (
+              <tr>
+                <td colSpan={5} className="muted">
+                  No entries match.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
