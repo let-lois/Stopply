@@ -6,6 +6,7 @@ import { agencyRoutes } from './routes/agency';
 import { tenantRoutes } from './routes/tenant';
 import { ingestRoutes } from './routes/ingest';
 import { importRoutes } from './routes/imports';
+import { integrationRoutes } from './routes/integrations';
 import { buildTrackingScript } from './tjs';
 import { getTenantBySlug } from './tenantResolver';
 import { tenantD1Client } from './provisioning';
@@ -31,6 +32,7 @@ app.route('/api/auth', authRoutes);
 app.route('/api/agency', agencyRoutes);
 app.route('/api/tenant', tenantRoutes);
 app.route('/api/imports', importRoutes);
+app.route('/api/tenant/integrations', integrationRoutes);
 app.route('/ingest', ingestRoutes);
 
 // Per tenant first party tracking script. On a tenant hostname /t.js

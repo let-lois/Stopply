@@ -1,0 +1,27 @@
+# Sync Worker: integration syncs, nightly rollups, agency rollup pull,
+# nightly backups. Secrets mirror the API Worker: CF_API_TOKEN,
+# CF_ACCOUNT_ID, CRED_MASTER_KEY.
+
+name = "letlois-bi-sync"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[triggers]
+# Hourly incremental sync on the hour; the nightly batch at 09:10 UTC
+# (02:10 America/Phoenix) handles full re sync, rollups, agency rollup
+# pull, and backups.
+crons = ["0 * * * *", "10 9 * * *"]
+
+[[d1_databases]]
+binding = "CONTROL_DB"
+database_name = "letlois-bi-control"
+database_id = "REPLACE_WITH_CONTROL_DB_ID"
+
+[[r2_buckets]]
+binding = "CSV_BUCKET"
+bucket_name = "letlois-bi-csv"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "REPLACE_WITH_KV_ID"
