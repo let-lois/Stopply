@@ -9,7 +9,7 @@ import { tenantD1Client } from '../provisioning';
 import { randomToken, sha256Hex } from '../crypto';
 import { writeAudit } from '../audit';
 import { upsertContact } from '../ingest/contacts';
-import { scheduleRollup } from '../ingest/rollupTrigger';
+import { runTenantRollup } from '../rollup';
 
 export const importRoutes = new Hono<AppContext>();
 importRoutes.use('*', tenantScope, tenantWrite);
@@ -98,7 +98,9 @@ importRoutes.post('/', async (c) => {
     after: { rowCount: parsed.rowCount, kind: parsed.kind, r2Key },
   });
 
-  await scheduleRollup(c.env, tenant.id);
+  // Imports recompute the month inline so the dashboard is current the
+  // moment the upload returns.
+  await runTenantRollup(c.env, databaseId, month);
   return c.json(
     {
       ok: true,

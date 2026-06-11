@@ -87,12 +87,16 @@ export async function upsertContact(
   touch: TouchInfo
 ): Promise<{ contactId: string; created: boolean }> {
   const fullName = `${input.firstName ?? ''} ${input.lastName ?? ''}`.trim();
-  const existing = await findContact(d1, databaseId, {
-    externalRef: input.externalRef,
-    email: input.email,
-    phone: input.phone,
-    name: fullName || null,
-  });
+  // An external ref (for example a GHL contact id) is authoritative: two
+  // different people can share a name or even a phone, so fuzzy matching
+  // only applies to inputs that carry no source id of their own.
+  const existing = input.externalRef
+    ? await findContact(d1, databaseId, { externalRef: input.externalRef })
+    : await findContact(d1, databaseId, {
+        email: input.email,
+        phone: input.phone,
+        name: fullName || null,
+      });
 
   if (existing) {
     // Latest touch always updates. First touch is frozen.

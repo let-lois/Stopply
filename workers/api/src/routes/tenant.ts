@@ -293,6 +293,24 @@ tenantRoutes.put('/targets', tenantWrite, async (c) => {
   return c.json({ ok: true });
 });
 
+// Manual rollup recompute for a month, admin and agency only.
+tenantRoutes.post('/rollup/:month', tenantWrite, async (c) => {
+  const month = monthParam.safeParse(c.req.param('month'));
+  if (!month.success) return c.json({ error: 'invalid month' }, 400);
+  const tenant = c.get('tenant')!;
+  const session = c.get('session')!;
+  const { runTenantRollup } = await import('../rollup');
+  const outputs = await runTenantRollup(c.env, dbId(c), month.data);
+  await writeAudit(c.env, {
+    actorType: session.userType,
+    actorId: session.userId,
+    tenantId: tenant.id,
+    action: 'rollup.run',
+    target: month.data,
+  });
+  return c.json({ ok: true, channels: outputs.monthlyMetrics.length });
+});
+
 tenantRoutes.get('/targets/:month', async (c) => {
   const month = monthParam.safeParse(c.req.param('month'));
   if (!month.success) return c.json({ error: 'invalid month' }, 400);
