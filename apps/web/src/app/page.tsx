@@ -56,8 +56,12 @@ export default function Page() {
       )}
       {inTenantContext && (
         <AppShell
-          agencyContext={isAgencyUser ? { name: me.userId } : null}
+          // Remount when the active sub-account changes so all tenant scoped
+          // data reloads cleanly under the new context.
+          key={agencyTenant?.id ?? 'self'}
+          isAgencyUser={isAgencyUser}
           onExitTenant={isAgencyUser ? () => setAgencyTenant(null) : null}
+          onSwitchTenant={isAgencyUser ? (t) => setAgencyTenant(t) : null}
           onLogout={logout}
         />
       )}

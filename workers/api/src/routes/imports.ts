@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { PARSER_REGISTRY } from '@letlois/connectors';
+import Anthropic from '@anthropic-ai/sdk';
+import { PARSER_REGISTRY, parseCsv } from '@letlois/connectors';
 import type { ParseResult } from '@letlois/connectors';
 import type { TenantD1 } from '@letlois/tenant-d1';
 import type { AppContext } from '../env';
@@ -10,6 +11,20 @@ import { randomToken, sha256Hex } from '../crypto';
 import { writeAudit } from '../audit';
 import { upsertContact } from '../ingest/contacts';
 import { runTenantRollup } from '../rollup';
+import { getAgencySetting } from '../agencySettings';
+
+// Friendly description of each parser so the AI detector can match a CSV to
+// the right one. Adding a vendor export of an existing role is config, not
+// code: extend this map and the registry.
+const PARSER_CATALOG: Record<string, string> = {
+  'meta-campaign': 'Meta / Facebook Ads campaign export. Ad spend and reported leads per campaign.',
+  'google-campaign': 'Google Ads campaign export. Ad spend and reported leads per campaign.',
+  'ghl-contacts': 'Go High Level (GHL) full contacts export. Leads with created date, email, phone, UTMs.',
+  'ghl-website': 'Go High Level website filtered contacts export. All rows attributed to the Website channel.',
+  'blvd-appointments': 'Boulevard appointments export. Scheduling stage events (booked, shows).',
+  'blvd-line-items': 'Boulevard line items / sales export. Purchase stage events with amounts.',
+  'blvd-clients': 'Boulevard client records export. Identity bridge of client id to email/phone/name.',
+};
 
 export const importRoutes = new Hono<AppContext>();
 importRoutes.use('*', tenantScope, tenantWrite);
@@ -125,6 +140,88 @@ importRoutes.get('/', async (c) => {
   );
   return c.json({ imports: results });
 });
+
+// AI assisted CSV understanding. Given a raw CSV, Claude reads the header
+// row and a few sample rows and picks the parser that best fits, so a user
+// uploading any export only has to confirm. The Anthropic key resolves
+// through the agency settings vault, so an admin can rotate it from the
+// console without a redeploy.
+const detectSchema = z.object({ csv: z.string().min(1).max(MAX_CSV_BYTES) }).strict();
+
+importRoutes.post('/detect', async (c) => {
+  const body = detectSchema.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: 'invalid request' }, 400);
+
+  const table = parseCsv(body.data.csv);
+  if (table.headers.length === 0) return c.json({ error: 'no columns found in CSV' }, 422);
+  const sample = {
+    headers: table.headers,
+    rows: table.rows.slice(0, 5),
+    totalRows: table.rows.length,
+  };
+
+  const apiKey = await getAgencySetting(c.env, 'ANTHROPIC_API_KEY');
+  if (!apiKey) {
+    // No key configured: return the catalog so the user can still pick
+    // manually, just without the suggestion.
+    return c.json({ suggestion: null, options: catalogOptions(), reason: 'AI detection is not configured.' });
+  }
+
+  const catalog = Object.entries(PARSER_CATALOG)
+    .map(([key, desc]) => `- ${key}: ${desc}`)
+    .join('\n');
+  const client = new Anthropic({ apiKey });
+  try {
+    const response = await client.messages.create({
+      model: 'claude-opus-4-8',
+      max_tokens: 400,
+      system:
+        'You map a marketing CSV export to one of a fixed set of parsers. ' +
+        'Reply with ONLY a compact JSON object: ' +
+        '{"parser": <one of the keys or null>, "role": "spend|leads|appointments|transactions|identity|unknown", ' +
+        '"confidence": 0..1, "reason": <short>}. Pick null only if nothing fits.',
+      messages: [
+        {
+          role: 'user',
+          content: `Available parsers:\n${catalog}\n\nCSV sample (JSON):\n${JSON.stringify(sample)}`,
+        },
+      ],
+    });
+    const text = response.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
+    const parsed = safeJson(text);
+    const parser = typeof parsed?.parser === 'string' && PARSER_CATALOG[parsed.parser] ? parsed.parser : null;
+    return c.json({
+      suggestion: parser
+        ? {
+            parser,
+            role: typeof parsed?.role === 'string' ? parsed.role : 'unknown',
+            confidence: typeof parsed?.confidence === 'number' ? parsed.confidence : null,
+            reason: typeof parsed?.reason === 'string' ? parsed.reason : '',
+          }
+        : null,
+      options: catalogOptions(),
+      reason: parser ? '' : 'Could not confidently match a parser; please choose one.',
+    });
+  } catch (err) {
+    console.error('CSV detect failed', err instanceof Error ? err.message : err);
+    return c.json({ suggestion: null, options: catalogOptions(), reason: 'AI detection is unavailable right now.' });
+  }
+});
+
+function catalogOptions(): Array<{ key: string; description: string }> {
+  return Object.entries(PARSER_CATALOG).map(([key, description]) => ({ key, description }));
+}
+
+function safeJson(text: string): Record<string, unknown> | null {
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start === -1 || end === -1 || end < start) return null;
+  try {
+    return JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
 
 export async function applyParseResult(
   d1: TenantD1,

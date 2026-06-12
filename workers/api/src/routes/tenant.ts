@@ -158,6 +158,119 @@ tenantRoutes.post('/sources/:key/verify', tenantWrite, async (c) => {
   return c.json({ ok: true });
 });
 
+// Create a source. Custom CSV sources need nothing but a name of where the
+// data comes from; the connector type may be a known parser or 'auto' to
+// let the AI detector pick a parser at import time.
+const KNOWN_PARSERS = [
+  'auto',
+  'meta-campaign',
+  'google-campaign',
+  'ghl-contacts',
+  'ghl-website',
+  'blvd-appointments',
+  'blvd-line-items',
+  'blvd-clients',
+] as const;
+
+const createSourceSchema = z
+  .object({
+    name: z.string().min(1).max(80),
+    connectorType: z.enum(KNOWN_PARSERS).default('auto'),
+    howTo: z.string().max(2000).optional(),
+    platformLink: z.string().url().max(500).optional(),
+  })
+  .strict();
+
+function slugifyKey(name: string): string {
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48);
+  return `${base || 'source'}-${randomToken(2)}`;
+}
+
+tenantRoutes.post('/sources', tenantWrite, async (c) => {
+  const session = c.get('session')!;
+  const tenant = c.get('tenant')!;
+  const body = createSourceSchema.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: 'invalid request', details: body.error.flatten() }, 400);
+  const d1 = tenantD1Client(c.env);
+  const key = slugifyKey(body.data.name);
+  // 'auto' is stored as NULL connector_type; the importer resolves a parser
+  // via the AI detector when a source has no fixed parser.
+  const connectorType = body.data.connectorType === 'auto' ? null : body.data.connectorType;
+  await d1.query(
+    dbId(c),
+    `INSERT INTO sources (key, name, kind, connector_type, cadence, platform_link, how_to)
+     VALUES (?, ?, 'csv', ?, 7, ?, ?)`,
+    [key, body.data.name, connectorType, body.data.platformLink ?? null, body.data.howTo ?? null]
+  );
+  await writeAudit(c.env, {
+    actorType: session.userType,
+    actorId: session.userId,
+    tenantId: tenant.id,
+    action: 'source.create',
+    target: key,
+    after: { name: body.data.name, connectorType: body.data.connectorType },
+  });
+  return c.json({ ok: true, key }, 201);
+});
+
+const updateSourceSchema = z
+  .object({
+    name: z.string().min(1).max(80).optional(),
+    connectorType: z.enum(KNOWN_PARSERS).optional(),
+    howTo: z.string().max(2000).optional(),
+    platformLink: z.string().url().max(500).optional().or(z.literal('')),
+  })
+  .strict();
+
+tenantRoutes.patch('/sources/:key', tenantWrite, async (c) => {
+  const session = c.get('session')!;
+  const tenant = c.get('tenant')!;
+  const key = c.req.param('key');
+  const body = updateSourceSchema.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: 'invalid request' }, 400);
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  if (body.data.name !== undefined) (sets.push('name = ?'), params.push(body.data.name));
+  if (body.data.connectorType !== undefined)
+    (sets.push('connector_type = ?'), params.push(body.data.connectorType === 'auto' ? null : body.data.connectorType));
+  if (body.data.howTo !== undefined) (sets.push('how_to = ?'), params.push(body.data.howTo));
+  if (body.data.platformLink !== undefined)
+    (sets.push('platform_link = ?'), params.push(body.data.platformLink || null));
+  if (sets.length === 0) return c.json({ error: 'nothing to update' }, 400);
+  const d1 = tenantD1Client(c.env);
+  await d1.query(dbId(c), `UPDATE sources SET ${sets.join(', ')} WHERE key = ?`, [...params, key]);
+  await writeAudit(c.env, {
+    actorType: session.userType,
+    actorId: session.userId,
+    tenantId: tenant.id,
+    action: 'source.update',
+    target: key,
+  });
+  return c.json({ ok: true });
+});
+
+// Remove a source. The immutable event and stage rows it produced are left
+// intact; only the source definition and its future imports are removed.
+tenantRoutes.delete('/sources/:key', tenantWrite, async (c) => {
+  const session = c.get('session')!;
+  const tenant = c.get('tenant')!;
+  const key = c.req.param('key');
+  const d1 = tenantD1Client(c.env);
+  await d1.query(dbId(c), `DELETE FROM sources WHERE key = ?`, [key]);
+  await writeAudit(c.env, {
+    actorType: session.userType,
+    actorId: session.userId,
+    tenantId: tenant.id,
+    action: 'source.delete',
+    target: key,
+  });
+  return c.json({ ok: true });
+});
+
 // Rotate or create the signing secret for a webhook source. Plaintext is
 // returned exactly once.
 tenantRoutes.post('/sources/:key/secret', tenantWrite, async (c) => {
