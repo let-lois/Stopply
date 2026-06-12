@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, fetchMe, setCsrf, type Me } from '@/lib/api';
 import { Login } from '@/components/Login';
 import { AppShell } from '@/components/AppShell';
-import { AgencyOverview } from '@/components/AgencyOverview';
+import { AgencyShell } from '@/components/AgencyShell';
 import { ToastProvider } from '@/components/Toasts';
 
 export default function Page() {
@@ -47,9 +47,11 @@ export default function Page() {
   return (
     <ToastProvider>
       {isAgencyUser && !inTenantContext && (
-        <AgencyOverview
+        <AgencyShell
           role={me.role as 'agency_admin' | 'agency_staff'}
+          userId={me.userId}
           onEnterTenant={(t) => setAgencyTenant(t)}
+          onLogout={logout}
         />
       )}
       {inTenantContext && (

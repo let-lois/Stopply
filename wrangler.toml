@@ -2,7 +2,7 @@
 # never committed: CF_API_TOKEN, CF_ACCOUNT_ID, CF_ZONE_ID, CRED_MASTER_KEY,
 # ANTHROPIC_API_KEY, INGEST_PEPPER.
 
-name = "letlois-bi-api"
+name = "bi-dashboard-api-worker"
 main = "workers/api/src/index.ts"
 compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
@@ -10,7 +10,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "CONTROL_DB"
 database_name = "letlois-bi-control"
-database_id = "REPLACE_WITH_CONTROL_DB_ID"
+database_id = "dad0859f-6dae-40e2-b61b-a871820e523f"
 
 [[r2_buckets]]
 binding = "ASSETS"
@@ -22,7 +22,7 @@ bucket_name = "letlois-bi-csv"
 
 [[kv_namespaces]]
 binding = "SESSIONS"
-id = "REPLACE_WITH_KV_ID"
+id = "1bc1e97a05fd43edbb98b4768c29fd67"
 
 [vars]
 AGENCY_HOST = "bi.letlois.com"

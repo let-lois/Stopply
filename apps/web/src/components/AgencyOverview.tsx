@@ -1,8 +1,11 @@
 'use client';
 
-// Agency overview on bi.letlois.com: a grid of tenant cards from the
-// agency_rollup snapshots with click through into each tenant's
-// dashboard in agency context.
+// Agency console sections rendered inside AgencyShell:
+//   - ClientsSection: the tenant grid from agency_rollup snapshots with
+//     click through into each tenant's dashboard in agency context.
+//   - TeamSection: agency user management (invite, role, tenant
+//     assignment, deactivate), agency_admin only.
+//   - AuditSection: the cross tenant audit log with filters.
 
 import { useEffect, useState } from 'react';
 import { api, setCsrf } from '@/lib/api';
@@ -22,7 +25,7 @@ interface TenantCard {
   pulled_at: string | null;
 }
 
-export function AgencyOverview({
+export function ClientsSection({
   role,
   onEnterTenant,
 }: {
@@ -53,7 +56,7 @@ export function AgencyOverview({
   };
 
   return (
-    <div className="shell stack" style={{ gap: 20 }}>
+    <div className="stack" style={{ gap: 20 }}>
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <h1>Clients</h1>
         {role === 'agency_admin' && (
@@ -65,6 +68,17 @@ export function AgencyOverview({
       <p className="muted">{month} snapshot</p>
 
       {loading && <div className="skeleton" style={{ minHeight: 120 }} />}
+
+      {!loading && tenants.length === 0 && (
+        <div className="card stack">
+          <h3>No clients yet</h3>
+          <p className="muted">
+            {role === 'agency_admin'
+              ? 'Provision your first client with New client to get started.'
+              : 'No clients have been assigned to you yet.'}
+          </p>
+        </div>
+      )}
 
       <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
         {tenants.map((t) => {
@@ -111,104 +125,354 @@ export function AgencyOverview({
       </div>
 
       {provisioning && <ProvisionForm onDone={() => setProvisioning(false)} />}
-
-      {role === 'agency_admin' && <AuditViewer tenants={tenants} />}
     </div>
   );
 }
 
-// Agency audit viewer with filters by tenant, actor, action, and date.
-function AuditViewer({ tenants }: { tenants: TenantCard[] }) {
-  const [open, setOpen] = useState(false);
-  const [filters, setFilters] = useState({ tenantId: '', actor: '', action: '', from: '', to: '' });
-  const [entries, setEntries] = useState<Array<Record<string, unknown>>>([]);
+interface AgencyUser {
+  id: string;
+  email: string;
+  name: string;
+  role: 'agency_admin' | 'agency_staff';
+  assigned_tenants_json: string | null;
+  active: number;
+  created_at: string;
+}
 
-  const load = async () => {
-    const params = new URLSearchParams();
-    for (const [k, v] of Object.entries(filters)) if (v) params.set(k, v);
-    const res = await api<{ entries: Array<Record<string, unknown>> }>(`/api/agency/audit?${params}`);
-    setEntries(res.entries);
+// Agency team management: list members, invite a new one (temp password
+// shown once), assign tenants to staff, and deactivate. agency_admin only.
+export function TeamSection({ currentUserId }: { currentUserId: string }) {
+  const [users, setUsers] = useState<AgencyUser[]>([]);
+  const [tenants, setTenants] = useState<Array<{ id: string; name: string }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [inviting, setInviting] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    api<{ users: AgencyUser[] }>('/api/agency/users')
+      .then((r) => setUsers(r.users))
+      .finally(() => setLoading(false));
   };
 
-  if (!open) {
-    return (
-      <button className="small" style={{ alignSelf: 'flex-start' }} onClick={() => { setOpen(true); load(); }}>
-        Audit log
-      </button>
-    );
-  }
+  useEffect(() => {
+    load();
+    api<{ tenants: Array<{ id: string; name: string }> }>('/api/agency/tenants')
+      .then((r) => setTenants(r.tenants))
+      .catch(() => undefined);
+  }, []);
+
+  const deactivate = async (u: AgencyUser) => {
+    if (!confirm(`Deactivate ${u.name}? They will no longer be able to sign in.`)) return;
+    await api(`/api/agency/users/${u.id}`, { method: 'DELETE', json: {} });
+    load();
+  };
 
   return (
-    <div className="card stack">
+    <div className="stack" style={{ gap: 20 }}>
       <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h3>Audit log</h3>
-        <button className="small" onClick={() => setOpen(false)}>
-          Close
+        <h1>Team</h1>
+        <button className="primary" onClick={() => setInviting(true)}>
+          Invite member
         </button>
       </div>
-      <div className="row">
-        <select
-          value={filters.tenantId}
-          style={{ width: 'auto' }}
-          onChange={(e) => setFilters((f) => ({ ...f, tenantId: e.target.value }))}
-        >
-          <option value="">All tenants</option>
-          {tenants.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
-        <input
-          placeholder="Actor id"
-          style={{ maxWidth: 140 }}
-          value={filters.actor}
-          onChange={(e) => setFilters((f) => ({ ...f, actor: e.target.value }))}
+
+      {loading && <div className="skeleton" style={{ minHeight: 120 }} />}
+
+      {inviting && (
+        <InviteForm
+          tenants={tenants}
+          onDone={() => {
+            setInviting(false);
+            load();
+          }}
         />
-        <input
-          placeholder="Action prefix"
-          style={{ maxWidth: 160 }}
-          value={filters.action}
-          onChange={(e) => setFilters((f) => ({ ...f, action: e.target.value }))}
-        />
-        <input type="date" style={{ maxWidth: 160 }} value={filters.from} onChange={(e) => setFilters((f) => ({ ...f, from: e.target.value }))} />
-        <input type="date" style={{ maxWidth: 160 }} value={filters.to} onChange={(e) => setFilters((f) => ({ ...f, to: e.target.value }))} />
-        <button className="small primary" onClick={load}>
-          Filter
-        </button>
-      </div>
-      <div style={{ overflowX: 'auto' }}>
+      )}
+
+      <div className="card" style={{ overflowX: 'auto' }}>
         <table className="data">
           <thead>
             <tr>
-              <th>When</th>
-              <th>Actor</th>
-              <th>Tenant</th>
-              <th>Action</th>
-              <th>Target</th>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Clients</th>
+              <th>Status</th>
+              <th />
             </tr>
           </thead>
           <tbody>
-            {entries.map((e) => (
-              <tr key={String(e.id)}>
-                <td className="num">{String(e.created_at).slice(0, 19).replace('T', ' ')}</td>
-                <td>
-                  {String(e.actor_type)}:{String(e.actor_id ?? '')}
-                </td>
-                <td>{String(e.tenant_id ?? '')}</td>
-                <td>{String(e.action)}</td>
-                <td>{String(e.target ?? '')}</td>
-              </tr>
-            ))}
-            {entries.length === 0 && (
+            {users.map((u) => {
+              const assigned = parseAssigned(u.assigned_tenants_json);
+              const assignedLabel =
+                u.role === 'agency_admin'
+                  ? 'All'
+                  : assigned.length
+                  ? assigned
+                      .map((id) => tenants.find((t) => t.id === id)?.name ?? id)
+                      .join(', ')
+                  : 'None';
+              return (
+                <tr key={u.id} style={u.active ? undefined : { opacity: 0.5 }}>
+                  <td>{u.name}</td>
+                  <td>{u.email}</td>
+                  <td>{u.role === 'agency_admin' ? 'Admin' : 'Staff'}</td>
+                  <td>{assignedLabel}</td>
+                  <td>{u.active ? 'Active' : 'Deactivated'}</td>
+                  <td>
+                    {u.active === 1 && u.id !== currentUserId && (
+                      <button className="small" onClick={() => deactivate(u)}>
+                        Deactivate
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {!loading && users.length === 0 && (
               <tr>
-                <td colSpan={5} className="muted">
-                  No entries match.
+                <td colSpan={6} className="muted">
+                  No team members yet.
                 </td>
               </tr>
             )}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+function parseAssigned(json: string | null): string[] {
+  if (!json) return [];
+  try {
+    const v = JSON.parse(json);
+    return Array.isArray(v) ? (v as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function InviteForm({
+  tenants,
+  onDone,
+}: {
+  tenants: Array<{ id: string; name: string }>;
+  onDone: () => void;
+}) {
+  const [form, setForm] = useState<{
+    email: string;
+    name: string;
+    role: 'agency_admin' | 'agency_staff';
+    assignedTenants: string[];
+  }>({ email: '', name: '', role: 'agency_staff', assignedTenants: [] });
+  const [result, setResult] = useState<{ email: string; tempPassword: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const toggleTenant = (id: string) =>
+    setForm((f) => ({
+      ...f,
+      assignedTenants: f.assignedTenants.includes(id)
+        ? f.assignedTenants.filter((t) => t !== id)
+        : [...f.assignedTenants, id],
+    }));
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const payload: Record<string, unknown> = {
+        email: form.email,
+        name: form.name,
+        role: form.role,
+      };
+      if (form.role === 'agency_staff') payload.assignedTenants = form.assignedTenants;
+      const res = await api<{ email: string; tempPassword: string }>('/api/agency/users', {
+        method: 'POST',
+        json: payload,
+      });
+      setResult(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'invite failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (result) {
+    return (
+      <div className="card stack">
+        <h3>Member invited</h3>
+        <p>
+          {result.email} can sign in with this temp password (shown once):{' '}
+          <code className="num">{result.tempPassword}</code>
+        </p>
+        <button className="primary" onClick={onDone}>
+          Done
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <form className="card stack" onSubmit={submit}>
+      <h3>Invite team member</h3>
+      <div className="row">
+        <label style={{ flex: 1 }}>
+          Name
+          <input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} required />
+        </label>
+        <label style={{ flex: 1 }}>
+          Email
+          <input
+            type="email"
+            value={form.email}
+            onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
+            required
+          />
+        </label>
+      </div>
+      <label>
+        Role
+        <select
+          value={form.role}
+          style={{ width: 'auto' }}
+          onChange={(e) => setForm((p) => ({ ...p, role: e.target.value as 'agency_admin' | 'agency_staff' }))}
+        >
+          <option value="agency_staff">Staff (assigned clients only)</option>
+          <option value="agency_admin">Admin (all clients and settings)</option>
+        </select>
+      </label>
+      {form.role === 'agency_staff' && (
+        <div className="stack" style={{ gap: 6 }}>
+          <span className="muted" style={{ fontSize: 13 }}>
+            Assigned clients
+          </span>
+          {tenants.length === 0 && <span className="muted">No clients to assign yet.</span>}
+          <div className="row">
+            {tenants.map((t) => (
+              <label key={t.id} className="row" style={{ gap: 6, width: 'auto' }}>
+                <input
+                  type="checkbox"
+                  style={{ width: 'auto', minHeight: 0 }}
+                  checked={form.assignedTenants.includes(t.id)}
+                  onChange={() => toggleTenant(t.id)}
+                />
+                {t.name}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+      {error && <p className="delta-down">{error}</p>}
+      <div className="row">
+        <button className="primary" disabled={busy} type="submit">
+          {busy ? 'Inviting' : 'Send invite'}
+        </button>
+        <button type="button" onClick={onDone}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// Cross tenant audit log with filters by tenant, actor, action, and date.
+export function AuditSection() {
+  const [tenants, setTenants] = useState<Array<{ id: string; name: string }>>([]);
+  const [filters, setFilters] = useState({ tenantId: '', actor: '', action: '', from: '', to: '' });
+  const [entries, setEntries] = useState<Array<Record<string, unknown>>>([]);
+  const [loading, setLoading] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      for (const [k, v] of Object.entries(filters)) if (v) params.set(k, v);
+      const res = await api<{ entries: Array<Record<string, unknown>> }>(`/api/agency/audit?${params}`);
+      setEntries(res.entries);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    api<{ tenants: Array<{ id: string; name: string }> }>('/api/agency/tenants')
+      .then((r) => setTenants(r.tenants))
+      .catch(() => undefined);
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="stack" style={{ gap: 20 }}>
+      <h1>Audit log</h1>
+      <div className="card stack">
+        <div className="row">
+          <select
+            value={filters.tenantId}
+            style={{ width: 'auto' }}
+            onChange={(e) => setFilters((f) => ({ ...f, tenantId: e.target.value }))}
+          >
+            <option value="">All clients</option>
+            {tenants.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+          <input
+            placeholder="Actor id"
+            style={{ maxWidth: 140 }}
+            value={filters.actor}
+            onChange={(e) => setFilters((f) => ({ ...f, actor: e.target.value }))}
+          />
+          <input
+            placeholder="Action prefix"
+            style={{ maxWidth: 160 }}
+            value={filters.action}
+            onChange={(e) => setFilters((f) => ({ ...f, action: e.target.value }))}
+          />
+          <input type="date" style={{ maxWidth: 160 }} value={filters.from} onChange={(e) => setFilters((f) => ({ ...f, from: e.target.value }))} />
+          <input type="date" style={{ maxWidth: 160 }} value={filters.to} onChange={(e) => setFilters((f) => ({ ...f, to: e.target.value }))} />
+          <button className="small primary" onClick={load}>
+            Filter
+          </button>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="data">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Actor</th>
+                <th>Client</th>
+                <th>Action</th>
+                <th>Target</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((e) => (
+                <tr key={String(e.id)}>
+                  <td className="num">{String(e.created_at).slice(0, 19).replace('T', ' ')}</td>
+                  <td>
+                    {String(e.actor_type)}:{String(e.actor_id ?? '')}
+                  </td>
+                  <td>{String(e.tenant_id ?? '')}</td>
+                  <td>{String(e.action)}</td>
+                  <td>{String(e.target ?? '')}</td>
+                </tr>
+              ))}
+              {!loading && entries.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="muted">
+                    No entries match.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

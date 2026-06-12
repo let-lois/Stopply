@@ -8,3 +8,6 @@ dist/
 coverage/
 .env
 .env.*
+
+# Generated DB handoff SQL (contains password hash) - never commit
+handoff/
