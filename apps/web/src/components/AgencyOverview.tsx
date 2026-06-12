@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react';
 import { api, setCsrf } from '@/lib/api';
 import { fmtMoney, fmtNum } from '@/lib/format';
+import { CodeBox } from './CodeBox';
 
 interface TenantCard {
   id: string;
@@ -33,16 +34,12 @@ export function ClientsSection({
   onEnterTenant: (tenant: { id: string; slug: string; name: string }) => void;
 }) {
   const [tenants, setTenants] = useState<TenantCard[]>([]);
-  const [month, setMonth] = useState('');
   const [loading, setLoading] = useState(true);
   const [provisioning, setProvisioning] = useState(false);
 
   useEffect(() => {
     api<{ month: string; tenants: TenantCard[] }>('/api/agency/overview')
-      .then((r) => {
-        setMonth(r.month);
-        setTenants(r.tenants);
-      })
+      .then((r) => setTenants(r.tenants))
       .finally(() => setLoading(false));
   }, []);
 
@@ -65,7 +62,6 @@ export function ClientsSection({
           </button>
         )}
       </div>
-      <p className="muted">{month} snapshot</p>
 
       {loading && <div className="skeleton" style={{ minHeight: 120 }} />}
 
@@ -135,8 +131,19 @@ interface AgencyUser {
   name: string;
   role: 'agency_admin' | 'agency_staff';
   assigned_tenants_json: string | null;
+  permissions_json: string | null;
   active: number;
   created_at: string;
+}
+
+function parsePermissions(json: string | null): { manageSecrets: boolean } {
+  if (!json) return { manageSecrets: false };
+  try {
+    const v = JSON.parse(json) as Record<string, boolean>;
+    return { manageSecrets: v.manageSecrets === true };
+  } catch {
+    return { manageSecrets: false };
+  }
 }
 
 // Agency team management: list members, invite a new one (temp password
@@ -164,6 +171,15 @@ export function TeamSection({ currentUserId }: { currentUserId: string }) {
   const deactivate = async (u: AgencyUser) => {
     if (!confirm(`Deactivate ${u.name}? They will no longer be able to sign in.`)) return;
     await api(`/api/agency/users/${u.id}`, { method: 'DELETE', json: {} });
+    load();
+  };
+
+  const toggleSecrets = async (u: AgencyUser) => {
+    const next = !parsePermissions(u.permissions_json).manageSecrets;
+    await api(`/api/agency/users/${u.id}`, {
+      method: 'PATCH',
+      json: { permissions: { manageSecrets: next } },
+    });
     load();
   };
 
@@ -196,6 +212,7 @@ export function TeamSection({ currentUserId }: { currentUserId: string }) {
               <th>Email</th>
               <th>Role</th>
               <th>Clients</th>
+              <th>Keys &amp; secrets</th>
               <th>Status</th>
               <th />
             </tr>
@@ -211,12 +228,29 @@ export function TeamSection({ currentUserId }: { currentUserId: string }) {
                       .map((id) => tenants.find((t) => t.id === id)?.name ?? id)
                       .join(', ')
                   : 'None';
+              const canSecrets = u.role === 'agency_admin' || parsePermissions(u.permissions_json).manageSecrets;
               return (
                 <tr key={u.id} style={u.active ? undefined : { opacity: 0.5 }}>
                   <td>{u.name}</td>
                   <td>{u.email}</td>
                   <td>{u.role === 'agency_admin' ? 'Admin' : 'Staff'}</td>
                   <td>{assignedLabel}</td>
+                  <td>
+                    {u.role === 'agency_admin' ? (
+                      <span className="muted">Always</span>
+                    ) : (
+                      <label className="row" style={{ gap: 6, width: 'auto' }}>
+                        <input
+                          type="checkbox"
+                          style={{ width: 18, minHeight: 0 }}
+                          checked={canSecrets}
+                          disabled={!u.active}
+                          onChange={() => toggleSecrets(u)}
+                        />
+                        {canSecrets ? 'Allowed' : 'No'}
+                      </label>
+                    )}
+                  </td>
                   <td>{u.active ? 'Active' : 'Deactivated'}</td>
                   <td>
                     {u.active === 1 && u.id !== currentUserId && (
@@ -230,7 +264,7 @@ export function TeamSection({ currentUserId }: { currentUserId: string }) {
             })}
             {!loading && users.length === 0 && (
               <tr>
-                <td colSpan={6} className="muted">
+                <td colSpan={7} className="muted">
                   No team members yet.
                 </td>
               </tr>
@@ -264,7 +298,8 @@ function InviteForm({
     name: string;
     role: 'agency_admin' | 'agency_staff';
     assignedTenants: string[];
-  }>({ email: '', name: '', role: 'agency_staff', assignedTenants: [] });
+    manageSecrets: boolean;
+  }>({ email: '', name: '', role: 'agency_staff', assignedTenants: [], manageSecrets: false });
   const [result, setResult] = useState<{ email: string; tempPassword: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -287,7 +322,10 @@ function InviteForm({
         name: form.name,
         role: form.role,
       };
-      if (form.role === 'agency_staff') payload.assignedTenants = form.assignedTenants;
+      if (form.role === 'agency_staff') {
+        payload.assignedTenants = form.assignedTenants;
+        payload.permissions = { manageSecrets: form.manageSecrets };
+      }
       const res = await api<{ email: string; tempPassword: string }>('/api/agency/users', {
         method: 'POST',
         json: payload,
@@ -363,6 +401,15 @@ function InviteForm({
               </label>
             ))}
           </div>
+          <label className="row" style={{ gap: 8, width: 'auto' }}>
+            <input
+              type="checkbox"
+              style={{ width: 18, minHeight: 0 }}
+              checked={form.manageSecrets}
+              onChange={(e) => setForm((p) => ({ ...p, manageSecrets: e.target.checked }))}
+            />
+            Can manage API keys &amp; secrets
+          </label>
         </div>
       )}
       {error && <p className="delta-down">{error}</p>}
@@ -474,6 +521,125 @@ export function AuditSection() {
           </table>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Keys & secrets console: lets an agency admin (or a staff member granted
+// the permission) rotate platform keys without touching code or running
+// wrangler. Values are write only here — the server stores them encrypted
+// and never sends plaintext back, so we only ever show whether a value is
+// set and where the live value resolves from.
+interface SettingStatus {
+  key: string;
+  label: string;
+  secret: boolean;
+  help: string;
+  isSet: boolean;
+  source: 'console' | 'env' | 'unset';
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+export function SecretsSection() {
+  const [settings, setSettings] = useState<SettingStatus[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [savedKey, setSavedKey] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = () => {
+    setLoading(true);
+    api<{ settings: SettingStatus[] }>('/api/agency/secrets')
+      .then((r) => setSettings(r.settings))
+      .catch((e) => setError(e instanceof Error ? e.message : 'failed to load'))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(load, []);
+
+  const save = async (key: string) => {
+    const value = drafts[key];
+    if (!value) return;
+    setError(null);
+    try {
+      await api(`/api/agency/secrets/${key}`, { method: 'PUT', json: { value } });
+      setDrafts((d) => ({ ...d, [key]: '' }));
+      setSavedKey(key);
+      setTimeout(() => setSavedKey(null), 2000);
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'save failed');
+    }
+  };
+
+  return (
+    <div className="stack" style={{ gap: 20 }}>
+      <div className="stack" style={{ gap: 4 }}>
+        <h1>Keys &amp; secrets</h1>
+        <p className="muted">
+          Rotate platform keys here instead of editing code. Values are stored encrypted and take effect
+          immediately — you never have to redeploy. Existing values are hidden; entering a new one replaces it.
+        </p>
+      </div>
+
+      {error && <p className="delta-down">{error}</p>}
+      {loading && <div className="skeleton" style={{ minHeight: 120 }} />}
+
+      {!loading &&
+        settings.map((s) => (
+          <div key={s.key} className="card stack" style={{ gap: 8 }}>
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <strong>{s.label}</strong>
+              <span
+                className="muted"
+                style={{
+                  fontSize: 12,
+                  color:
+                    s.source === 'console'
+                      ? 'var(--verified-green)'
+                      : s.source === 'unset'
+                      ? 'var(--red-check)'
+                      : undefined,
+                }}
+              >
+                {s.source === 'console'
+                  ? 'Set in console'
+                  : s.source === 'env'
+                  ? 'Using deployment value'
+                  : 'Not set'}
+              </span>
+            </div>
+            <p className="muted" style={{ fontSize: 13 }}>
+              {s.help}
+            </p>
+            <div className="row" style={{ alignItems: 'flex-end' }}>
+              <label style={{ flex: 1 }}>
+                New value{s.secret ? ' (hidden)' : ''}
+                <input
+                  type={s.secret ? 'password' : 'text'}
+                  placeholder={s.isSet ? '•••••••• (leave blank to keep)' : 'Enter a value'}
+                  value={drafts[s.key] ?? ''}
+                  onChange={(e) => setDrafts((d) => ({ ...d, [s.key]: e.target.value }))}
+                />
+              </label>
+              <button className="primary" disabled={!drafts[s.key]} onClick={() => save(s.key)}>
+                {savedKey === s.key ? 'Saved' : 'Save'}
+              </button>
+            </div>
+            {s.updatedAt && (
+              <p className="muted" style={{ fontSize: 12 }}>
+                Last updated {s.updatedAt.slice(0, 19).replace('T', ' ')} by {s.updatedBy ?? 'unknown'}
+              </p>
+            )}
+            <CodeBox
+              label="Equivalent command line"
+              hint="For reference only — you do not need this."
+              code={`wrangler secret put ${s.key}`}
+              language="bash"
+            />
+          </div>
+        ))}
     </div>
   );
 }

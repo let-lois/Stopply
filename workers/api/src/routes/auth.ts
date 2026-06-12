@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import type { AgencyUserRow, TenantUserRow } from '@letlois/db';
 import type { AppContext } from '../env';
-import { verifyPassword } from '../crypto';
+import { verifyPassword, hashPassword } from '../crypto';
 import {
   buildSessionCookie,
   clearSessionCookie,
@@ -132,6 +132,117 @@ authRoutes.get('/me', async (c) => {
     tenantId: session.tenantId,
     csrf: session.csrf,
   });
+});
+
+// Profile: the signed in user's own name and email. Agency users live in
+// CONTROL_DB.agency_users; tenant users live in their own tenant database,
+// resolved from the host tenant. This lets anyone update their own profile
+// and change their password without an admin.
+authRoutes.get('/profile', async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'unauthorized' }, 401);
+  if (session.userType === 'agency') {
+    const row = await c.env.CONTROL_DB.prepare(
+      `SELECT id, email, name, role FROM agency_users WHERE id = ?`
+    )
+      .bind(session.userId)
+      .first<{ id: string; email: string; name: string; role: string }>();
+    if (!row) return c.json({ error: 'not found' }, 404);
+    return c.json({ id: row.id, email: row.email, name: row.name, role: row.role });
+  }
+  const tenant = c.get('tenant');
+  if (!tenant?.d1_database_id) return c.json({ error: 'not found' }, 404);
+  const d1 = tenantD1Client(c.env);
+  const { results } = await d1.query<{ id: string; email: string; name: string; role: string }>(
+    tenant.d1_database_id,
+    `SELECT id, email, name, role FROM users WHERE id = ?`,
+    [session.userId]
+  );
+  const row = results[0];
+  if (!row) return c.json({ error: 'not found' }, 404);
+  return c.json({ id: row.id, email: row.email, name: row.name, role: row.role });
+});
+
+const profileSchema = z.object({ name: z.string().min(1).max(120) }).strict();
+
+authRoutes.put('/profile', async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'unauthorized' }, 401);
+  const body = profileSchema.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: 'invalid request' }, 400);
+  const name = body.data.name.trim();
+  if (session.userType === 'agency') {
+    await c.env.CONTROL_DB.prepare(`UPDATE agency_users SET name = ? WHERE id = ?`)
+      .bind(name, session.userId)
+      .run();
+  } else {
+    const tenant = c.get('tenant');
+    if (!tenant?.d1_database_id) return c.json({ error: 'not found' }, 404);
+    const d1 = tenantD1Client(c.env);
+    await d1.query(tenant.d1_database_id, `UPDATE users SET name = ? WHERE id = ?`, [name, session.userId]);
+  }
+  await writeAudit(c.env, {
+    actorType: session.userType,
+    actorId: session.userId,
+    tenantId: session.tenantId,
+    action: 'profile.update',
+    target: session.userId,
+  });
+  return c.json({ ok: true, name });
+});
+
+const passwordSchema = z
+  .object({ currentPassword: z.string().min(1).max(256), newPassword: z.string().min(8).max(256) })
+  .strict();
+
+authRoutes.put('/password', async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'unauthorized' }, 401);
+  const body = passwordSchema.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: 'password must be at least 8 characters' }, 400);
+
+  let storedHash: string | null = null;
+  if (session.userType === 'agency') {
+    const row = await c.env.CONTROL_DB.prepare(`SELECT password_hash FROM agency_users WHERE id = ?`)
+      .bind(session.userId)
+      .first<{ password_hash: string }>();
+    storedHash = row?.password_hash ?? null;
+  } else {
+    const tenant = c.get('tenant');
+    if (!tenant?.d1_database_id) return c.json({ error: 'not found' }, 404);
+    const d1 = tenantD1Client(c.env);
+    const { results } = await d1.query<{ password_hash: string }>(
+      tenant.d1_database_id,
+      `SELECT password_hash FROM users WHERE id = ?`,
+      [session.userId]
+    );
+    storedHash = results[0]?.password_hash ?? null;
+  }
+
+  const ok = await verifyPassword(body.data.currentPassword, storedHash);
+  if (!ok) return c.json({ error: 'current password is incorrect' }, 403);
+
+  const newHash = await hashPassword(body.data.newPassword);
+  if (session.userType === 'agency') {
+    await c.env.CONTROL_DB.prepare(`UPDATE agency_users SET password_hash = ? WHERE id = ?`)
+      .bind(newHash, session.userId)
+      .run();
+  } else {
+    const tenant = c.get('tenant')!;
+    const d1 = tenantD1Client(c.env);
+    await d1.query(tenant.d1_database_id!, `UPDATE users SET password_hash = ? WHERE id = ?`, [
+      newHash,
+      session.userId,
+    ]);
+  }
+  await writeAudit(c.env, {
+    actorType: session.userType,
+    actorId: session.userId,
+    tenantId: session.tenantId,
+    action: 'password.change',
+    target: session.userId,
+  });
+  return c.json({ ok: true });
 });
 
 const switchSchema = z.object({ tenantId: z.string().min(1).max(64) }).strict();

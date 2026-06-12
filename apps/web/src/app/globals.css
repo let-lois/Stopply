@@ -1,28 +1,57 @@
 /* LetLois BI base styles. Theme tokens land as CSS variables set by the
    AppShell from each tenant's theme_json; the values here are the default
-   LetLois theme. Modern, minimal, generous whitespace, hairline borders. */
+   LetLois theme, matched to letlois.com (blue forward, clean, modern).
+   A dark variant lives under :root[data-theme='dark'] and applies to the
+   agency console and default themed tenants; white labeled tenants keep
+   their own inline theme vars, which always win. */
 
 :root {
-  --paper: #f6f3ee;
+  --paper: #f4f7fb;
   --card: #ffffff;
-  --ink: #23201c;
-  --ink-soft: #6f6a62;
-  --hairline: #e7e1d8;
-  --accent: #3f5a52;
-  --accent-soft: #e9eeeb;
-  --positive: #3f5a52;
-  --negative: #b0644f;
-  --amber: #a98142;
-  --verified-green: #4c7a5e;
-  --gray-check: #c9c3b8;
-  --red-check: #c0654e;
-  --ch-google: #3f5a52;
-  --ch-meta: #a98142;
-  --ch-website: #9a9389;
+  --ink: #16202e;
+  --ink-soft: #5b6675;
+  --hairline: #e3e9f1;
+  --accent: #1f7ae0;
+  --accent-soft: #e8f1fc;
+  --positive: #1f9d6b;
+  --negative: #d56a4f;
+  --amber: #c7902f;
+  --verified-green: #1f9d6b;
+  --gray-check: #c3ccd8;
+  --red-check: #d56a4f;
+  --ch-google: #1f7ae0;
+  --ch-meta: #6f5ad6;
+  --ch-website: #8b97a8;
+  --brand-grad-from: #1f7ae0;
+  --brand-grad-to: #4ba3e8;
   --font-display: 'Fraunces', serif;
   --font-body: 'Spline Sans', sans-serif;
   --font-mono: 'Spline Sans Mono', monospace;
 }
+
+:root[data-theme='dark'] {
+  --paper: #0e141d;
+  --card: #19212d;
+  --ink: #e9eef6;
+  --ink-soft: #9aa7b8;
+  --hairline: #28323f;
+  --accent: #4da3ff;
+  --accent-soft: #15273c;
+  --positive: #3fc08a;
+  --negative: #e6886e;
+  --amber: #d9a441;
+  --verified-green: #3fc08a;
+  --gray-check: #44505f;
+  --red-check: #e6886e;
+  --ch-google: #4da3ff;
+  --ch-meta: #9385ec;
+  --ch-website: #7e8b9c;
+  --brand-grad-from: #4da3ff;
+  --brand-grad-to: #6fb6ff;
+}
+
+:root { color-scheme: light; }
+:root[data-theme='dark'] { color-scheme: dark; }
 
 * {
   box-sizing: border-box;
@@ -415,4 +444,283 @@ table.data td {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* Brand mark used top left when no client logo is present. */
+.brand-logo {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  width: auto;
+}
+
+/* Account switcher: the top left control that tells you which sub-account
+   you are in versus agency view, and lets you switch between them. */
+.acct-switcher {
+  position: relative;
+}
+
+.acct-switcher-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 4px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--ink);
+  max-width: 240px;
+  text-align: left;
+}
+
+.acct-switcher-trigger .acct-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 13px;
+  flex: none;
+}
+
+.acct-switcher-trigger .acct-name {
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.acct-switcher-trigger .acct-sub {
+  font-size: 11px;
+  color: var(--ink-soft);
+  line-height: 1.1;
+}
+
+.acct-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 60;
+  width: min(380px, calc(100vw - 32px));
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  padding: 10px;
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+}
+
+.acct-menu input.acct-search {
+  margin-bottom: 8px;
+}
+
+.acct-menu .acct-section {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  padding: 8px 6px 4px;
+}
+
+.acct-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 9px 10px;
+  background: transparent;
+  min-height: 0;
+}
+
+.acct-row:hover {
+  border-color: var(--hairline);
+  background: var(--accent-soft);
+}
+
+.acct-row.current {
+  border-color: var(--accent);
+}
+
+.acct-row .acct-row-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.acct-row .acct-row-sub {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.acct-agency-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  justify-content: flex-start;
+  color: var(--accent);
+  font-weight: 600;
+  border-color: var(--hairline);
+  margin-bottom: 6px;
+}
+
+/* Code box: keeps snippets out of the way for non technical users. They
+   are collapsed by default with a plain language label so people who do
+   not want to see code can ignore them. */
+.codebox {
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--accent-soft);
+  overflow: hidden;
+}
+
+.codebox-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 10px 14px;
+  min-height: 0;
+  text-align: left;
+}
+
+.codebox-head .codebox-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.codebox-head .codebox-hint {
+  font-size: 12px;
+  color: var(--ink-soft);
+  font-weight: 400;
+}
+
+.codebox-body {
+  border-top: 1px solid var(--hairline);
+  background: var(--card);
+  padding: 0;
+}
+
+.codebox-body pre {
+  margin: 0;
+  padding: 14px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre;
+  color: var(--ink);
+}
+
+.codebox-actions {
+  display: flex;
+  gap: 8px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--hairline);
+}
+
+/* Profile / account menu in the top bar. */
+.profile-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 60;
+  width: min(260px, calc(100vw - 32px));
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  padding: 8px;
+}
+
+.profile-menu button {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  border: none;
+  background: transparent;
+  min-height: 40px;
+}
+
+.profile-menu button:hover {
+  background: var(--accent-soft);
+}
+
+/* Selectable system tiles in the getting started flow. */
+.system-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.system-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1.5px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--card);
+  min-height: 0;
+}
+
+.system-tile.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.system-tile .system-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.system-tile .system-note {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+/* Collapsible advanced section (buries API integrations). */
+.disclosure > summary {
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-weight: 600;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.disclosure > summary::before {
+  content: '▸';
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.disclosure[open] > summary::before {
+  content: '▾';
 }
