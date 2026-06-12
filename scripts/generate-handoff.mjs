@@ -33,19 +33,15 @@ const migration = readFileSync(join(root, 'packages/db/migrations/control/0001_i
 writeFileSync(join(outDir, '01-control-migration.sql'), migration);
 
 // ---- seed file ----
+// Emit statements only. No SQL comments: the D1 console can flatten pasted
+// SQL onto one line, where a `--` comment swallows everything after it.
 const lines = [];
-lines.push('-- Control plane seed. Run AFTER 01-control-migration.sql.');
-lines.push('-- Mirrors scripts/seed.mjs: first agency_admin + the ten help articles.');
-lines.push(`-- Admin: ${ADMIN_EMAIL}  (temp password is delivered out of band, not stored here)`);
-lines.push('');
-lines.push('-- Agency admin (guarded: only inserts if this email is not already present).');
 lines.push(
   `INSERT INTO agency_users (id, email, name, role, password_hash, active)\n` +
     `SELECT ${sqlStr(auId)}, ${sqlStr(ADMIN_EMAIL)}, ${sqlStr('LetLois Admin')}, 'agency_admin', ${sqlStr(storedHash)}, 1\n` +
     `WHERE NOT EXISTS (SELECT 1 FROM agency_users WHERE email = ${sqlStr(ADMIN_EMAIL)});`
 );
 lines.push('');
-lines.push('-- Ten help articles (idempotent upsert on slug, same as the seed script).');
 for (const a of HELP_ARTICLES) {
   const haId = `ha_${randomBytes(8).toString('hex')}`;
   lines.push(
@@ -56,6 +52,7 @@ for (const a of HELP_ARTICLES) {
   lines.push('');
 }
 const seed = lines.join('\n');
+if (/^\s*--/m.test(seed)) throw new Error('seed SQL must contain no comment lines');
 writeFileSync(join(outDir, '02-control-seed.sql'), seed);
 
 // ---- re-verify the embedded hash with the worker's verifier logic ----
