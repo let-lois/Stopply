@@ -1,10 +1,10 @@
 'use client';
 
-// The agency console shell on bi.letlois.com: the top navigation menu,
-// section switching, and sign out. Mirrors the tenant AppShell topbar
-// (sticky header, desktop tabs, mobile hamburger) so the two planes feel
-// like one product. Admins manage clients, their team, and the audit log;
-// staff see only the clients assigned to them.
+// The agency console shell on bi.letlois.com: the left sidebar nav,
+// section switching, and sign out. Mirrors the tenant AppShell sidebar
+// (sticky, collapses to a hamburger drawer on mobile) so the two planes
+// feel like one product. Admins manage clients, their team, and the audit
+// log; staff see only the clients assigned to them.
 
 import { useState } from 'react';
 import { ClientsSection, TeamSection, AuditSection } from './AgencyOverview';
@@ -38,11 +38,11 @@ export function AgencyShell({
 
   const active = sections.some((s) => s.key === section) ? section : 'clients';
 
-  const navItems = (onPick?: () => void, extraClass = '') =>
+  const navItems = (onPick?: () => void) =>
     sections.map((s) => (
       <button
         key={s.key}
-        className={`${extraClass} ${s.key === active ? 'active' : ''}`.trim()}
+        className={s.key === active ? 'active' : ''}
         onClick={() => {
           setSection(s.key);
           onPick?.();
@@ -53,40 +53,42 @@ export function AgencyShell({
     ));
 
   return (
-    <div>
-      <header className="topbar">
-        <strong style={{ fontFamily: 'var(--font-display)', fontSize: 18 }}>LetLois BI</strong>
+    <div className="app-layout">
+      <aside className={`sidebar ${menuOpen ? 'open' : ''}`}>
+        <div className="sidebar-brand">
+          <strong style={{ fontFamily: 'var(--font-display)', fontSize: 18 }}>LetLois BI</strong>
+        </div>
 
-        <nav className="tabs desktop" style={{ flex: 1 }}>
-          {navItems()}
-        </nav>
+        <nav className="sidebar-nav">{navItems(() => setMenuOpen(false))}</nav>
 
-        <span className="muted" style={{ fontSize: 13 }}>
-          {userId}
-        </span>
+        <div className="sidebar-footer">
+          <span className="muted" style={{ fontSize: 13, padding: '0 12px' }}>
+            {userId}
+          </span>
+          <button className="small" onClick={onLogout}>
+            Sign out
+          </button>
+        </div>
+      </aside>
 
-        <button className="hamburger small" onClick={() => setMenuOpen((o) => !o)} aria-label="Menu">
-          ☰
-        </button>
-        <button className="small" onClick={onLogout}>
-          Sign out
-        </button>
-      </header>
+      {menuOpen && <div className="sidebar-overlay open" onClick={() => setMenuOpen(false)} />}
 
-      {menuOpen && (
-        <nav
-          className="tabs stack"
-          style={{ padding: 12, background: 'var(--card)', borderBottom: '1px solid var(--hairline)' }}
-        >
-          {navItems(() => setMenuOpen(false), 'cta')}
-        </nav>
-      )}
+      <div className="main-area">
+        <header className="content-topbar">
+          <button className="hamburger small" onClick={() => setMenuOpen((o) => !o)} aria-label="Menu">
+            ☰
+          </button>
+          <strong style={{ fontFamily: 'var(--font-display)', fontSize: 16 }}>
+            {sections.find((s) => s.key === active)?.label}
+          </strong>
+        </header>
 
-      <main className="shell">
-        {active === 'clients' && <ClientsSection role={role} onEnterTenant={onEnterTenant} />}
-        {active === 'team' && role === 'agency_admin' && <TeamSection currentUserId={userId} />}
-        {active === 'audit' && role === 'agency_admin' && <AuditSection />}
-      </main>
+        <main className="shell">
+          {active === 'clients' && <ClientsSection role={role} onEnterTenant={onEnterTenant} />}
+          {active === 'team' && role === 'agency_admin' && <TeamSection currentUserId={userId} />}
+          {active === 'audit' && role === 'agency_admin' && <AuditSection />}
+        </main>
+      </div>
     </div>
   );
 }

@@ -1,9 +1,9 @@
 'use client';
 
 // The tenant dashboard shell: theming from theme_json, tabs gated by role
-// and view config, the comparison selector, the agency banner, mobile
-// hamburger nav, footer credit, and the onboarding checklist for fresh
-// tenants.
+// and view config, the comparison selector, the agency banner, a left
+// sidebar nav that collapses to a hamburger drawer on mobile, footer
+// credit, and the onboarding checklist for fresh tenants.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
@@ -146,89 +146,91 @@ export function AppShell({
           </div>
         )}
 
-        <header className="topbar">
-          {hasLogo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src="/api/tenant/logo" alt={settings.tenant.name} style={{ height: 32, maxWidth: 140, objectFit: 'contain' }} />
-          ) : (
-            <strong style={{ fontFamily: 'var(--font-display)', fontSize: 18 }}>
-              {settings.tenant.theme?.wordmark || settings.tenant.name}
-            </strong>
-          )}
+        <div className="app-layout">
+          <aside className={`sidebar ${menuOpen ? 'open' : ''}`}>
+            <div className="sidebar-brand">
+              {hasLogo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src="/api/tenant/logo" alt={settings.tenant.name} style={{ height: 32, maxWidth: 140, objectFit: 'contain' }} />
+              ) : (
+                <strong style={{ fontFamily: 'var(--font-display)', fontSize: 18 }}>
+                  {settings.tenant.theme?.wordmark || settings.tenant.name}
+                </strong>
+              )}
+            </div>
 
-          <nav className="tabs desktop" style={{ flex: 1 }}>
-            {allowedTabs.map((t) => (
-              <button key={t} className={t === activeTab ? 'active' : ''} onClick={() => setTab(t)}>
-                {tabLabel[t]}
-                {t === 'data-team' && staleCount > 0 && <span className="badge" style={{ marginLeft: 6 }}>{staleCount}</span>}
-              </button>
-            ))}
-          </nav>
+            <nav className="sidebar-nav">
+              {allowedTabs.map((t) => (
+                <button
+                  key={t}
+                  className={t === activeTab ? 'active' : ''}
+                  onClick={() => {
+                    setTab(t);
+                    setMenuOpen(false);
+                  }}
+                >
+                  {tabLabel[t]}
+                  {t === 'data-team' && staleCount > 0 && <span className="badge">{staleCount}</span>}
+                </button>
+              ))}
+            </nav>
 
-          <select
-            value={comparison}
-            onChange={(e) => setComparison(e.target.value as Comparison)}
-            style={{ width: 'auto', minHeight: 38 }}
-            aria-label="Comparison"
-          >
-            <option value="previous">vs previous month</option>
-            <option value="year">vs same month last year</option>
-            <option value="target">vs target</option>
-            <option value="none">no comparison</option>
-          </select>
-
-          <button className="hamburger small" onClick={() => setMenuOpen((o) => !o)} aria-label="Menu">
-            ☰
-          </button>
-          <button className="small" onClick={onLogout}>
-            Sign out
-          </button>
-        </header>
-
-        {menuOpen && (
-          <nav className="tabs stack" style={{ padding: 12, background: 'var(--card)', borderBottom: '1px solid var(--hairline)' }}>
-            {allowedTabs.map((t) => (
-              <button
-                key={t}
-                className={`cta ${t === activeTab ? 'active' : ''}`}
-                onClick={() => {
-                  setTab(t);
-                  setMenuOpen(false);
-                }}
+            <div className="sidebar-footer">
+              <select
+                value={comparison}
+                onChange={(e) => setComparison(e.target.value as Comparison)}
+                aria-label="Comparison"
               >
-                {tabLabel[t]}
+                <option value="previous">vs previous month</option>
+                <option value="year">vs same month last year</option>
+                <option value="target">vs target</option>
+                <option value="none">no comparison</option>
+              </select>
+              <button className="small" onClick={onLogout}>
+                Sign out
               </button>
-            ))}
-          </nav>
-        )}
+            </div>
+          </aside>
 
-        <main className="shell stack" style={{ gap: 20 }}>
-          {showOnboarding && <OnboardingChecklist sources={sources} onTabChange={setTab} />}
-          {activeTab === 'performance' && (
-            <PerformanceTab
-              settings={settings}
-              labels={labels}
-              months={months}
-              sources={sources}
-              comparison={comparison}
-              refreshSources={loadSources}
-            />
-          )}
-          {activeTab === 'work-backwards' && <WorkBackwardsTab settings={settings} labels={labels} months={months} />}
-          {activeTab === 'planning' && <PlanningTab settings={settings} labels={labels} months={months} />}
-          {activeTab === 'present' && !isViewer && <PresentTab settings={settings} labels={labels} months={months} />}
-          {activeTab === 'data-team' && !isViewer && (
-            <DataTeamTab
-              settings={settings}
-              labels={labels}
-              sources={sources}
-              refreshSources={loadSources}
-              refreshSettings={loadSettings}
-            />
-          )}
-        </main>
+          {menuOpen && <div className="sidebar-overlay open" onClick={() => setMenuOpen(false)} />}
 
-        {settings.tenant.footerCredit && <div className="footer-credit">Managed by LetLois</div>}
+          <div className="main-area">
+            <header className="content-topbar">
+              <button className="hamburger small" onClick={() => setMenuOpen((o) => !o)} aria-label="Menu">
+                ☰
+              </button>
+              <strong style={{ fontFamily: 'var(--font-display)', fontSize: 16 }}>{tabLabel[activeTab]}</strong>
+            </header>
+
+            <main className="shell stack" style={{ gap: 20 }}>
+              {showOnboarding && <OnboardingChecklist sources={sources} onTabChange={setTab} />}
+              {activeTab === 'performance' && (
+                <PerformanceTab
+                  settings={settings}
+                  labels={labels}
+                  months={months}
+                  sources={sources}
+                  comparison={comparison}
+                  refreshSources={loadSources}
+                />
+              )}
+              {activeTab === 'work-backwards' && <WorkBackwardsTab settings={settings} labels={labels} months={months} />}
+              {activeTab === 'planning' && <PlanningTab settings={settings} labels={labels} months={months} />}
+              {activeTab === 'present' && !isViewer && <PresentTab settings={settings} labels={labels} months={months} />}
+              {activeTab === 'data-team' && !isViewer && (
+                <DataTeamTab
+                  settings={settings}
+                  labels={labels}
+                  sources={sources}
+                  refreshSources={loadSources}
+                  refreshSettings={loadSettings}
+                />
+              )}
+            </main>
+
+            {settings.tenant.footerCredit && <div className="footer-credit">Managed by LetLois</div>}
+          </div>
+        </div>
 
         <ChatWidget settings={settings} currentTab={activeTab} />
       </div>
