@@ -158,37 +158,95 @@ textarea {
   padding: 16px;
 }
 
-.topbar {
+/* App layout: a fixed-width left sidebar plus a scrolling content column,
+   replacing the old horizontal topbar. */
+.app-layout {
   display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 12px 16px;
+  align-items: flex-start;
+  min-height: 100vh;
+}
+
+.main-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar {
+  flex: none;
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 12px;
   background: var(--card);
-  border-bottom: 1px solid var(--hairline);
+  border-right: 1px solid var(--hairline);
   position: sticky;
   top: 0;
+  height: 100vh;
+  overflow-y: auto;
   z-index: 30;
 }
 
-.tabs {
+.sidebar-brand {
   display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 6px 16px;
 }
 
-.tabs button {
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.sidebar-nav button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
   border: none;
+  border-radius: 8px;
   background: transparent;
   color: var(--ink-soft);
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
+  text-align: left;
   padding: 0 10px;
+  font-size: 14px;
 }
 
-.tabs button.active {
-  color: var(--ink);
-  border-bottom-color: var(--accent);
+.sidebar-nav button:hover {
+  background: var(--accent-soft);
+}
+
+.sidebar-nav button.active {
+  background: var(--accent-soft);
+  color: var(--accent);
   font-weight: 600;
+}
+
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  margin-top: auto;
+  border-top: 1px solid var(--hairline);
+}
+
+/* The ProfileMenu dropdown normally opens downward from its trigger; at the
+   bottom of the sidebar that would run off the viewport, so flip it upward. */
+.sidebar-footer .profile-menu {
+  top: auto;
+  bottom: calc(100% + 6px);
+  right: auto;
+  left: 0;
+}
+
+.sidebar-hamburger {
+  display: none;
 }
 
 .kpi-grid {
@@ -391,16 +449,36 @@ table.data td {
 }
 
 @media (max-width: 900px) {
-  .hamburger {
+  .sidebar-hamburger {
     display: inline-flex;
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 45;
   }
 
-  .tabs.desktop {
-    display: none;
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    transform: translateX(-100%);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+    transition: transform 0.2s ease;
   }
 
-  .topbar {
-    flex-wrap: wrap;
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 40;
+  }
+
+  .main-content {
+    padding-top: 56px;
   }
 
   .kpi .value {

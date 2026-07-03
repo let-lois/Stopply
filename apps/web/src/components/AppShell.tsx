@@ -19,6 +19,7 @@ import { LetLoisLogo } from './LetLoisLogo';
 import { AccountSwitcher } from './AccountSwitcher';
 import { ProfileMenu } from './ProfileMenu';
 import { CodeBox } from './CodeBox';
+import { Sidebar } from './Sidebar';
 
 const TOKEN_TO_VAR: Record<string, string> = {
   paper: '--paper',
@@ -140,74 +141,57 @@ export function AppShell({
       {settings.tenant.theme?.customCss && (
         <style dangerouslySetInnerHTML={{ __html: `.tenant-app { ${''} } ${scopeCss(settings.tenant.theme.customCss)}` }} />
       )}
-      <div className="tenant-app">
-        <header className="topbar">
-          {/* Top left: for agency users this is the account switcher that
-              tells you which sub-account you are in versus agency view. For
-              tenant users it is their logo, falling back to the LetLois mark
-              when no client logo has been uploaded. */}
-          {isAgencyUser ? (
-            <AccountSwitcher
-              current={{ id: settings.tenant.id, name: settings.tenant.name }}
-              onSwitchTenant={(t) => onSwitchTenant?.(t)}
-              onEnterAgencyView={onExitTenant}
-            />
-          ) : hasLogo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src="/api/tenant/logo" alt={settings.tenant.name} style={{ height: 32, maxWidth: 140, objectFit: 'contain' }} />
-          ) : settings.tenant.theme?.wordmark ? (
-            <strong style={{ fontFamily: 'var(--font-display)', fontSize: 18 }}>
-              {settings.tenant.theme.wordmark}
-            </strong>
-          ) : (
-            <LetLoisLogo />
-          )}
-
-          <nav className="tabs desktop" style={{ flex: 1 }}>
-            {allowedTabs.map((t) => (
-              <button key={t} className={t === activeTab ? 'active' : ''} onClick={() => setTab(t)}>
-                {tabLabel[t]}
-                {t === 'data-team' && staleCount > 0 && <span className="badge" style={{ marginLeft: 6 }}>{staleCount}</span>}
-              </button>
-            ))}
-          </nav>
-
-          <select
-            value={comparison}
-            onChange={(e) => setComparison(e.target.value as Comparison)}
-            style={{ width: 'auto', minHeight: 38 }}
-            aria-label="Comparison"
-          >
-            <option value="previous">vs previous month</option>
-            <option value="year">vs same month last year</option>
-            <option value="target">vs target</option>
-            <option value="none">no comparison</option>
-          </select>
-
-          <button className="hamburger small" onClick={() => setMenuOpen((o) => !o)} aria-label="Menu">
-            ☰
-          </button>
-          <ProfileMenu onLogout={onLogout} />
-        </header>
-
-        {menuOpen && (
-          <nav className="tabs stack" style={{ padding: 12, background: 'var(--card)', borderBottom: '1px solid var(--hairline)' }}>
-            {allowedTabs.map((t) => (
-              <button
-                key={t}
-                className={`cta ${t === activeTab ? 'active' : ''}`}
-                onClick={() => {
-                  setTab(t);
-                  setMenuOpen(false);
-                }}
+      <div className="tenant-app app-layout">
+        <Sidebar
+          brand={
+            // Top of sidebar: for agency users this is the account switcher
+            // that tells you which sub-account you are in versus agency
+            // view. For tenant users it is their logo, falling back to the
+            // LetLois mark when no client logo has been uploaded.
+            isAgencyUser ? (
+              <AccountSwitcher
+                current={{ id: settings.tenant.id, name: settings.tenant.name }}
+                onSwitchTenant={(t) => onSwitchTenant?.(t)}
+                onEnterAgencyView={onExitTenant}
+              />
+            ) : hasLogo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src="/api/tenant/logo" alt={settings.tenant.name} style={{ height: 32, maxWidth: 140, objectFit: 'contain' }} />
+            ) : settings.tenant.theme?.wordmark ? (
+              <strong style={{ fontFamily: 'var(--font-display)', fontSize: 18 }}>
+                {settings.tenant.theme.wordmark}
+              </strong>
+            ) : (
+              <LetLoisLogo />
+            )
+          }
+          items={allowedTabs.map((t) => ({
+            key: t,
+            label: tabLabel[t],
+            badge: t === 'data-team' ? staleCount : undefined,
+            active: t === activeTab,
+            onClick: () => setTab(t),
+          }))}
+          footer={
+            <>
+              <select
+                value={comparison}
+                onChange={(e) => setComparison(e.target.value as Comparison)}
+                aria-label="Comparison"
               >
-                {tabLabel[t]}
-              </button>
-            ))}
-          </nav>
-        )}
+                <option value="previous">vs previous month</option>
+                <option value="year">vs same month last year</option>
+                <option value="target">vs target</option>
+                <option value="none">no comparison</option>
+              </select>
+              <ProfileMenu onLogout={onLogout} />
+            </>
+          }
+          mobileOpen={menuOpen}
+          onMobileOpenChange={setMenuOpen}
+        />
 
-        <main className="shell stack" style={{ gap: 20 }}>
+        <main className="main-content shell stack" style={{ gap: 20 }}>
           {showOnboarding && <OnboardingChecklist sources={sources} onTabChange={setTab} />}
           {activeTab === 'performance' && (
             <PerformanceTab
@@ -231,9 +215,9 @@ export function AppShell({
               refreshSettings={loadSettings}
             />
           )}
-        </main>
 
-        {settings.tenant.footerCredit && <div className="footer-credit">Managed by LetLois</div>}
+          {settings.tenant.footerCredit && <div className="footer-credit">Managed by LetLois</div>}
+        </main>
 
         <ChatWidget settings={settings} currentTab={activeTab} />
       </div>
