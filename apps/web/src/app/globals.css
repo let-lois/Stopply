@@ -307,6 +307,91 @@ table.data td {
   border-bottom: 1px solid var(--hairline);
 }
 
+/* Ad line item drill-down under Spend by platform: creative type filter
+   chips, the editable creative type tag, and the cost-per-lead status
+   pill (top performer / watch / underperforming). */
+.type-filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.type-filters button {
+  border: 1px solid var(--hairline);
+  background: var(--card);
+  color: var(--ink-soft);
+  border-radius: 999px;
+  padding: 0 12px;
+  min-height: 30px;
+  font-size: 12.5px;
+}
+
+.type-filters button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+
+.creative-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--hairline);
+  background: var(--paper);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.creative-tag .edit {
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.creative-tag.manual {
+  border-style: dashed;
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.status-pill .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-pill.top {
+  color: var(--positive);
+  background: color-mix(in srgb, var(--positive) 14%, transparent);
+}
+
+.status-pill.watch {
+  color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 16%, transparent);
+}
+
+.status-pill.under {
+  color: var(--negative);
+  background: color-mix(in srgb, var(--negative) 14%, transparent);
+}
+
 .check {
   display: inline-block;
   width: 14px;

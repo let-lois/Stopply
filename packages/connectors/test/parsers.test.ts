@@ -5,19 +5,23 @@ import {
   parseBlvdClients,
   parseBlvdLineItems,
   parseGhlContacts,
+  parseGoogleAdLineItem,
   parseGoogleCampaign,
+  parseMetaAdLineItem,
   parseMetaCampaign,
 } from '../src/parsers';
 
 describe('parser registry', () => {
-  it('exposes all seven Be Clinical parsers', () => {
+  it('exposes the seven Be Clinical parsers plus the two ad line item parsers', () => {
     expect(Object.keys(PARSER_REGISTRY).sort()).toEqual([
       'blvd-appointments',
       'blvd-clients',
       'blvd-line-items',
       'ghl-contacts',
       'ghl-website',
+      'google-ad-lineitem',
       'google-campaign',
+      'meta-ad-lineitem',
       'meta-campaign',
     ]);
   });
@@ -38,6 +42,57 @@ describe('google campaign parser', () => {
     const out = parseGoogleCampaign(csv, '2026-05');
     expect(out.adSpend).toHaveLength(1);
     expect(out.adSpend![0]).toMatchObject({ channel: 'Google', campaign: 'Brand Search', spend: 2000 });
+  });
+});
+
+describe('meta ad line item parser', () => {
+  it('parses one row per ad, keeping campaign and creative type', () => {
+    const csv = [
+      'Campaign name,Ad set name,Ad name,Ad ID,Creative type,Amount spent (USD),Results',
+      'Filler Intro — June,Filler Intro,Before / After — Filler,120001,Carousel,"2,450.00",31',
+      'Filler Intro — June,Filler Intro,Patient Story — Laser,120002,,"1,900.00",14',
+    ].join('\n');
+    const out = parseMetaAdLineItem(csv, '2026-06');
+    expect(out.kind).toBe('ad-line-items');
+    expect(out.adLineItems).toHaveLength(2);
+    expect(out.adLineItems![0]).toMatchObject({
+      channel: 'Meta',
+      campaign: 'Filler Intro — June',
+      adName: 'Before / After — Filler',
+      adId: '120001',
+      creativeType: 'Carousel',
+      spend: 2450,
+      leadsReported: 31,
+    });
+    // No creative type column value: left null for staff to tag, not
+    // defaulted to something misleading.
+    expect(out.adLineItems![1]!.creativeType).toBeNull();
+  });
+
+  it('drops rows missing a campaign or ad name', () => {
+    const csv = 'Campaign name,Ad name,Amount spent (USD),Results\n,Orphan ad,"10.00",1\n';
+    const out = parseMetaAdLineItem(csv, '2026-06');
+    expect(out.adLineItems).toHaveLength(0);
+  });
+});
+
+describe('google ad line item parser', () => {
+  it('parses one row per ad and skips total rows', () => {
+    const csv = [
+      'Campaign,Ad,Ad type,Cost,Conversions',
+      'Brand Search,Book a consult today,Responsive search ad,"1,200.00",22',
+      'Total: Account,,,"1,200.00",22',
+    ].join('\n');
+    const out = parseGoogleAdLineItem(csv, '2026-06');
+    expect(out.adLineItems).toHaveLength(1);
+    expect(out.adLineItems![0]).toMatchObject({
+      channel: 'Google',
+      campaign: 'Brand Search',
+      adName: 'Book a consult today',
+      creativeType: 'Responsive search ad',
+      spend: 1200,
+      leadsReported: 22,
+    });
   });
 });
 

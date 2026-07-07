@@ -90,6 +90,8 @@ const PARSER_OPTIONS: Array<{ key: string; label: string }> = [
   { key: 'ghl-website', label: 'Go High Level — website' },
   { key: 'google-campaign', label: 'Google Ads — campaigns' },
   { key: 'meta-campaign', label: 'Meta Ads — campaigns' },
+  { key: 'google-ad-lineitem', label: 'Google Ads — by ad' },
+  { key: 'meta-ad-lineitem', label: 'Meta Ads — by ad' },
   { key: 'blvd-appointments', label: 'Boulevard — appointments' },
   { key: 'blvd-line-items', label: 'Boulevard — sales' },
   { key: 'blvd-clients', label: 'Boulevard — clients' },

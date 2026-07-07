@@ -19,6 +19,8 @@ import { getAgencySetting } from '../agencySettings';
 const PARSER_CATALOG: Record<string, string> = {
   'meta-campaign': 'Meta / Facebook Ads campaign export. Ad spend and reported leads per campaign.',
   'google-campaign': 'Google Ads campaign export. Ad spend and reported leads per campaign.',
+  'meta-ad-lineitem': 'Meta / Facebook Ads ad level export. Spend and reported leads per individual ad.',
+  'google-ad-lineitem': 'Google Ads "Ads" report. Spend and reported leads per individual ad.',
   'ghl-contacts': 'Go High Level (GHL) full contacts export. Leads with created date, email, phone, UTMs.',
   'ghl-website': 'Go High Level website filtered contacts export. All rows attributed to the Website channel.',
   'blvd-appointments': 'Boulevard appointments export. Scheduling stage events (booked, shows).',
@@ -249,6 +251,27 @@ export async function applyParseResult(
          ON CONFLICT (period_month, channel, campaign) DO UPDATE SET
            spend = excluded.spend, leads_reported = excluded.leads_reported`,
         [row.periodMonth, row.channel, row.campaign, row.spend, row.leadsReported]
+      );
+    }
+  }
+
+  if (parsed.kind === 'ad-line-items' && parsed.adLineItems) {
+    const channels = [...new Set(parsed.adLineItems.map((r) => r.channel))];
+    for (const channel of channels) {
+      await d1.query(databaseId, `DELETE FROM ad_line_items WHERE period_month = ? AND channel = ?`, [
+        month,
+        channel,
+      ]);
+    }
+    for (const row of parsed.adLineItems) {
+      await d1.query(
+        databaseId,
+        `INSERT INTO ad_line_items (period_month, channel, campaign, ad_name, ad_id, creative_type, creative_type_source, spend, leads_reported)
+         VALUES (?, ?, ?, ?, ?, ?, 'auto', ?, ?)
+         ON CONFLICT (period_month, channel, campaign, ad_name) DO UPDATE SET
+           ad_id = excluded.ad_id, creative_type = excluded.creative_type, creative_type_source = 'auto',
+           spend = excluded.spend, leads_reported = excluded.leads_reported`,
+        [row.periodMonth, row.channel, row.campaign, row.adName, row.adId, row.creativeType, row.spend, row.leadsReported]
       );
     }
   }
