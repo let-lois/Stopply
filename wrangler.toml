@@ -24,6 +24,62 @@ bucket_name = "letlois-bi-csv"
 binding = "SESSIONS"
 id = "1bc1e97a05fd43edbb98b4768c29fd67"
 
+# Rebrand in progress: stopply.com is the new primary domain. bi.letlois.com
+# routes stay live during the transition for existing client tracking
+# (/t.js, /ingest). Do not remove them until clients have migrated.
+[[routes]]
+pattern = "stopply.com/api/*"
+zone_name = "stopply.com"
+[[routes]]
+pattern = "stopply.com/ingest/*"
+zone_name = "stopply.com"
+[[routes]]
+pattern = "stopply.com/t.js"
+zone_name = "stopply.com"
+[[routes]]
+pattern = "stopply.com/t/*.js"
+zone_name = "stopply.com"
+[[routes]]
+pattern = "*.stopply.com/api/*"
+zone_name = "stopply.com"
+[[routes]]
+pattern = "*.stopply.com/ingest/*"
+zone_name = "stopply.com"
+[[routes]]
+pattern = "*.stopply.com/t.js"
+zone_name = "stopply.com"
+[[routes]]
+pattern = "*.stopply.com/t/*.js"
+zone_name = "stopply.com"
+
+[[routes]]
+pattern = "bi.letlois.com/api/*"
+zone_name = "letlois.com"
+[[routes]]
+pattern = "bi.letlois.com/ingest/*"
+zone_name = "letlois.com"
+[[routes]]
+pattern = "bi.letlois.com/t.js"
+zone_name = "letlois.com"
+[[routes]]
+pattern = "bi.letlois.com/t/*.js"
+zone_name = "letlois.com"
+[[routes]]
+pattern = "*.bi.letlois.com/api/*"
+zone_name = "letlois.com"
+[[routes]]
+pattern = "*.bi.letlois.com/ingest/*"
+zone_name = "letlois.com"
+[[routes]]
+pattern = "*.bi.letlois.com/t.js"
+zone_name = "letlois.com"
+[[routes]]
+pattern = "*.bi.letlois.com/t/*.js"
+zone_name = "letlois.com"
+
 [vars]
-AGENCY_HOST = "bi.letlois.com"
-TENANT_HOST_SUFFIX = ".bi.letlois.com"
+# Comma-separated: both domains are recognized during the stopply.com
+# migration. isAgencyHost()/resolveTenantByHost() in tenantResolver.ts
+# split on comma and check each value.
+AGENCY_HOST = "stopply.com,bi.letlois.com"
+TENANT_HOST_SUFFIX = ".stopply.com,.bi.letlois.com"

@@ -56,10 +56,19 @@ export async function updateSession(env: Env, token: string, record: SessionReco
   await env.SESSIONS.put(`session:${token}`, JSON.stringify(record), { expirationTtl: remaining });
 }
 
+// Domain is pinned to stopply.com: login is moving there. A browser will
+// silently drop this Set-Cookie on responses from bi.letlois.com or any
+// other host that isn't stopply.com or a subdomain of it, per the cookie
+// Domain-matching rules. That's expected during the migration, since
+// bi.letlois.com keeps serving /t.js and /ingest but not authenticated
+// sessions.
+const COOKIE_DOMAIN = '.stopply.com';
+
 export function buildSessionCookie(token: string, secure: boolean): string {
   const attrs = [
     `${COOKIE_NAME}=${token}`,
     'Path=/',
+    `Domain=${COOKIE_DOMAIN}`,
     'HttpOnly',
     'SameSite=Lax',
     `Max-Age=${SESSION_TTL_SECONDS}`,
@@ -69,7 +78,7 @@ export function buildSessionCookie(token: string, secure: boolean): string {
 }
 
 export function clearSessionCookie(secure: boolean): string {
-  const attrs = [`${COOKIE_NAME}=`, 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0'];
+  const attrs = [`${COOKIE_NAME}=`, 'Path=/', `Domain=${COOKIE_DOMAIN}`, 'HttpOnly', 'SameSite=Lax', 'Max-Age=0'];
   if (secure) attrs.push('Secure');
   return attrs.join('; ');
 }

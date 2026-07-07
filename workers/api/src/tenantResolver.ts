@@ -23,8 +23,9 @@ export async function resolveTenantByHost(env: Env, hostname: string): Promise<T
   if (cached && cached.expires > Date.now()) return cached.tenant;
 
   let tenant: TenantRow | null = null;
-  if (host.endsWith(env.TENANT_HOST_SUFFIX) && host !== env.AGENCY_HOST) {
-    const slug = host.slice(0, -env.TENANT_HOST_SUFFIX.length);
+  const suffix = tenantHostSuffixes(env).find((s) => host.endsWith(s));
+  if (suffix && !isAgencyHost(env, host)) {
+    const slug = host.slice(0, -suffix.length);
     tenant = await getTenantBySlug(env, slug);
   } else {
     const row = await env.CONTROL_DB.prepare(
@@ -55,5 +56,21 @@ export async function getTenantById(env: Env, id: string): Promise<TenantRow | n
 export function isAgencyHost(env: Env, hostname: string): boolean {
   const host = hostname.toLowerCase().split(':')[0] ?? '';
   // localhost and 127.0.0.1 act as the agency host in development.
-  return host === env.AGENCY_HOST || host === 'localhost' || host === '127.0.0.1';
+  if (host === 'localhost' || host === '127.0.0.1') return true;
+  return agencyHosts(env).includes(host);
+}
+
+// AGENCY_HOST and TENANT_HOST_SUFFIX are comma-separated during the
+// stopply.com migration so both domains resolve while bi.letlois.com stays
+// live for existing client tracking.
+function agencyHosts(env: Env): string[] {
+  return env.AGENCY_HOST.split(',')
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function tenantHostSuffixes(env: Env): string[] {
+  return env.TENANT_HOST_SUFFIX.split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
 }
