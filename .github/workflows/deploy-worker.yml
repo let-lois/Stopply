@@ -1,0 +1,59 @@
+name: Deploy API Worker
+
+# Deploys the Cloudflare Worker defined by the root wrangler.toml
+# (name = "bi-dashboard-api-worker", main = workers/api/src/index.ts).
+# This is the one piece of CI/CD this repo is missing per CLAUDE.md: the
+# frontend auto-deploys via Cloudflare Pages on push to main, but the API
+# Worker previously required someone to run `wrangler deploy` by hand.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # wrangler.toml lives at the repo root, not workers/api/, so it has
+      # to be listed explicitly alongside the worker's own source.
+      - 'workers/api/**'
+      - 'wrangler.toml'
+  workflow_dispatch: {}
+
+# Deploy workflows don't need to write to the repo; keep the default
+# GITHUB_TOKEN read-only.
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      # workers/api depends on the in-repo @letlois/attribution,
+      # @letlois/connectors, @letlois/db, and @letlois/tenant-d1 packages
+      # via the pnpm workspace protocol. Those packages ship TypeScript
+      # source directly (no dist/build step of their own: main/exports
+      # point at src/index.ts), so a workspace install from the repo root
+      # is all that's needed before wrangler's own esbuild bundling can
+      # resolve them. There is no separate `pnpm build` step to run.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # wrangler.toml is at the repo root, not workers/api/.
+          workingDirectory: '.'
+          command: deploy
