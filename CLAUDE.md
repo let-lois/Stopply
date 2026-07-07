@@ -6,7 +6,9 @@ This file is loaded automatically at the start of every Claude Code session in t
 
 ## Project overview
 
-This is the LetLois multi-tenant BI dashboard (bi.letlois.com). It tracks lead attribution and funnel metrics across LetLois clients (Be Clinical, Blue Cactus, Back Nine East Mesa, TXD Roofing).
+This is the LetLois multi-tenant BI dashboard. It tracks lead attribution and funnel metrics across LetLois clients (Be Clinical, Blue Cactus, Back Nine East Mesa, TXD Roofing).
+
+**Domain migration in progress:** the product is rebranding from `bi.letlois.com` to `stopply.com`. Login/dashboard traffic is moving to `stopply.com`; `bi.letlois.com` stays live in parallel only for existing client tracking (`/t.js`, `/ingest`) until clients migrate. See "Build and deploy" for the routing details.
 
 - Repo: GitHub (`let-lois/business-intelligence-dashboard`)
 - Hosting: Cloudflare Pages (frontend) + a separate Cloudflare Worker (API) — see "Build and deploy" below, the two do not deploy the same way.
@@ -56,7 +58,10 @@ Deployment is **not** uniformly automatic — the frontend and the API worker de
 - **Do not assume the API is up to date just because code was pushed to `main`.** If you change worker code and the change needs to be live, say so explicitly and confirm whether a manual `wrangler deploy` happened — do not silently assume it did.
 - This gap is a known source of confusion: a prior session hit an unexplained HTTP 405 on login after a merge, and it was never confirmed whether the worker had actually been redeployed with the current code.
 
-Production domains (from `wrangler.toml` vars): `bi.letlois.com` (agency host), `*.bi.letlois.com` (tenant subdomains).
+Production domains (from `wrangler.toml` `[[routes]]` and `[vars]`, both live during the migration):
+- `stopply.com` / `*.stopply.com`: new primary. Agency host + tenant subdomains. Auth cookie (`lbi_session`) is scoped `Domain=.stopply.com`, so login only works here.
+- `bi.letlois.com` / `*.bi.letlois.com`: legacy. Kept live for `/t.js` and `/ingest` only (existing client tracking snippets and GHL webhooks point here and can't be flipped instantly). Do not remove these routes without confirming clients have migrated their tracking snippets.
+- `AGENCY_HOST` and `TENANT_HOST_SUFFIX` are comma-separated lists (`tenantResolver.ts`) so both domains resolve at once.
 
 ---
 
@@ -87,3 +92,4 @@ Production domains (from `wrangler.toml` vars): `bi.letlois.com` (agency host), 
 - Do not exceed 100,000 PBKDF2 iterations in Worker/Pages code.
 - Do not assume pushing to `main` deployed the API or sync worker — those need a manual `wrangler deploy`.
 - Do not commit directly to `main`; use a feature branch and a PR.
+- Do not remove the `bi.letlois.com` routes/vars in `wrangler.toml`. `/t.js` and `/ingest` on that domain serve existing client tracking and are not part of the stopply.com cutover.
