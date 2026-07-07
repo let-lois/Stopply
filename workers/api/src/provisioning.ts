@@ -83,6 +83,22 @@ export const DEFAULT_SOURCES: Array<{
     how_to: 'Google Ads, Campaigns, download the month as CSV, then upload it here.',
   },
   {
+    key: 'meta-ads-csv',
+    name: 'Meta Ads CSV (by ad)',
+    kind: 'csv',
+    connector_type: 'meta-ad-lineitem',
+    cadence: 7,
+    how_to: 'Ads Manager, Reports, break down by ad and export the month as CSV, then upload it here.',
+  },
+  {
+    key: 'google-ads-csv',
+    name: 'Google Ads CSV (by ad)',
+    kind: 'csv',
+    connector_type: 'google-ad-lineitem',
+    cadence: 7,
+    how_to: 'Google Ads, Ads, download the month as CSV, then upload it here.',
+  },
+  {
     key: 'boulevard',
     name: 'Boulevard',
     kind: 'integration',

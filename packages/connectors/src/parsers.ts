@@ -25,6 +25,17 @@ export interface AdSpendRow {
   leadsReported: number | null;
 }
 
+export interface AdLineItemRow {
+  periodMonth: string;
+  channel: string;
+  campaign: string;
+  adName: string;
+  adId: string | null;
+  creativeType: string | null;
+  spend: number;
+  leadsReported: number | null;
+}
+
 export interface ContactLeadRow {
   externalRef: string;
   firstName: string;
@@ -62,8 +73,9 @@ export interface ClientRecordRow {
 }
 
 export interface ParseResult {
-  kind: 'ad-spend' | 'contacts' | 'stage-events' | 'client-records';
+  kind: 'ad-spend' | 'ad-line-items' | 'contacts' | 'stage-events' | 'client-records';
   adSpend?: AdSpendRow[];
+  adLineItems?: AdLineItemRow[];
   contacts?: ContactLeadRow[];
   stageEvents?: StageEventRow[];
   clientRecords?: ClientRecordRow[];
@@ -112,6 +124,52 @@ export const parseGoogleCampaign: Parser = (text, periodMonth) => {
         : null,
     }));
   return { kind: 'ad-spend', adSpend, rowCount: rows.length, recordsFrom: null, recordsThrough: null };
+};
+
+// 1b. Meta ad level export: one row per ad, with whatever creative type
+// column Ads Manager reports (present only when that breakdown column was
+// added to the export; otherwise left null for staff to tag).
+export const parseMetaAdLineItem: Parser = (text, periodMonth) => {
+  const { rows } = parseCsv(text);
+  const adLineItems: AdLineItemRow[] = rows
+    .map((row) => ({
+      periodMonth,
+      channel: 'Meta',
+      campaign: pick(row, 'campaign name', 'campaign'),
+      adName: pick(row, 'ad name', 'ad'),
+      adId: pick(row, 'ad id', 'adid') || null,
+      creativeType: pick(row, 'creative type', 'ad format', 'asset type') || null,
+      spend: parseMoney(pick(row, 'amount spent (usd)', 'amount spent', 'spend')),
+      leadsReported: pick(row, 'results', 'leads') ? parseCount(pick(row, 'results', 'leads')) : null,
+    }))
+    .filter((r) => r.campaign && r.adName);
+  return { kind: 'ad-line-items', adLineItems, rowCount: rows.length, recordsFrom: null, recordsThrough: null };
+};
+
+// 2b. Google ad level export ("Ads" report): one row per ad, with the
+// platform's own ad type as the creative type (e.g. "Responsive search
+// ad", "Image ad").
+export const parseGoogleAdLineItem: Parser = (text, periodMonth) => {
+  const { rows } = parseCsv(text);
+  const adLineItems: AdLineItemRow[] = rows
+    .filter((row) => {
+      const campaign = pick(row, 'campaign');
+      return campaign && !/^total/i.test(campaign);
+    })
+    .map((row) => ({
+      periodMonth,
+      channel: 'Google',
+      campaign: pick(row, 'campaign'),
+      adName: pick(row, 'ad', 'headline', 'ad name'),
+      adId: pick(row, 'ad id', 'id') || null,
+      creativeType: pick(row, 'ad type', 'type') || null,
+      spend: parseMoney(pick(row, 'cost', 'spend')),
+      leadsReported: pick(row, 'conversions', 'leads')
+        ? parseCount(pick(row, 'conversions', 'leads'))
+        : null,
+    }))
+    .filter((r) => r.adName);
+  return { kind: 'ad-line-items', adLineItems, rowCount: rows.length, recordsFrom: null, recordsThrough: null };
 };
 
 function ghlRowToContact(row: Record<string, string>): ContactLeadRow | null {
@@ -299,6 +357,8 @@ export const parseBlvdClients: Parser = (text) => {
 export const PARSER_REGISTRY: Record<string, Parser> = {
   'meta-campaign': parseMetaCampaign,
   'google-campaign': parseGoogleCampaign,
+  'meta-ad-lineitem': parseMetaAdLineItem,
+  'google-ad-lineitem': parseGoogleAdLineItem,
   'ghl-contacts': parseGhlContacts,
   'ghl-website': parseGhlWebsite,
   'blvd-appointments': parseBlvdAppointments,

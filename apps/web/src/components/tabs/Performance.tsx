@@ -9,8 +9,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { channelColor, fmtMoney, fmtNum, monthLabel } from '@/lib/format';
-import type { Comparison, FunnelLabels, LeadRow, MonthData, SourceInfo, TenantSettings } from '@/lib/types';
+import type { AdLineItem, Comparison, FunnelLabels, LeadRow, MonthData, SourceInfo, TenantSettings } from '@/lib/types';
 import { SourceCheck } from '../SourceCheck';
+
+const CREATIVE_TYPE_OPTIONS = ['Video', 'Carousel', 'Static', 'UGC', 'Other'];
+
+function statusLabel(status: AdLineItem['status']): string {
+  if (status === 'top') return 'Top performer';
+  if (status === 'under') return 'Underperforming';
+  if (status === 'watch') return 'Watch';
+  return '';
+}
 
 interface Props {
   settings: TenantSettings;
@@ -119,7 +128,39 @@ function MonthSection({
   const [showLeads, setShowLeads] = useState(false);
   const [leads, setLeads] = useState<LeadRow[] | null>(null);
   const [openCampaigns, setOpenCampaigns] = useState<Set<string>>(new Set());
+  const [creativeFilter, setCreativeFilter] = useState<string | null>(null);
+  const [editingAd, setEditingAd] = useState<string | null>(null);
   const timezone = settings.tenant.timezone;
+
+  const updateCreativeType = async (item: AdLineItem, creativeType: string) => {
+    setEditingAd(null);
+    try {
+      await api('/api/tenant/ad-line-items/creative-type', {
+        method: 'PATCH',
+        json: {
+          periodMonth: item.period_month,
+          channel: item.channel,
+          campaign: item.campaign,
+          adName: item.ad_name,
+          creativeType,
+        },
+      });
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              adLineItems: prev.adLineItems.map((r) =>
+                r.channel === item.channel && r.campaign === item.campaign && r.ad_name === item.ad_name
+                  ? { ...r, creative_type: creativeType, creative_type_source: 'manual' }
+                  : r
+              ),
+            }
+          : prev
+      );
+    } catch {
+      // Leave the tag as it was; the user can retry.
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -298,6 +339,20 @@ function MonthSection({
           <CohortStrip data={data} month={month} />
 
           <h3>Spend by platform</h3>
+          {data.adLineItems.length > 0 && (
+            <div className="type-filters">
+              <button className={creativeFilter === null ? 'active' : ''} onClick={() => setCreativeFilter(null)}>
+                All ads
+              </button>
+              {[...new Set(data.adLineItems.map((a) => a.creative_type).filter((t): t is string => !!t))].map(
+                (t) => (
+                  <button key={t} className={creativeFilter === t ? 'active' : ''} onClick={() => setCreativeFilter(t)}>
+                    {t}
+                  </button>
+                )
+              )}
+            </div>
+          )}
           <div className="stack">
             {[...new Set(data.campaigns.map((c) => c.channel))].map((channel) => {
               const rows = data.campaigns.filter((c) => c.channel === channel);
@@ -324,18 +379,91 @@ function MonthSection({
                     <span className="num">{fmtMoney(total)}</span>
                   </button>
                   {isOpen && (
-                    <table className="data">
-                      <tbody>
-                        {rows.map((r) => (
-                          <tr key={r.campaign}>
-                            <td>{r.campaign}</td>
-                            <td className="num">{fmtMoney(r.spend)}</td>
-                            <td className="num">{fmtNum(r.leads)} {labels.lead.toLowerCase()}</td>
-                            <td className="num">{fmtMoney(r.revenue)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <div className="stack" style={{ gap: 14 }}>
+                      {rows.map((r) => {
+                        const ads = data.adLineItems
+                          .filter((a) => a.channel === channel && a.campaign === r.campaign)
+                          .filter((a) => !creativeFilter || a.creative_type === creativeFilter);
+                        return (
+                          <div key={r.campaign} className="stack" style={{ gap: 6 }}>
+                            <div className="row" style={{ justifyContent: 'space-between', fontSize: 13 }}>
+                              <span style={{ fontWeight: 600 }}>{r.campaign}</span>
+                              <span className="num muted">
+                                {fmtMoney(r.spend)} &middot; {fmtNum(r.leads)} {labels.lead.toLowerCase()}
+                              </span>
+                            </div>
+                            {ads.length > 0 && (
+                              <div style={{ overflowX: 'auto' }}>
+                                <table className="data">
+                                  <thead>
+                                    <tr>
+                                      <th>Ad</th>
+                                      <th>Creative</th>
+                                      <th>Spend</th>
+                                      <th>Leads</th>
+                                      <th>Cost / lead</th>
+                                      <th>Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {ads.map((a) => {
+                                      const adKey = `${a.channel}|${a.campaign}|${a.ad_name}`;
+                                      return (
+                                        <tr key={adKey}>
+                                          <td>{a.ad_name}</td>
+                                          <td>
+                                            {editingAd === adKey ? (
+                                              <select
+                                                autoFocus
+                                                defaultValue={a.creative_type ?? ''}
+                                                onBlur={() => setEditingAd(null)}
+                                                onChange={(e) => updateCreativeType(a, e.target.value)}
+                                                style={{ width: 'auto', minHeight: 30 }}
+                                              >
+                                                <option value="" disabled>
+                                                  Pick a type
+                                                </option>
+                                                {CREATIVE_TYPE_OPTIONS.map((t) => (
+                                                  <option key={t} value={t}>
+                                                    {t}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                            ) : (
+                                              <span
+                                                className={`creative-tag ${a.creative_type_source === 'manual' ? 'manual' : ''}`}
+                                                onClick={() => setEditingAd(adKey)}
+                                                role="button"
+                                                tabIndex={0}
+                                              >
+                                                {a.creative_type ?? 'Untagged'} <span className="edit">&#9998;</span>
+                                              </span>
+                                            )}
+                                          </td>
+                                          <td className="num">{fmtMoney(a.spend)}</td>
+                                          <td className="num">{a.leads_reported ?? '—'}</td>
+                                          <td className="num">
+                                            {a.cost_per_lead !== null ? fmtMoney(a.cost_per_lead) : '—'}
+                                          </td>
+                                          <td>
+                                            {a.status && (
+                                              <span className={`status-pill ${a.status}`}>
+                                                <span className="dot" />
+                                                {statusLabel(a.status)}
+                                              </span>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               );
