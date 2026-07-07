@@ -12,6 +12,8 @@ import { api, setCsrf } from '@/lib/api';
 import { fmtMoney, fmtNum } from '@/lib/format';
 import { CodeBox } from './CodeBox';
 
+const PLATFORM_LABEL: Record<string, string> = { meta: 'Meta', google: 'Google' };
+
 interface TenantCard {
   id: string;
   slug: string;
@@ -24,6 +26,18 @@ interface TenantCard {
   revenue: number | null;
   spend: number | null;
   pulled_at: string | null;
+  monthly_ad_spend_budget: number | null;
+  ad_platforms_json: string | null;
+}
+
+function parsePlatforms(json: string | null): string[] {
+  if (!json) return [];
+  try {
+    const v = JSON.parse(json);
+    return Array.isArray(v) ? (v as string[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 export function ClientsSection({
@@ -36,12 +50,16 @@ export function ClientsSection({
   const [tenants, setTenants] = useState<TenantCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [provisioning, setProvisioning] = useState(false);
+  const [editingBudget, setEditingBudget] = useState<TenantCard | null>(null);
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true);
     api<{ month: string; tenants: TenantCard[] }>('/api/agency/overview')
       .then((r) => setTenants(r.tenants))
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(load, []);
 
   const enter = async (t: TenantCard) => {
     const res = await api<{ csrf: string; tenant: { id: string; slug: string; name: string } }>(
@@ -79,12 +97,19 @@ export function ClientsSection({
       <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
         {tenants.map((t) => {
           const roas = t.spend && t.spend > 0 ? (t.revenue ?? 0) / t.spend : null;
+          const platforms = parsePlatforms(t.ad_platforms_json);
+          const budget = t.monthly_ad_spend_budget;
+          const pacePct = budget && budget > 0 ? ((t.spend ?? 0) / budget) * 100 : null;
+          const paceState = pacePct === null ? null : pacePct >= 100 ? 'under' : pacePct >= 85 ? 'watch' : 'top';
           return (
-            <button
+            <div
               key={t.id}
               className="card stack"
-              style={{ textAlign: 'left', cursor: 'pointer', gap: 8 }}
+              style={{ gap: 8 }}
+              role="button"
+              tabIndex={0}
               onClick={() => enter(t)}
+              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && enter(t)}
             >
               <div className="row" style={{ justifyContent: 'space-between' }}>
                 <strong>{t.name}</strong>
@@ -92,6 +117,17 @@ export function ClientsSection({
                   {t.plan}
                 </span>
               </div>
+
+              {platforms.length > 0 && (
+                <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
+                  {platforms.map((p) => (
+                    <span key={p} className="platform-tag">
+                      {PLATFORM_LABEL[p] ?? p}
+                    </span>
+                  ))}
+                </div>
+              )}
+
               <div className="row" style={{ gap: 18 }}>
                 <span>
                   <span className="muted" style={{ fontSize: 11 }}>Leads</span>
@@ -114,14 +150,145 @@ export function ClientsSection({
                   <span className="num">{roas ? roas.toFixed(1) + 'x' : '-'}</span>
                 </span>
               </div>
+
+              <div className="stack" style={{ gap: 4 }}>
+                <div className="row" style={{ justifyContent: 'space-between', fontSize: 12 }}>
+                  <span className="muted">Ad spend</span>
+                  <span className="num">
+                    {fmtMoney(t.spend ?? 0)}
+                    {budget ? ` of ${fmtMoney(budget)} budget` : ''}
+                  </span>
+                </div>
+                {budget && pacePct !== null && (
+                  <div className="pacing-bar">
+                    <div
+                      className={`pacing-fill ${paceState}`}
+                      style={{ width: `${Math.min(100, pacePct)}%` }}
+                    />
+                  </div>
+                )}
+                {!budget && (
+                  <span className="muted" style={{ fontSize: 12 }}>No budget set</span>
+                )}
+              </div>
+
               {!t.pulled_at && <span className="muted" style={{ fontSize: 12 }}>No rollup yet</span>}
-            </button>
+
+              {role === 'agency_admin' && (
+                <button
+                  type="button"
+                  className="small"
+                  style={{ alignSelf: 'flex-start' }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingBudget(t);
+                  }}
+                >
+                  Edit budget
+                </button>
+              )}
+            </div>
           );
         })}
       </div>
 
-      {provisioning && <ProvisionForm onDone={() => setProvisioning(false)} />}
+      {provisioning && (
+        <ProvisionForm
+          onDone={() => {
+            setProvisioning(false);
+            load();
+          }}
+        />
+      )}
+
+      {editingBudget && (
+        <BudgetForm
+          tenant={editingBudget}
+          onDone={() => {
+            setEditingBudget(null);
+            load();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+// Edit a client's committed monthly ad spend and platform mix after it has
+// already been provisioned.
+function BudgetForm({ tenant, onDone }: { tenant: TenantCard; onDone: () => void }) {
+  const [budget, setBudget] = useState(
+    tenant.monthly_ad_spend_budget != null ? String(tenant.monthly_ad_spend_budget) : ''
+  );
+  const [platforms, setPlatforms] = useState<string[]>(parsePlatforms(tenant.ad_platforms_json));
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const togglePlatform = (p: string) =>
+    setPlatforms((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/agency/tenants/${tenant.id}/budget`, {
+        method: 'PUT',
+        json: {
+          monthlyAdSpendBudget: budget.trim() === '' ? null : Number(budget),
+          adPlatforms: platforms,
+        },
+      });
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'save failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form className="card stack" onSubmit={submit}>
+      <h3>{tenant.name} — ad spend budget</h3>
+      <label>
+        Monthly ad spend budget
+        <input
+          type="number"
+          min={0}
+          step="1"
+          placeholder="e.g. 5000"
+          value={budget}
+          onChange={(e) => setBudget(e.target.value)}
+        />
+      </label>
+      <div className="stack" style={{ gap: 6 }}>
+        <span className="muted" style={{ fontSize: 13 }}>
+          Platforms
+        </span>
+        <div className="row">
+          {(['meta', 'google'] as const).map((p) => (
+            <label key={p} className="row" style={{ gap: 6, width: 'auto' }}>
+              <input
+                type="checkbox"
+                style={{ width: 'auto', minHeight: 0 }}
+                checked={platforms.includes(p)}
+                onChange={() => togglePlatform(p)}
+              />
+              {PLATFORM_LABEL[p]}
+            </label>
+          ))}
+        </div>
+      </div>
+      {error && <p className="delta-down">{error}</p>}
+      <div className="row">
+        <button className="primary" disabled={busy} type="submit">
+          {busy ? 'Saving' : 'Save'}
+        </button>
+        <button type="button" onClick={onDone}>
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -645,19 +812,34 @@ export function SecretsSection() {
 }
 
 function ProvisionForm({ onDone }: { onDone: () => void }) {
-  const [form, setForm] = useState({ slug: '', name: '', adminEmail: '', adminName: '', timezone: 'America/Phoenix', plan: 'starter' });
+  const [form, setForm] = useState({
+    slug: '',
+    name: '',
+    adminEmail: '',
+    adminName: '',
+    timezone: 'America/Phoenix',
+    plan: 'starter',
+    monthlyAdSpendBudget: '',
+  });
+  const [adPlatforms, setAdPlatforms] = useState<string[]>([]);
   const [result, setResult] = useState<{ tempPassword: string | null; slug: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const togglePlatform = (p: string) =>
+    setAdPlatforms((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
+      const { monthlyAdSpendBudget, ...rest } = form;
+      const payload: Record<string, unknown> = { ...rest, adPlatforms };
+      if (monthlyAdSpendBudget.trim() !== '') payload.monthlyAdSpendBudget = Number(monthlyAdSpendBudget);
       const res = await api<{ tempPassword: string | null; slug: string }>('/api/agency/tenants', {
         method: 'POST',
-        json: form,
+        json: payload,
       });
       setResult(res);
     } catch (err) {
@@ -732,6 +914,37 @@ function ProvisionForm({ onDone }: { onDone: () => void }) {
             <option value="whitelabel">whitelabel</option>
           </select>
         </label>
+      </div>
+      <div className="row">
+        <label style={{ flex: 1 }}>
+          Monthly ad spend budget
+          <input
+            type="number"
+            min={0}
+            step="1"
+            placeholder="e.g. 5000"
+            value={form.monthlyAdSpendBudget}
+            onChange={(e) => setForm((p) => ({ ...p, monthlyAdSpendBudget: e.target.value }))}
+          />
+        </label>
+        <div className="stack" style={{ flex: 1, gap: 6 }}>
+          <span className="muted" style={{ fontSize: 13 }}>
+            Platforms
+          </span>
+          <div className="row">
+            {(['meta', 'google'] as const).map((p) => (
+              <label key={p} className="row" style={{ gap: 6, width: 'auto' }}>
+                <input
+                  type="checkbox"
+                  style={{ width: 'auto', minHeight: 0 }}
+                  checked={adPlatforms.includes(p)}
+                  onChange={() => togglePlatform(p)}
+                />
+                {PLATFORM_LABEL[p]}
+              </label>
+            ))}
+          </div>
+        </div>
       </div>
       {error && <p className="delta-down">{error}</p>}
       <div className="row">

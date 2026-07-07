@@ -392,6 +392,41 @@ table.data td {
   background: color-mix(in srgb, var(--negative) 14%, transparent);
 }
 
+/* Client roster: the platform mix tag and the budget vs actual spend
+   pacing bar shown on each client card. */
+.platform-tag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--hairline);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.pacing-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  overflow: hidden;
+}
+
+.pacing-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--positive);
+}
+
+.pacing-fill.watch {
+  background: var(--amber);
+}
+
+.pacing-fill.under {
+  background: var(--negative);
+}
+
 .check {
   display: inline-block;
   width: 14px;

@@ -148,6 +148,35 @@ funnel labels, theme, and layout, and creates the first account_admin
 with a temp password returned exactly once. Idempotent on slug: a
 retry resumes rather than duplicating.
 
+`--budget` and `--platforms` set the client's committed monthly ad
+spend and which ad platforms it runs on (`meta`, `google`, or both).
+This is the agency's own retainer number, shown on the client roster
+next to the actual spend rolled up from that tenant's imported CSVs —
+it can also be edited later from Edit budget on the client card, or
+`PUT /api/agency/tenants/:id/budget`.
+
+### Current clients
+
+```sh
+API_BASE=https://bi.letlois.com SESSION_COOKIE='lbi_session=...' CSRF_TOKEN=... \
+pnpm provision:tenant -- --slug beclinical --name "Be Clinical" \
+  --admin-email admin@beclinical.com --admin-name "Be Clinical Admin" \
+  --timezone America/Los_Angeles --plan whitelabel \
+  --budget 28500 --platforms meta,google
+
+API_BASE=https://bi.letlois.com SESSION_COOKIE='lbi_session=...' CSRF_TOKEN=... \
+pnpm provision:tenant -- --slug b9golf --name "B9 Golf" \
+  --admin-email admin@b9golf.com --admin-name "B9 Golf Admin" \
+  --timezone America/Phoenix --plan starter \
+  --budget 2500 --platforms google
+
+API_BASE=https://bi.letlois.com SESSION_COOKIE='lbi_session=...' CSRF_TOKEN=... \
+pnpm provision:tenant -- --slug hire --name "Hire" \
+  --admin-email admin@hire.com --admin-name "Hire Admin" \
+  --timezone America/Phoenix --plan starter \
+  --budget 5000 --platforms meta
+```
+
 ## Be Clinical migration (tenant zero)
 
 ```sh
