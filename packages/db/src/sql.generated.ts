@@ -18,6 +18,11 @@ export const CONTROL_MIGRATIONS: Migration[] = [
     "version": 2,
     "name": "0002_agency_settings",
     "sql": "-- Agency wide configuration the admin can manage from the console instead\n-- of editing code or running wrangler. Secret values are stored AES-GCM\n-- encrypted under CRED_MASTER_KEY, exactly like the tenant credential vault,\n-- and are never returned to the client in plaintext.\n\nCREATE TABLE IF NOT EXISTS agency_settings (\n  key TEXT PRIMARY KEY,\n  is_secret INTEGER NOT NULL DEFAULT 1,\n  value_ciphertext TEXT,\n  value_iv TEXT,\n  value_plain TEXT,\n  updated_by TEXT,\n  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))\n);\n\n-- Per member permission flags for agency staff, kept in a side table so the\n-- migration stays idempotent (CREATE IF NOT EXISTS) when re-applied. Admins\n-- implicitly have every permission; a row here only widens what a non admin\n-- staff member may do.\nCREATE TABLE IF NOT EXISTS agency_user_permissions (\n  user_id TEXT PRIMARY KEY,\n  permissions_json TEXT NOT NULL,\n  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))\n);\n"
+  },
+  {
+    "version": 3,
+    "name": "0003_ad_budget",
+    "sql": "-- Retainer level ad spend budget and platform mix per client, captured at\n-- provisioning time and editable afterward from the roster. This is the\n-- agency's committed monthly number, distinct from the actual spend rolled\n-- up from each tenant's own imported CSVs (agency_rollup.spend) -- the\n-- roster compares the two side by side.\nALTER TABLE tenants ADD COLUMN monthly_ad_spend_budget REAL;\nALTER TABLE tenants ADD COLUMN ad_platforms_json TEXT;\n"
   }
 ];
 

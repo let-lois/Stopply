@@ -28,6 +28,8 @@ const provisionSchema = z
       })
       .strict()
       .optional(),
+    monthlyAdSpendBudget: z.number().min(0).max(10_000_000).optional(),
+    adPlatforms: z.array(z.enum(['meta', 'google'])).max(2).optional(),
   })
   .strict();
 
@@ -49,7 +51,8 @@ agencyRoutes.post('/tenants', requireRole('agency_admin'), async (c) => {
 agencyRoutes.get('/tenants', async (c) => {
   const session = c.get('session')!;
   const { results } = await c.env.CONTROL_DB.prepare(
-    `SELECT id, slug, name, status, plan, timezone, custom_hostname, hostname_status, schema_version, footer_credit, created_at
+    `SELECT id, slug, name, status, plan, timezone, custom_hostname, hostname_status, schema_version, footer_credit,
+       monthly_ad_spend_budget, ad_platforms_json, created_at
      FROM tenants ORDER BY name`
   ).all<Partial<TenantRow>>();
   const visible =
@@ -59,12 +62,45 @@ agencyRoutes.get('/tenants', async (c) => {
   return c.json({ tenants: visible });
 });
 
+// Edit a client's committed monthly ad spend and platform mix after
+// provisioning, without re-running the full provisioning flow.
+const budgetSchema = z
+  .object({
+    monthlyAdSpendBudget: z.number().min(0).max(10_000_000).nullable(),
+    adPlatforms: z.array(z.enum(['meta', 'google'])).max(2),
+  })
+  .strict();
+
+agencyRoutes.put('/tenants/:id/budget', requireRole('agency_admin'), async (c) => {
+  const session = c.get('session')!;
+  const id = c.req.param('id');
+  const body = budgetSchema.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: 'invalid request', details: body.error.flatten() }, 400);
+  const existing = await c.env.CONTROL_DB.prepare(`SELECT id FROM tenants WHERE id = ?`).bind(id).first();
+  if (!existing) return c.json({ error: 'not found' }, 404);
+  await c.env.CONTROL_DB.prepare(
+    `UPDATE tenants SET monthly_ad_spend_budget = ?, ad_platforms_json = ? WHERE id = ?`
+  )
+    .bind(body.data.monthlyAdSpendBudget, JSON.stringify(body.data.adPlatforms), id)
+    .run();
+  await writeAudit(c.env, {
+    actorType: 'agency',
+    actorId: session.userId,
+    tenantId: id,
+    action: 'tenant.budget.update',
+    target: id,
+    after: body.data,
+  });
+  return c.json({ ok: true });
+});
+
 // Agency overview grid from agency_rollup snapshots.
 agencyRoutes.get('/overview', async (c) => {
   const session = c.get('session')!;
   const month = new Date().toISOString().slice(0, 7);
   const { results } = await c.env.CONTROL_DB.prepare(
-    `SELECT t.id, t.slug, t.name, t.plan, r.leads, r.scheduled, r.completed, r.purchases, r.revenue, r.spend, r.pulled_at
+    `SELECT t.id, t.slug, t.name, t.plan, t.monthly_ad_spend_budget, t.ad_platforms_json,
+       r.leads, r.scheduled, r.completed, r.purchases, r.revenue, r.spend, r.pulled_at
      FROM tenants t LEFT JOIN agency_rollup r ON r.tenant_id = t.id AND r.period_month = ?
      WHERE t.status = 'active' ORDER BY t.name`
   )

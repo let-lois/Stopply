@@ -153,6 +153,52 @@ describe('role enforcement', () => {
     const res = await request(env, '/api/tenant/settings', { headers: { cookie } });
     expect(res.status).toBe(400);
   });
+
+  it('403s agency_staff editing a client budget (agency_admin only)', async () => {
+    const { cookie, csrf } = await login('agency_staff', 'agency', null, ['t_beclinical']);
+    const res = await request(env, '/api/agency/tenants/t_beclinical/budget', {
+      method: 'PUT',
+      headers: { cookie, 'x-csrf-token': csrf, 'content-type': 'application/json' },
+      body: JSON.stringify({ monthlyAdSpendBudget: 28500, adPlatforms: ['meta', 'google'] }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('lets agency_admin set a client budget and platform mix', async () => {
+    const writes: unknown[][] = [];
+    (env.CONTROL_DB as FakeD1).on(/UPDATE tenants SET monthly_ad_spend_budget/, (params) => {
+      writes.push(params);
+      return {};
+    });
+    const { cookie, csrf } = await login('agency_admin', 'agency', null);
+    const res = await request(env, '/api/agency/tenants/t_beclinical/budget', {
+      method: 'PUT',
+      headers: { cookie, 'x-csrf-token': csrf, 'content-type': 'application/json' },
+      body: JSON.stringify({ monthlyAdSpendBudget: 28500, adPlatforms: ['meta', 'google'] }),
+    });
+    expect(res.status).toBe(200);
+    expect(writes).toEqual([[28500, JSON.stringify(['meta', 'google']), 't_beclinical']]);
+  });
+
+  it('404s a budget edit for an unknown tenant', async () => {
+    const { cookie, csrf } = await login('agency_admin', 'agency', null);
+    const res = await request(env, '/api/agency/tenants/t_nope/budget', {
+      method: 'PUT',
+      headers: { cookie, 'x-csrf-token': csrf, 'content-type': 'application/json' },
+      body: JSON.stringify({ monthlyAdSpendBudget: 1000, adPlatforms: ['meta'] }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('400s an invalid budget payload', async () => {
+    const { cookie, csrf } = await login('agency_admin', 'agency', null);
+    const res = await request(env, '/api/agency/tenants/t_beclinical/budget', {
+      method: 'PUT',
+      headers: { cookie, 'x-csrf-token': csrf, 'content-type': 'application/json' },
+      body: JSON.stringify({ monthlyAdSpendBudget: -1, adPlatforms: ['meta'] }),
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('login flow', () => {

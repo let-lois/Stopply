@@ -23,6 +23,8 @@ export interface TenantRow {
   hostname_status: string | null;
   footer_credit: number;
   funnel_labels_json: string | null;
+  monthly_ad_spend_budget: number | null;
+  ad_platforms_json: string | null;
   created_at: string;
 }
 
