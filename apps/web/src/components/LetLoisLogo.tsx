@@ -1,42 +1,33 @@
 'use client';
 
 // Default LetLois "Bi" brand mark, shown top left whenever a client has
-// not uploaded their own logo. A self contained SVG so it stays crisp at
-// any size and adapts to light or dark without a binary asset. The eye
-// over the "i" echoes the letlois.com brand.
+// not uploaded their own logo. A self contained, monochrome SVG so it
+// stays crisp at any size and adapts to light or dark via currentColor
+// without a binary asset. The eye over the "i" echoes the letlois.com
+// brand.
 
 export function LetLoisLogo({ height = 30, title = 'LetLois BI' }: { height?: number; title?: string }) {
-  // Unique gradient id so multiple instances on a page do not collide.
-  const gid = `llg-${Math.round(height)}`;
   return (
     <span className="brand-logo" style={{ height }} aria-label={title}>
-      <svg height={height} viewBox="0 0 132 48" role="img" aria-hidden="true" fill="none">
-        <defs>
-          <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="#1f7ae0" />
-            <stop offset="1" stopColor="#4ba3e8" />
-          </linearGradient>
-        </defs>
-        {/* Rounded badge holding the wordmark. */}
-        <rect x="0" y="2" width="44" height="44" rx="12" fill={`url(#${gid})`} />
+      <svg height={height} viewBox="0 0 150 56" role="img" aria-hidden="true" fill="none">
+        {/* Bold "B" glyph. */}
         <text
-          x="22"
-          y="34"
-          textAnchor="middle"
+          x="0"
+          y="46"
           fontFamily="'Spline Sans', system-ui, sans-serif"
           fontWeight="800"
-          fontSize="26"
-          fill="#ffffff"
+          fontSize="52"
+          fill="currentColor"
         >
-          Bi
+          B
         </text>
-        {/* Sketchy eye accent. */}
-        <g stroke="#1f7ae0" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M58 18 C70 8, 90 8, 102 18 C90 28, 70 28, 58 18 Z" fill="none" />
-          <circle cx="80" cy="18" r="5.5" fill="#1f7ae0" stroke="none" />
+        {/* Sketchy eye accent, standing in for the dot of the "i". */}
+        <g stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M96 16 C108 5, 130 5, 143 16 C130 27, 108 27, 96 16 Z" fill="none" />
+          <circle cx="119.5" cy="16" r="6" fill="currentColor" stroke="none" />
         </g>
         {/* "i" stem to the right of the eye. */}
-        <rect x="112" y="14" width="9" height="24" rx="4.5" fill="currentColor" />
+        <rect x="130" y="26" width="10" height="26" rx="5" fill="currentColor" />
       </svg>
     </span>
   );
