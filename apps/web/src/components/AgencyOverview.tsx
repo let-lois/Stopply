@@ -10,6 +10,9 @@
 import { useEffect, useState } from 'react';
 import { api, setCsrf } from '@/lib/api';
 import { fmtMoney, fmtNum } from '@/lib/format';
+import { CodeBox } from './CodeBox';
+
+const PLATFORM_LABEL: Record<string, string> = { meta: 'Meta', google: 'Google' };
 
 interface TenantCard {
   id: string;
@@ -23,6 +26,18 @@ interface TenantCard {
   revenue: number | null;
   spend: number | null;
   pulled_at: string | null;
+  monthly_ad_spend_budget: number | null;
+  ad_platforms_json: string | null;
+}
+
+function parsePlatforms(json: string | null): string[] {
+  if (!json) return [];
+  try {
+    const v = JSON.parse(json);
+    return Array.isArray(v) ? (v as string[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 export function ClientsSection({
@@ -33,18 +48,18 @@ export function ClientsSection({
   onEnterTenant: (tenant: { id: string; slug: string; name: string }) => void;
 }) {
   const [tenants, setTenants] = useState<TenantCard[]>([]);
-  const [month, setMonth] = useState('');
   const [loading, setLoading] = useState(true);
   const [provisioning, setProvisioning] = useState(false);
+  const [editingBudget, setEditingBudget] = useState<TenantCard | null>(null);
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true);
     api<{ month: string; tenants: TenantCard[] }>('/api/agency/overview')
-      .then((r) => {
-        setMonth(r.month);
-        setTenants(r.tenants);
-      })
+      .then((r) => setTenants(r.tenants))
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(load, []);
 
   const enter = async (t: TenantCard) => {
     const res = await api<{ csrf: string; tenant: { id: string; slug: string; name: string } }>(
@@ -65,7 +80,6 @@ export function ClientsSection({
           </button>
         )}
       </div>
-      <p className="muted">{month} snapshot</p>
 
       {loading && <div className="skeleton" style={{ minHeight: 120 }} />}
 
@@ -83,12 +97,19 @@ export function ClientsSection({
       <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
         {tenants.map((t) => {
           const roas = t.spend && t.spend > 0 ? (t.revenue ?? 0) / t.spend : null;
+          const platforms = parsePlatforms(t.ad_platforms_json);
+          const budget = t.monthly_ad_spend_budget;
+          const pacePct = budget && budget > 0 ? ((t.spend ?? 0) / budget) * 100 : null;
+          const paceState = pacePct === null ? null : pacePct >= 100 ? 'under' : pacePct >= 85 ? 'watch' : 'top';
           return (
-            <button
+            <div
               key={t.id}
               className="card stack"
-              style={{ textAlign: 'left', cursor: 'pointer', gap: 8 }}
+              style={{ gap: 8 }}
+              role="button"
+              tabIndex={0}
               onClick={() => enter(t)}
+              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && enter(t)}
             >
               <div className="row" style={{ justifyContent: 'space-between' }}>
                 <strong>{t.name}</strong>
@@ -96,6 +117,17 @@ export function ClientsSection({
                   {t.plan}
                 </span>
               </div>
+
+              {platforms.length > 0 && (
+                <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
+                  {platforms.map((p) => (
+                    <span key={p} className="platform-tag">
+                      {PLATFORM_LABEL[p] ?? p}
+                    </span>
+                  ))}
+                </div>
+              )}
+
               <div className="row" style={{ gap: 18 }}>
                 <span>
                   <span className="muted" style={{ fontSize: 11 }}>Leads</span>
@@ -118,14 +150,145 @@ export function ClientsSection({
                   <span className="num">{roas ? roas.toFixed(1) + 'x' : '-'}</span>
                 </span>
               </div>
+
+              <div className="stack" style={{ gap: 4 }}>
+                <div className="row" style={{ justifyContent: 'space-between', fontSize: 12 }}>
+                  <span className="muted">Ad spend</span>
+                  <span className="num">
+                    {fmtMoney(t.spend ?? 0)}
+                    {budget ? ` of ${fmtMoney(budget)} budget` : ''}
+                  </span>
+                </div>
+                {budget && pacePct !== null && (
+                  <div className="pacing-bar">
+                    <div
+                      className={`pacing-fill ${paceState}`}
+                      style={{ width: `${Math.min(100, pacePct)}%` }}
+                    />
+                  </div>
+                )}
+                {!budget && (
+                  <span className="muted" style={{ fontSize: 12 }}>No budget set</span>
+                )}
+              </div>
+
               {!t.pulled_at && <span className="muted" style={{ fontSize: 12 }}>No rollup yet</span>}
-            </button>
+
+              {role === 'agency_admin' && (
+                <button
+                  type="button"
+                  className="small"
+                  style={{ alignSelf: 'flex-start' }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingBudget(t);
+                  }}
+                >
+                  Edit budget
+                </button>
+              )}
+            </div>
           );
         })}
       </div>
 
-      {provisioning && <ProvisionForm onDone={() => setProvisioning(false)} />}
+      {provisioning && (
+        <ProvisionForm
+          onDone={() => {
+            setProvisioning(false);
+            load();
+          }}
+        />
+      )}
+
+      {editingBudget && (
+        <BudgetForm
+          tenant={editingBudget}
+          onDone={() => {
+            setEditingBudget(null);
+            load();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+// Edit a client's committed monthly ad spend and platform mix after it has
+// already been provisioned.
+function BudgetForm({ tenant, onDone }: { tenant: TenantCard; onDone: () => void }) {
+  const [budget, setBudget] = useState(
+    tenant.monthly_ad_spend_budget != null ? String(tenant.monthly_ad_spend_budget) : ''
+  );
+  const [platforms, setPlatforms] = useState<string[]>(parsePlatforms(tenant.ad_platforms_json));
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const togglePlatform = (p: string) =>
+    setPlatforms((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/agency/tenants/${tenant.id}/budget`, {
+        method: 'PUT',
+        json: {
+          monthlyAdSpendBudget: budget.trim() === '' ? null : Number(budget),
+          adPlatforms: platforms,
+        },
+      });
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'save failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form className="card stack" onSubmit={submit}>
+      <h3>{tenant.name} — ad spend budget</h3>
+      <label>
+        Monthly ad spend budget
+        <input
+          type="number"
+          min={0}
+          step="1"
+          placeholder="e.g. 5000"
+          value={budget}
+          onChange={(e) => setBudget(e.target.value)}
+        />
+      </label>
+      <div className="stack" style={{ gap: 6 }}>
+        <span className="muted" style={{ fontSize: 13 }}>
+          Platforms
+        </span>
+        <div className="row">
+          {(['meta', 'google'] as const).map((p) => (
+            <label key={p} className="row" style={{ gap: 6, width: 'auto' }}>
+              <input
+                type="checkbox"
+                style={{ width: 'auto', minHeight: 0 }}
+                checked={platforms.includes(p)}
+                onChange={() => togglePlatform(p)}
+              />
+              {PLATFORM_LABEL[p]}
+            </label>
+          ))}
+        </div>
+      </div>
+      {error && <p className="delta-down">{error}</p>}
+      <div className="row">
+        <button className="primary" disabled={busy} type="submit">
+          {busy ? 'Saving' : 'Save'}
+        </button>
+        <button type="button" onClick={onDone}>
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -135,8 +298,19 @@ interface AgencyUser {
   name: string;
   role: 'agency_admin' | 'agency_staff';
   assigned_tenants_json: string | null;
+  permissions_json: string | null;
   active: number;
   created_at: string;
+}
+
+function parsePermissions(json: string | null): { manageSecrets: boolean } {
+  if (!json) return { manageSecrets: false };
+  try {
+    const v = JSON.parse(json) as Record<string, boolean>;
+    return { manageSecrets: v.manageSecrets === true };
+  } catch {
+    return { manageSecrets: false };
+  }
 }
 
 // Agency team management: list members, invite a new one (temp password
@@ -164,6 +338,15 @@ export function TeamSection({ currentUserId }: { currentUserId: string }) {
   const deactivate = async (u: AgencyUser) => {
     if (!confirm(`Deactivate ${u.name}? They will no longer be able to sign in.`)) return;
     await api(`/api/agency/users/${u.id}`, { method: 'DELETE', json: {} });
+    load();
+  };
+
+  const toggleSecrets = async (u: AgencyUser) => {
+    const next = !parsePermissions(u.permissions_json).manageSecrets;
+    await api(`/api/agency/users/${u.id}`, {
+      method: 'PATCH',
+      json: { permissions: { manageSecrets: next } },
+    });
     load();
   };
 
@@ -196,6 +379,7 @@ export function TeamSection({ currentUserId }: { currentUserId: string }) {
               <th>Email</th>
               <th>Role</th>
               <th>Clients</th>
+              <th>Keys &amp; secrets</th>
               <th>Status</th>
               <th />
             </tr>
@@ -211,12 +395,29 @@ export function TeamSection({ currentUserId }: { currentUserId: string }) {
                       .map((id) => tenants.find((t) => t.id === id)?.name ?? id)
                       .join(', ')
                   : 'None';
+              const canSecrets = u.role === 'agency_admin' || parsePermissions(u.permissions_json).manageSecrets;
               return (
                 <tr key={u.id} style={u.active ? undefined : { opacity: 0.5 }}>
                   <td>{u.name}</td>
                   <td>{u.email}</td>
                   <td>{u.role === 'agency_admin' ? 'Admin' : 'Staff'}</td>
                   <td>{assignedLabel}</td>
+                  <td>
+                    {u.role === 'agency_admin' ? (
+                      <span className="muted">Always</span>
+                    ) : (
+                      <label className="row" style={{ gap: 6, width: 'auto' }}>
+                        <input
+                          type="checkbox"
+                          style={{ width: 18, minHeight: 0 }}
+                          checked={canSecrets}
+                          disabled={!u.active}
+                          onChange={() => toggleSecrets(u)}
+                        />
+                        {canSecrets ? 'Allowed' : 'No'}
+                      </label>
+                    )}
+                  </td>
                   <td>{u.active ? 'Active' : 'Deactivated'}</td>
                   <td>
                     {u.active === 1 && u.id !== currentUserId && (
@@ -230,7 +431,7 @@ export function TeamSection({ currentUserId }: { currentUserId: string }) {
             })}
             {!loading && users.length === 0 && (
               <tr>
-                <td colSpan={6} className="muted">
+                <td colSpan={7} className="muted">
                   No team members yet.
                 </td>
               </tr>
@@ -264,7 +465,8 @@ function InviteForm({
     name: string;
     role: 'agency_admin' | 'agency_staff';
     assignedTenants: string[];
-  }>({ email: '', name: '', role: 'agency_staff', assignedTenants: [] });
+    manageSecrets: boolean;
+  }>({ email: '', name: '', role: 'agency_staff', assignedTenants: [], manageSecrets: false });
   const [result, setResult] = useState<{ email: string; tempPassword: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -287,7 +489,10 @@ function InviteForm({
         name: form.name,
         role: form.role,
       };
-      if (form.role === 'agency_staff') payload.assignedTenants = form.assignedTenants;
+      if (form.role === 'agency_staff') {
+        payload.assignedTenants = form.assignedTenants;
+        payload.permissions = { manageSecrets: form.manageSecrets };
+      }
       const res = await api<{ email: string; tempPassword: string }>('/api/agency/users', {
         method: 'POST',
         json: payload,
@@ -363,6 +568,15 @@ function InviteForm({
               </label>
             ))}
           </div>
+          <label className="row" style={{ gap: 8, width: 'auto' }}>
+            <input
+              type="checkbox"
+              style={{ width: 18, minHeight: 0 }}
+              checked={form.manageSecrets}
+              onChange={(e) => setForm((p) => ({ ...p, manageSecrets: e.target.checked }))}
+            />
+            Can manage API keys &amp; secrets
+          </label>
         </div>
       )}
       {error && <p className="delta-down">{error}</p>}
@@ -478,20 +692,154 @@ export function AuditSection() {
   );
 }
 
+// Keys & secrets console: lets an agency admin (or a staff member granted
+// the permission) rotate platform keys without touching code or running
+// wrangler. Values are write only here — the server stores them encrypted
+// and never sends plaintext back, so we only ever show whether a value is
+// set and where the live value resolves from.
+interface SettingStatus {
+  key: string;
+  label: string;
+  secret: boolean;
+  help: string;
+  isSet: boolean;
+  source: 'console' | 'env' | 'unset';
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+export function SecretsSection() {
+  const [settings, setSettings] = useState<SettingStatus[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [savedKey, setSavedKey] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = () => {
+    setLoading(true);
+    api<{ settings: SettingStatus[] }>('/api/agency/secrets')
+      .then((r) => setSettings(r.settings))
+      .catch((e) => setError(e instanceof Error ? e.message : 'failed to load'))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(load, []);
+
+  const save = async (key: string) => {
+    const value = drafts[key];
+    if (!value) return;
+    setError(null);
+    try {
+      await api(`/api/agency/secrets/${key}`, { method: 'PUT', json: { value } });
+      setDrafts((d) => ({ ...d, [key]: '' }));
+      setSavedKey(key);
+      setTimeout(() => setSavedKey(null), 2000);
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'save failed');
+    }
+  };
+
+  return (
+    <div className="stack" style={{ gap: 20 }}>
+      <div className="stack" style={{ gap: 4 }}>
+        <h1>Keys &amp; secrets</h1>
+        <p className="muted">
+          Rotate platform keys here instead of editing code. Values are stored encrypted and take effect
+          immediately — you never have to redeploy. Existing values are hidden; entering a new one replaces it.
+        </p>
+      </div>
+
+      {error && <p className="delta-down">{error}</p>}
+      {loading && <div className="skeleton" style={{ minHeight: 120 }} />}
+
+      {!loading &&
+        settings.map((s) => (
+          <div key={s.key} className="card stack" style={{ gap: 8 }}>
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <strong>{s.label}</strong>
+              <span
+                className="muted"
+                style={{
+                  fontSize: 12,
+                  color:
+                    s.source === 'console'
+                      ? 'var(--verified-green)'
+                      : s.source === 'unset'
+                      ? 'var(--red-check)'
+                      : undefined,
+                }}
+              >
+                {s.source === 'console'
+                  ? 'Set in console'
+                  : s.source === 'env'
+                  ? 'Using deployment value'
+                  : 'Not set'}
+              </span>
+            </div>
+            <p className="muted" style={{ fontSize: 13 }}>
+              {s.help}
+            </p>
+            <div className="row" style={{ alignItems: 'flex-end' }}>
+              <label style={{ flex: 1 }}>
+                New value{s.secret ? ' (hidden)' : ''}
+                <input
+                  type={s.secret ? 'password' : 'text'}
+                  placeholder={s.isSet ? '•••••••• (leave blank to keep)' : 'Enter a value'}
+                  value={drafts[s.key] ?? ''}
+                  onChange={(e) => setDrafts((d) => ({ ...d, [s.key]: e.target.value }))}
+                />
+              </label>
+              <button className="primary" disabled={!drafts[s.key]} onClick={() => save(s.key)}>
+                {savedKey === s.key ? 'Saved' : 'Save'}
+              </button>
+            </div>
+            {s.updatedAt && (
+              <p className="muted" style={{ fontSize: 12 }}>
+                Last updated {s.updatedAt.slice(0, 19).replace('T', ' ')} by {s.updatedBy ?? 'unknown'}
+              </p>
+            )}
+            <CodeBox
+              label="Equivalent command line"
+              hint="For reference only — you do not need this."
+              code={`wrangler secret put ${s.key}`}
+              language="bash"
+            />
+          </div>
+        ))}
+    </div>
+  );
+}
+
 function ProvisionForm({ onDone }: { onDone: () => void }) {
-  const [form, setForm] = useState({ slug: '', name: '', adminEmail: '', adminName: '', timezone: 'America/Phoenix', plan: 'starter' });
+  const [form, setForm] = useState({
+    slug: '',
+    name: '',
+    adminEmail: '',
+    adminName: '',
+    timezone: 'America/Phoenix',
+    plan: 'starter',
+    monthlyAdSpendBudget: '',
+  });
+  const [adPlatforms, setAdPlatforms] = useState<string[]>([]);
   const [result, setResult] = useState<{ tempPassword: string | null; slug: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const togglePlatform = (p: string) =>
+    setAdPlatforms((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
+      const { monthlyAdSpendBudget, ...rest } = form;
+      const payload: Record<string, unknown> = { ...rest, adPlatforms };
+      if (monthlyAdSpendBudget.trim() !== '') payload.monthlyAdSpendBudget = Number(monthlyAdSpendBudget);
       const res = await api<{ tempPassword: string | null; slug: string }>('/api/agency/tenants', {
         method: 'POST',
-        json: form,
+        json: payload,
       });
       setResult(res);
     } catch (err) {
@@ -566,6 +914,37 @@ function ProvisionForm({ onDone }: { onDone: () => void }) {
             <option value="whitelabel">whitelabel</option>
           </select>
         </label>
+      </div>
+      <div className="row">
+        <label style={{ flex: 1 }}>
+          Monthly ad spend budget
+          <input
+            type="number"
+            min={0}
+            step="1"
+            placeholder="e.g. 5000"
+            value={form.monthlyAdSpendBudget}
+            onChange={(e) => setForm((p) => ({ ...p, monthlyAdSpendBudget: e.target.value }))}
+          />
+        </label>
+        <div className="stack" style={{ flex: 1, gap: 6 }}>
+          <span className="muted" style={{ fontSize: 13 }}>
+            Platforms
+          </span>
+          <div className="row">
+            {(['meta', 'google'] as const).map((p) => (
+              <label key={p} className="row" style={{ gap: 6, width: 'auto' }}>
+                <input
+                  type="checkbox"
+                  style={{ width: 'auto', minHeight: 0 }}
+                  checked={adPlatforms.includes(p)}
+                  onChange={() => togglePlatform(p)}
+                />
+                {PLATFORM_LABEL[p]}
+              </label>
+            ))}
+          </div>
+        </div>
       </div>
       {error && <p className="delta-down">{error}</p>}
       <div className="row">

@@ -6,6 +6,7 @@ import { agencyOnly, requireRole, agencyCanAccess } from '../middleware';
 import { provisionTenant } from '../provisioning';
 import { hashPassword, randomToken } from '../crypto';
 import { writeAudit } from '../audit';
+import { listAgencySettings, setAgencySetting, isManagedKey, canManageSecrets } from '../agencySettings';
 
 export const agencyRoutes = new Hono<AppContext>();
 agencyRoutes.use('*', agencyOnly);
@@ -27,6 +28,8 @@ const provisionSchema = z
       })
       .strict()
       .optional(),
+    monthlyAdSpendBudget: z.number().min(0).max(10_000_000).optional(),
+    adPlatforms: z.array(z.enum(['meta', 'google'])).max(2).optional(),
   })
   .strict();
 
@@ -48,7 +51,8 @@ agencyRoutes.post('/tenants', requireRole('agency_admin'), async (c) => {
 agencyRoutes.get('/tenants', async (c) => {
   const session = c.get('session')!;
   const { results } = await c.env.CONTROL_DB.prepare(
-    `SELECT id, slug, name, status, plan, timezone, custom_hostname, hostname_status, schema_version, footer_credit, created_at
+    `SELECT id, slug, name, status, plan, timezone, custom_hostname, hostname_status, schema_version, footer_credit,
+       monthly_ad_spend_budget, ad_platforms_json, created_at
      FROM tenants ORDER BY name`
   ).all<Partial<TenantRow>>();
   const visible =
@@ -58,12 +62,45 @@ agencyRoutes.get('/tenants', async (c) => {
   return c.json({ tenants: visible });
 });
 
+// Edit a client's committed monthly ad spend and platform mix after
+// provisioning, without re-running the full provisioning flow.
+const budgetSchema = z
+  .object({
+    monthlyAdSpendBudget: z.number().min(0).max(10_000_000).nullable(),
+    adPlatforms: z.array(z.enum(['meta', 'google'])).max(2),
+  })
+  .strict();
+
+agencyRoutes.put('/tenants/:id/budget', requireRole('agency_admin'), async (c) => {
+  const session = c.get('session')!;
+  const id = c.req.param('id');
+  const body = budgetSchema.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: 'invalid request', details: body.error.flatten() }, 400);
+  const existing = await c.env.CONTROL_DB.prepare(`SELECT id FROM tenants WHERE id = ?`).bind(id).first();
+  if (!existing) return c.json({ error: 'not found' }, 404);
+  await c.env.CONTROL_DB.prepare(
+    `UPDATE tenants SET monthly_ad_spend_budget = ?, ad_platforms_json = ? WHERE id = ?`
+  )
+    .bind(body.data.monthlyAdSpendBudget, JSON.stringify(body.data.adPlatforms), id)
+    .run();
+  await writeAudit(c.env, {
+    actorType: 'agency',
+    actorId: session.userId,
+    tenantId: id,
+    action: 'tenant.budget.update',
+    target: id,
+    after: body.data,
+  });
+  return c.json({ ok: true });
+});
+
 // Agency overview grid from agency_rollup snapshots.
 agencyRoutes.get('/overview', async (c) => {
   const session = c.get('session')!;
   const month = new Date().toISOString().slice(0, 7);
   const { results } = await c.env.CONTROL_DB.prepare(
-    `SELECT t.id, t.slug, t.name, t.plan, r.leads, r.scheduled, r.completed, r.purchases, r.revenue, r.spend, r.pulled_at
+    `SELECT t.id, t.slug, t.name, t.plan, t.monthly_ad_spend_budget, t.ad_platforms_json,
+       r.leads, r.scheduled, r.completed, r.purchases, r.revenue, r.spend, r.pulled_at
      FROM tenants t LEFT JOIN agency_rollup r ON r.tenant_id = t.id AND r.period_month = ?
      WHERE t.status = 'active' ORDER BY t.name`
   )
@@ -76,12 +113,15 @@ agencyRoutes.get('/overview', async (c) => {
   return c.json({ month, tenants: visible });
 });
 
+const permissionsSchema = z.object({ manageSecrets: z.boolean() }).strict();
+
 const agencyUserSchema = z
   .object({
     email: z.string().email().max(254),
     name: z.string().min(1).max(120),
     role: z.enum(['agency_admin', 'agency_staff']),
     assignedTenants: z.array(z.string()).max(200).optional(),
+    permissions: permissionsSchema.optional(),
   })
   .strict();
 
@@ -109,6 +149,14 @@ agencyRoutes.post('/users', requireRole('agency_admin'), async (c) => {
       body.data.assignedTenants ? JSON.stringify(body.data.assignedTenants) : null
     )
     .run();
+  if (body.data.permissions) {
+    await c.env.CONTROL_DB.prepare(
+      `INSERT INTO agency_user_permissions (user_id, permissions_json) VALUES (?, ?)
+       ON CONFLICT (user_id) DO UPDATE SET permissions_json = excluded.permissions_json`
+    )
+      .bind(id, JSON.stringify(body.data.permissions))
+      .run();
+  }
   await writeAudit(c.env, {
     actorType: 'agency',
     actorId: session.userId,
@@ -121,9 +169,105 @@ agencyRoutes.post('/users', requireRole('agency_admin'), async (c) => {
 
 agencyRoutes.get('/users', requireRole('agency_admin'), async (c) => {
   const { results } = await c.env.CONTROL_DB.prepare(
-    `SELECT id, email, name, role, assigned_tenants_json, active, created_at FROM agency_users ORDER BY name`
-  ).all<Omit<AgencyUserRow, 'password_hash'>>();
+    `SELECT u.id, u.email, u.name, u.role, u.assigned_tenants_json, p.permissions_json, u.active, u.created_at
+     FROM agency_users u LEFT JOIN agency_user_permissions p ON p.user_id = u.id ORDER BY u.name`
+  ).all<Omit<AgencyUserRow, 'password_hash'> & { permissions_json: string | null }>();
   return c.json({ users: results });
+});
+
+// Update an existing member's role, assignments, and permission flags.
+const agencyUserPatchSchema = z
+  .object({
+    role: z.enum(['agency_admin', 'agency_staff']).optional(),
+    assignedTenants: z.array(z.string()).max(200).optional(),
+    permissions: permissionsSchema.optional(),
+  })
+  .strict();
+
+agencyRoutes.patch('/users/:id', requireRole('agency_admin'), async (c) => {
+  const session = c.get('session')!;
+  const id = c.req.param('id');
+  const body = agencyUserPatchSchema.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: 'invalid request' }, 400);
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  if (body.data.role !== undefined) {
+    if (id === session.userId && body.data.role !== 'agency_admin') {
+      return c.json({ error: 'cannot demote yourself' }, 400);
+    }
+    sets.push('role = ?');
+    params.push(body.data.role);
+  }
+  if (body.data.assignedTenants !== undefined) {
+    sets.push('assigned_tenants_json = ?');
+    params.push(JSON.stringify(body.data.assignedTenants));
+  }
+  if (sets.length > 0) {
+    await c.env.CONTROL_DB.prepare(`UPDATE agency_users SET ${sets.join(', ')} WHERE id = ?`)
+      .bind(...params, id)
+      .run();
+  }
+  if (body.data.permissions !== undefined) {
+    await c.env.CONTROL_DB.prepare(
+      `INSERT INTO agency_user_permissions (user_id, permissions_json) VALUES (?, ?)
+       ON CONFLICT (user_id) DO UPDATE SET permissions_json = excluded.permissions_json`
+    )
+      .bind(id, JSON.stringify(body.data.permissions))
+      .run();
+  }
+  if (sets.length === 0 && body.data.permissions === undefined) {
+    return c.json({ error: 'nothing to update' }, 400);
+  }
+  await writeAudit(c.env, {
+    actorType: 'agency',
+    actorId: session.userId,
+    action: 'agency_user.update',
+    target: id,
+    after: body.data as Record<string, unknown>,
+  });
+  return c.json({ ok: true });
+});
+
+// Agency managed keys and secrets. Admins always; staff with the
+// manageSecrets permission. Plaintext is never returned, only status.
+agencyRoutes.get('/secrets', async (c) => {
+  const session = c.get('session')!;
+  const perms = await c.env.CONTROL_DB.prepare(
+    `SELECT permissions_json FROM agency_user_permissions WHERE user_id = ?`
+  )
+    .bind(session.userId)
+    .first<{ permissions_json: string | null }>();
+  if (!canManageSecrets(session.role, perms?.permissions_json ?? null)) {
+    return c.json({ error: 'forbidden' }, 403);
+  }
+  const settings = await listAgencySettings(c.env);
+  return c.json({ settings });
+});
+
+const secretSchema = z.object({ value: z.string().min(1).max(8192) }).strict();
+
+agencyRoutes.put('/secrets/:key', async (c) => {
+  const session = c.get('session')!;
+  const key = c.req.param('key');
+  const perms = await c.env.CONTROL_DB.prepare(
+    `SELECT permissions_json FROM agency_user_permissions WHERE user_id = ?`
+  )
+    .bind(session.userId)
+    .first<{ permissions_json: string | null }>();
+  if (!canManageSecrets(session.role, perms?.permissions_json ?? null)) {
+    return c.json({ error: 'forbidden' }, 403);
+  }
+  if (!isManagedKey(key)) return c.json({ error: 'unknown setting' }, 404);
+  const body = secretSchema.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: 'invalid request' }, 400);
+  await setAgencySetting(c.env, key, body.data.value, session.userId);
+  await writeAudit(c.env, {
+    actorType: 'agency',
+    actorId: session.userId,
+    action: 'agency_setting.update',
+    target: key,
+  });
+  return c.json({ ok: true });
 });
 
 // User deletion is agency_admin only; agency_staff explicitly cannot.

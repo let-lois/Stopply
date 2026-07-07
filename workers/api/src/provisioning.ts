@@ -21,6 +21,11 @@ export interface ProvisionInput {
   adminName: string;
   funnelLabels?: FunnelLabels;
   themeJson?: string;
+  // The agency's committed monthly ad spend for this client and which
+  // platforms it runs on. Distinct from actual spend, which rolls up from
+  // the tenant's own imported CSVs.
+  monthlyAdSpendBudget?: number | null;
+  adPlatforms?: Array<'meta' | 'google'>;
   actor: { id: string; name: string };
 }
 
@@ -81,6 +86,22 @@ export const DEFAULT_SOURCES: Array<{
     connector_type: 'google-campaign',
     cadence: 7,
     how_to: 'Google Ads, Campaigns, download the month as CSV, then upload it here.',
+  },
+  {
+    key: 'meta-ads-csv',
+    name: 'Meta Ads CSV (by ad)',
+    kind: 'csv',
+    connector_type: 'meta-ad-lineitem',
+    cadence: 7,
+    how_to: 'Ads Manager, Reports, break down by ad and export the month as CSV, then upload it here.',
+  },
+  {
+    key: 'google-ads-csv',
+    name: 'Google Ads CSV (by ad)',
+    kind: 'csv',
+    connector_type: 'google-ad-lineitem',
+    cadence: 7,
+    how_to: 'Google Ads, Ads, download the month as CSV, then upload it here.',
   },
   {
     key: 'boulevard',
@@ -148,11 +169,14 @@ export async function provisionTenant(env: Env, input: ProvisionInput): Promise<
 
   const schemaVersion = await applyTenantMigrations(env, databaseId, existing?.schema_version ?? 0);
 
+  const adPlatformsJson = input.adPlatforms ? JSON.stringify(input.adPlatforms) : null;
+
   if (!existing) {
     await env.CONTROL_DB.prepare(
       `INSERT INTO tenants (id, slug, name, status, plan, timezone, d1_database_id, d1_database_name,
-        schema_version, theme_json, layout_json, footer_credit, funnel_labels_json)
-       VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, 1, ?)`
+        schema_version, theme_json, layout_json, footer_credit, funnel_labels_json,
+        monthly_ad_spend_budget, ad_platforms_json)
+       VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`
     )
       .bind(
         tenantId,
@@ -165,14 +189,21 @@ export async function provisionTenant(env: Env, input: ProvisionInput): Promise<
         schemaVersion,
         input.themeJson ?? JSON.stringify(LETLOIS_THEME),
         JSON.stringify(DEFAULT_LAYOUT),
-        JSON.stringify(input.funnelLabels ?? DEFAULT_FUNNEL_LABELS)
+        JSON.stringify(input.funnelLabels ?? DEFAULT_FUNNEL_LABELS),
+        input.monthlyAdSpendBudget ?? null,
+        adPlatformsJson
       )
       .run();
   } else {
+    // A retry can also carry an updated budget or platform mix; leave the
+    // stored value alone when the caller did not send one.
     await env.CONTROL_DB.prepare(
-      `UPDATE tenants SET d1_database_id = ?, d1_database_name = ?, schema_version = ? WHERE id = ?`
+      `UPDATE tenants SET d1_database_id = ?, d1_database_name = ?, schema_version = ?,
+        monthly_ad_spend_budget = COALESCE(?, monthly_ad_spend_budget),
+        ad_platforms_json = COALESCE(?, ad_platforms_json)
+       WHERE id = ?`
     )
-      .bind(databaseId, dbName, schemaVersion, tenantId)
+      .bind(databaseId, dbName, schemaVersion, input.monthlyAdSpendBudget ?? null, adPlatformsJson, tenantId)
       .run();
   }
 

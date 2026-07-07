@@ -3,7 +3,8 @@
 //   API_BASE=https://bi.letlois.com SESSION_COOKIE=... CSRF_TOKEN=... \
 //   pnpm provision:tenant -- --slug acme --name "Acme Plumbing" \
 //     --admin-email owner@acme.com --admin-name "Pat Owner" \
-//     [--timezone America/Phoenix] [--plan starter]
+//     [--timezone America/Phoenix] [--plan starter] \
+//     [--budget 5000] [--platforms meta,google]
 function arg(name, fallback = undefined) {
   const i = process.argv.indexOf(`--${name}`);
   if (i === -1) return fallback;
@@ -26,8 +27,12 @@ const body = {
 };
 const timezone = arg('timezone');
 const plan = arg('plan');
+const budget = arg('budget');
+const platforms = arg('platforms');
 if (timezone) body.timezone = timezone;
 if (plan) body.plan = plan;
+if (budget) body.monthlyAdSpendBudget = Number(budget);
+if (platforms) body.adPlatforms = platforms.split(',').map((p) => p.trim()).filter(Boolean);
 
 if (!body.slug || !body.name || !body.adminEmail || !body.adminName) {
   console.error('required: --slug --name --admin-email --admin-name');

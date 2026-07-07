@@ -9,6 +9,8 @@ import { api, ApiError, getCsrf } from '@/lib/api';
 import { fmtStamp } from '@/lib/format';
 import type { FunnelLabels, SourceInfo, TenantSettings } from '@/lib/types';
 import { useToast } from '../Toasts';
+import { CodeBox } from '../CodeBox';
+import { applyThemeMode, getThemeMode, type ThemeMode } from '@/lib/theme';
 
 interface TeamUser {
   id: string;
@@ -59,14 +61,41 @@ export function DataTeamTab({
   return (
     <div className="stack" style={{ gap: 24 }}>
       <SourcesSection sources={sources} tz={tz} refreshSources={refreshSources} toast={toast} />
-      <IntegrationsSection toast={toast} refreshSources={refreshSources} />
       <ImportsSection tz={tz} />
       <TeamSection toast={toast} />
       <TargetsSection labels={labels} toast={toast} />
       <SettingsSection settings={settings} labels={labels} toast={toast} isAgency={isAgency} refreshSettings={refreshSettings} />
+
+      {/* API integrations are buried by design: getting started is about
+          getting clean CSVs in. Live API connections are an optional power
+          feature, tucked away so they do not distract from the main flow. */}
+      <section className="card">
+        <details className="disclosure">
+          <summary>Advanced: live API integrations</summary>
+          <p className="muted" style={{ fontSize: 13, margin: '8px 0' }}>
+            Most accounts never need this. Connect a live API only when you want automatic syncing instead of
+            CSV uploads.
+          </p>
+          <IntegrationsSection toast={toast} refreshSources={refreshSources} />
+        </details>
+      </section>
     </div>
   );
 }
+
+// Friendly parser presets. 'auto' lets the AI detector classify the CSV.
+const PARSER_OPTIONS: Array<{ key: string; label: string }> = [
+  { key: 'auto', label: 'Auto-detect with AI' },
+  { key: 'ghl-contacts', label: 'Go High Level — contacts' },
+  { key: 'ghl-website', label: 'Go High Level — website' },
+  { key: 'google-campaign', label: 'Google Ads — campaigns' },
+  { key: 'meta-campaign', label: 'Meta Ads — campaigns' },
+  { key: 'google-ad-lineitem', label: 'Google Ads — by ad' },
+  { key: 'meta-ad-lineitem', label: 'Meta Ads — by ad' },
+  { key: 'blvd-appointments', label: 'Boulevard — appointments' },
+  { key: 'blvd-line-items', label: 'Boulevard — sales' },
+  { key: 'blvd-clients', label: 'Boulevard — clients' },
+];
 
 function SourcesSection({
   sources,
@@ -80,9 +109,8 @@ function SourcesSection({
   toast: (s: string) => void;
 }) {
   const [uploadFor, setUploadFor] = useState<SourceInfo | null>(null);
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [busy, setBusy] = useState(false);
   const [secret, setSecret] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
 
   const verify = async (key: string) => {
     await api(`/api/tenant/sources/${key}/verify`, { method: 'POST' });
@@ -95,34 +123,33 @@ function SourcesSection({
     setSecret(res.secret);
   };
 
-  const upload = async (file: File) => {
-    if (!uploadFor) return;
-    setBusy(true);
-    try {
-      const csv = await file.text();
-      const res = await api<{ rowCount: number }>('/api/imports', {
-        method: 'POST',
-        json: { sourceKey: uploadFor.key, month, csv },
-      });
-      toast(`Imported ${res.rowCount} rows for ${month}`);
-      setUploadFor(null);
-      refreshSources();
-    } catch (err) {
-      toast(err instanceof ApiError ? err.message : 'upload failed');
-    } finally {
-      setBusy(false);
-    }
+  const removeSource = async (s: SourceInfo) => {
+    if (!confirm(`Remove the source "${s.name}"? Imported data stays; only the source is removed.`)) return;
+    await api(`/api/tenant/sources/${s.key}`, { method: 'DELETE' });
+    toast('Source removed');
+    refreshSources();
   };
+
+  const origin = typeof location !== 'undefined' ? location.origin : '';
 
   return (
     <section className="card stack">
-      <h3>Sources</h3>
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <h3>Sources</h3>
+        <button className="small primary" onClick={() => setAdding(true)}>
+          + Add source
+        </button>
+      </div>
+      <p className="muted" style={{ fontSize: 13 }}>
+        Every source is a CSV. Tell us where it comes from and we&apos;ll organize the columns for you — even for
+        a custom export.
+      </p>
       <div style={{ overflowX: 'auto' }}>
         <table className="data">
           <thead>
             <tr>
               <th>Source</th>
-              <th>Kind</th>
+              <th>Type</th>
               <th>Freshness</th>
               <th>Records through</th>
               <th>Last import</th>
@@ -133,7 +160,7 @@ function SourcesSection({
             {sources.map((s) => (
               <tr key={s.key}>
                 <td>{s.name}</td>
-                <td className="muted">{s.kind}</td>
+                <td className="muted">{s.connector_type ?? (s.kind === 'csv' ? 'CSV (auto)' : s.kind)}</td>
                 <td>
                   <span className={`check ${s.freshness}`} style={{ marginLeft: 0 }} />{' '}
                   {s.freshness === 'green' ? 'verified' : s.freshness === 'red' ? 'stale' : 'imported'}
@@ -145,9 +172,9 @@ function SourcesSection({
                     <button className="small" onClick={() => verify(s.key)}>
                       Verify
                     </button>
-                    {(s.kind === 'csv' || s.connector_type) && s.kind !== 'integration' && (
+                    {s.kind !== 'integration' && (
                       <button className="small primary" onClick={() => setUploadFor(s)}>
-                        Mark pulled
+                        Upload CSV
                       </button>
                     )}
                     {s.kind === 'webhook' && (
@@ -155,19 +182,42 @@ function SourcesSection({
                         Signing secret
                       </button>
                     )}
+                    {s.kind === 'csv' && (
+                      <button className="small" onClick={() => removeSource(s)}>
+                        Remove
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
             ))}
+            {sources.length === 0 && (
+              <tr>
+                <td colSpan={6} className="muted">
+                  No sources yet. Add one to start uploading CSVs.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
 
+      {adding && (
+        <AddSourceForm
+          onDone={() => {
+            setAdding(false);
+            refreshSources();
+          }}
+          toast={toast}
+        />
+      )}
+
       {secret && (
-        <div className="card" style={{ borderColor: 'var(--amber)' }}>
-          <p>
-            New signing secret (shown once, store it now): <code className="num">{secret}</code>
+        <div className="card stack" style={{ borderColor: 'var(--amber)' }}>
+          <p className="muted" style={{ fontSize: 13 }}>
+            New signing secret — copy it now, it is shown only once.
           </p>
+          <CodeBox label="Signing secret" hint="Keep this private." code={secret} defaultOpen />
           <button className="small" onClick={() => setSecret(null)}>
             I saved it
           </button>
@@ -175,29 +225,179 @@ function SourcesSection({
       )}
 
       {uploadFor && (
-        <div className="card stack" style={{ borderColor: 'var(--accent)' }}>
-          <h3>Upload {uploadFor.name}</h3>
-          <p className="muted">{uploadFor.how_to}</p>
-          <label>
-            Month
-            <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
-          </label>
-          <input
-            type="file"
-            accept=".csv,text/csv"
-            disabled={busy}
-            onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
-          />
-          <button className="small" onClick={() => setUploadFor(null)}>
-            Cancel
-          </button>
-        </div>
+        <UploadForm source={uploadFor} onDone={() => setUploadFor(null)} refreshSources={refreshSources} toast={toast} />
       )}
 
-      <p className="muted" style={{ fontSize: 13 }}>
-        Tracking snippet: <code>{`<script async src="${typeof location !== 'undefined' ? location.origin : ''}/t.js"></script>`}</code>
-      </p>
+      <div className="stack" style={{ gap: 6 }}>
+        <span className="muted" style={{ fontSize: 13 }}>
+          Optional website tracking snippet:
+        </span>
+        <CodeBox
+          label="Website tracking script"
+          hint="Optional — your developer can add this later."
+          code={`<script async src="${origin}/t.js"></script>`}
+          language="html"
+        />
+      </div>
     </section>
+  );
+}
+
+// Add a source. For a CSV the only required field is a name of where the
+// data comes from; the parser defaults to AI auto-detect.
+function AddSourceForm({ onDone, toast }: { onDone: () => void; toast: (s: string) => void }) {
+  const [name, setName] = useState('');
+  const [connectorType, setConnectorType] = useState('auto');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setBusy(true);
+    try {
+      await api('/api/tenant/sources', { method: 'POST', json: { name: name.trim(), connectorType } });
+      toast('Source added');
+      onDone();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'could not add source');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form className="card stack" style={{ borderColor: 'var(--accent)' }} onSubmit={submit}>
+      <h3 style={{ fontSize: 16 }}>Add a source</h3>
+      <label>
+        Where does this data come from?
+        <input placeholder="e.g. Go High Level, Acme Spreadsheet" value={name} onChange={(e) => setName(e.target.value)} />
+      </label>
+      <label>
+        Format
+        <select value={connectorType} onChange={(e) => setConnectorType(e.target.value)} style={{ width: 'auto' }}>
+          {PARSER_OPTIONS.map((o) => (
+            <option key={o.key} value={o.key}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="row">
+        <button className="primary" type="submit" disabled={busy}>
+          {busy ? 'Adding…' : 'Add source'}
+        </button>
+        <button type="button" onClick={onDone}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// Upload a CSV for a source, with an AI detection step that reads the file
+// and suggests how to parse it before the import runs.
+function UploadForm({
+  source,
+  onDone,
+  refreshSources,
+  toast,
+}: {
+  source: SourceInfo;
+  onDone: () => void;
+  refreshSources: () => void;
+  toast: (s: string) => void;
+}) {
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [file, setFile] = useState<File | null>(null);
+  const [parser, setParser] = useState<string>(source.connector_type ?? 'auto');
+  const [detecting, setDetecting] = useState(false);
+  const [suggestion, setSuggestion] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const onPick = async (f: File) => {
+    setFile(f);
+    setSuggestion(null);
+    // If the source has no fixed parser, ask the AI to read the file and
+    // suggest one before the user commits.
+    if (!source.connector_type) {
+      setDetecting(true);
+      try {
+        const csv = await f.text();
+        const res = await api<{
+          suggestion: { parser: string; role: string; confidence: number | null; reason: string } | null;
+          reason: string;
+        }>('/api/imports/detect', { method: 'POST', json: { csv } });
+        if (res.suggestion) {
+          setParser(res.suggestion.parser);
+          setSuggestion(
+            `Looks like ${res.suggestion.parser} (${res.suggestion.role})${
+              res.suggestion.reason ? ` — ${res.suggestion.reason}` : ''
+            }. You can change this below.`
+          );
+        } else {
+          setSuggestion(res.reason || 'Could not auto-detect; please choose a format below.');
+        }
+      } catch {
+        setSuggestion('Auto-detect is unavailable; please choose a format below.');
+      } finally {
+        setDetecting(false);
+      }
+    }
+  };
+
+  const upload = async () => {
+    if (!file) return;
+    if (parser === 'auto') {
+      toast('Pick a format (auto-detect could not decide).');
+      return;
+    }
+    setBusy(true);
+    try {
+      const csv = await file.text();
+      const res = await api<{ rowCount: number }>('/api/imports', {
+        method: 'POST',
+        json: { sourceKey: source.key, month, csv, parser },
+      });
+      toast(`Imported ${res.rowCount} rows for ${month}`);
+      onDone();
+      refreshSources();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'upload failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card stack" style={{ borderColor: 'var(--accent)' }}>
+      <h3 style={{ fontSize: 16 }}>Upload {source.name}</h3>
+      {source.how_to && <p className="muted" style={{ fontSize: 13 }}>{source.how_to}</p>}
+      <label>
+        Month
+        <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={{ maxWidth: 200 }} />
+      </label>
+      <input type="file" accept=".csv,text/csv" disabled={busy} onChange={(e) => e.target.files?.[0] && onPick(e.target.files[0])} />
+      {detecting && <p className="muted" style={{ fontSize: 13 }}>Reading your file…</p>}
+      {suggestion && <p style={{ fontSize: 13 }}>{suggestion}</p>}
+      {file && (
+        <label>
+          Format
+          <select value={parser} onChange={(e) => setParser(e.target.value)} style={{ width: 'auto' }}>
+            {PARSER_OPTIONS.map((o) => (
+              <option key={o.key} value={o.key}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <div className="row">
+        <button className="primary" disabled={!file || busy} onClick={upload}>
+          {busy ? 'Importing…' : 'Import CSV'}
+        </button>
+        <button onClick={onDone}>Cancel</button>
+      </div>
+    </div>
   );
 }
 
@@ -505,10 +705,11 @@ function TeamSection({ toast }: { toast: (s: string) => void }) {
         </button>
       </div>
       {tempPassword && (
-        <div className="card" style={{ borderColor: 'var(--amber)' }}>
-          <p>
-            Temp password (shown once): <code className="num">{tempPassword}</code>
+        <div className="card stack" style={{ borderColor: 'var(--amber)' }}>
+          <p className="muted" style={{ fontSize: 13 }}>
+            Temp password — share it with the new user. Shown only once.
           </p>
+          <CodeBox label="Temporary password" hint="Copy and share securely." code={tempPassword} defaultOpen />
           <button className="small" onClick={() => setTempPassword(null)}>
             I saved it
           </button>
@@ -642,6 +843,12 @@ function SettingsSection({
   const theme = settings.tenant.theme ?? {};
   const [tokens, setTokens] = useState<Record<string, string>>(theme as Record<string, string>);
   const [labelDraft, setLabelDraft] = useState<FunnelLabels>(labels);
+  const [mode, setMode] = useState<ThemeMode>('light');
+  useEffect(() => setMode(getThemeMode()), []);
+  const setThemeMode = (m: ThemeMode) => {
+    applyThemeMode(m);
+    setMode(m);
+  };
   const [domain, setDomain] = useState('');
   const [domainStatus, setDomainStatus] = useState<{ hostname: string | null; status?: string; cnameTarget?: string; txt?: { name: string; value: string } | null } | null>(null);
   const [footerCredit, setFooterCredit] = useState(settings.tenant.footerCredit);
@@ -712,6 +919,21 @@ function SettingsSection({
   return (
     <section className="card stack">
       <h3>Settings</h3>
+
+      <div className="stack">
+        <h3 style={{ fontSize: 16 }}>Appearance</h3>
+        <p className="muted" style={{ fontSize: 13 }}>
+          Choose a light or dark interface. This is personal to you and saved on this device.
+        </p>
+        <div className="row" style={{ gap: 8 }}>
+          <button className={mode === 'light' ? 'primary small' : 'small'} onClick={() => setThemeMode('light')}>
+            ☀ Light
+          </button>
+          <button className={mode === 'dark' ? 'primary small' : 'small'} onClick={() => setThemeMode('dark')}>
+            🌙 Dark
+          </button>
+        </div>
+      </div>
 
       <div className="stack">
         <h3 style={{ fontSize: 16 }}>Logo</h3>
@@ -787,15 +1009,18 @@ function SettingsSection({
                 </p>
                 {domainStatus.status !== 'active' && (
                   <>
-                    <p style={{ fontSize: 13 }}>
-                      Add a CNAME record pointing <code>{domainStatus.hostname}</code> to{' '}
-                      <code>{domainStatus.cnameTarget}</code>.
-                    </p>
-                    {domainStatus.txt && (
-                      <p style={{ fontSize: 13 }}>
-                        TXT validation: <code>{domainStatus.txt.name}</code> = <code>{domainStatus.txt.value}</code>
-                      </p>
-                    )}
+                    <p style={{ fontSize: 13 }}>Add these DNS records at your domain provider:</p>
+                    <CodeBox
+                      label="DNS records"
+                      hint="Hand these to whoever manages your domain."
+                      defaultOpen
+                      code={[
+                        `CNAME  ${domainStatus.hostname}  ->  ${domainStatus.cnameTarget}`,
+                        domainStatus.txt ? `TXT    ${domainStatus.txt.name}  =  ${domainStatus.txt.value}` : '',
+                      ]
+                        .filter(Boolean)
+                        .join('\n')}
+                    />
                     <button className="small" onClick={pollDomain}>
                       Check status
                     </button>

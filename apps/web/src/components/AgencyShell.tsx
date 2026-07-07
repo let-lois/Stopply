@@ -1,15 +1,19 @@
 'use client';
 
-// The agency console shell on bi.letlois.com: the left sidebar nav,
+// The agency console shell on bi.letlois.com: the left sidebar navigation,
 // section switching, and sign out. Mirrors the tenant AppShell sidebar
-// (sticky, collapses to a hamburger drawer on mobile) so the two planes
-// feel like one product. Admins manage clients, their team, and the audit
-// log; staff see only the clients assigned to them.
+// (brand + account switcher up top, section links, mobile drawer) so the
+// two planes feel like one product. Admins manage clients, their team, and
+// the audit log; staff see only the clients assigned to them.
 
-import { useState } from 'react';
-import { ClientsSection, TeamSection, AuditSection } from './AgencyOverview';
+import { useEffect, useState } from 'react';
+import { ClientsSection, TeamSection, AuditSection, SecretsSection } from './AgencyOverview';
+import { LetLoisLogo } from './LetLoisLogo';
+import { AccountSwitcher } from './AccountSwitcher';
+import { ProfileMenu } from './ProfileMenu';
+import { Sidebar } from './Sidebar';
 
-type Section = 'clients' | 'team' | 'audit';
+type Section = 'clients' | 'team' | 'audit' | 'secrets';
 
 export function AgencyShell({
   role,
@@ -24,71 +28,63 @@ export function AgencyShell({
 }) {
   const [section, setSection] = useState<Section>('clients');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [canSecrets, setCanSecrets] = useState(false);
+
+  // Staff may have been granted the manageSecrets permission. We probe the
+  // endpoint rather than threading the flag through the session: a 200 means
+  // this user is allowed to see the keys & secrets console.
+  useEffect(() => {
+    import('@/lib/api').then(({ api }) =>
+      api('/api/agency/secrets')
+        .then(() => setCanSecrets(true))
+        .catch(() => setCanSecrets(false))
+    );
+  }, []);
 
   // Team and the audit log are agency_admin only, matching the API's
-  // requireRole gates; staff get the Clients view alone.
-  const sections: Array<{ key: Section; label: string }> =
-    role === 'agency_admin'
-      ? [
-          { key: 'clients', label: 'Clients' },
+  // requireRole gates; staff get the Clients view alone (plus the secrets
+  // console if they have been granted that permission).
+  const sections: Array<{ key: Section; label: string }> = [
+    { key: 'clients', label: 'Clients' },
+    ...(role === 'agency_admin'
+      ? ([
           { key: 'team', label: 'Team' },
           { key: 'audit', label: 'Audit log' },
-        ]
-      : [{ key: 'clients', label: 'Clients' }];
+        ] as Array<{ key: Section; label: string }>)
+      : []),
+    ...(canSecrets ? ([{ key: 'secrets', label: 'Keys & secrets' }] as Array<{ key: Section; label: string }>) : []),
+  ];
 
   const active = sections.some((s) => s.key === section) ? section : 'clients';
 
-  const navItems = (onPick?: () => void) =>
-    sections.map((s) => (
-      <button
-        key={s.key}
-        className={s.key === active ? 'active' : ''}
-        onClick={() => {
-          setSection(s.key);
-          onPick?.();
-        }}
-      >
-        {s.label}
-      </button>
-    ));
-
   return (
     <div className="app-layout">
-      <aside className={`sidebar ${menuOpen ? 'open' : ''}`}>
-        <div className="sidebar-brand">
-          <strong style={{ fontFamily: 'var(--font-display)', fontSize: 18 }}>LetLois BI</strong>
-        </div>
+      <Sidebar
+        brand={
+          // Agency console: the LetLois mark plus the account switcher,
+          // which here sits in agency view and can drop into any sub-account.
+          <>
+            <LetLoisLogo />
+            <AccountSwitcher current={null} onSwitchTenant={onEnterTenant} onEnterAgencyView={null} />
+          </>
+        }
+        items={sections.map((s) => ({
+          key: s.key,
+          label: s.label,
+          active: s.key === active,
+          onClick: () => setSection(s.key),
+        }))}
+        footer={<ProfileMenu onLogout={onLogout} />}
+        mobileOpen={menuOpen}
+        onMobileOpenChange={setMenuOpen}
+      />
 
-        <nav className="sidebar-nav">{navItems(() => setMenuOpen(false))}</nav>
-
-        <div className="sidebar-footer">
-          <span className="muted" style={{ fontSize: 13, padding: '0 12px' }}>
-            {userId}
-          </span>
-          <button className="small" onClick={onLogout}>
-            Sign out
-          </button>
-        </div>
-      </aside>
-
-      {menuOpen && <div className="sidebar-overlay open" onClick={() => setMenuOpen(false)} />}
-
-      <div className="main-area">
-        <header className="content-topbar">
-          <button className="hamburger small" onClick={() => setMenuOpen((o) => !o)} aria-label="Menu">
-            ☰
-          </button>
-          <strong style={{ fontFamily: 'var(--font-display)', fontSize: 16 }}>
-            {sections.find((s) => s.key === active)?.label}
-          </strong>
-        </header>
-
-        <main className="shell">
-          {active === 'clients' && <ClientsSection role={role} onEnterTenant={onEnterTenant} />}
-          {active === 'team' && role === 'agency_admin' && <TeamSection currentUserId={userId} />}
-          {active === 'audit' && role === 'agency_admin' && <AuditSection />}
-        </main>
-      </div>
+      <main className="main-content shell">
+        {active === 'clients' && <ClientsSection role={role} onEnterTenant={onEnterTenant} />}
+        {active === 'team' && role === 'agency_admin' && <TeamSection currentUserId={userId} />}
+        {active === 'audit' && role === 'agency_admin' && <AuditSection />}
+        {active === 'secrets' && <SecretsSection />}
+      </main>
     </div>
   );
 }

@@ -52,6 +52,20 @@ export interface CampaignMetrics {
   revenue: number;
 }
 
+export interface AdLineItem {
+  period_month: string;
+  channel: string;
+  campaign: string;
+  ad_name: string;
+  ad_id: string | null;
+  creative_type: string | null;
+  creative_type_source: 'auto' | 'manual';
+  spend: number;
+  leads_reported: number | null;
+  cost_per_lead: number | null;
+  status: 'top' | 'watch' | 'under' | null;
+}
+
 export interface CohortRow {
   period_month: string;
   channel: string;
@@ -72,6 +86,7 @@ export interface MonthData {
   basis: 'first' | 'latest';
   channels: ChannelMetrics[];
   campaigns: CampaignMetrics[];
+  adLineItems: AdLineItem[];
   cohort: CohortRow[];
   quality: MonthQuality | null;
   targets: Array<{ period_month: string; metric: string; value: number }>;
