@@ -38,7 +38,7 @@ zone_name = "letlois.com"
 pattern = "bi.letlois.com/t.js"
 zone_name = "letlois.com"
 [[routes]]
-pattern = "bi.letlois.com/t/*.js"
+pattern = "bi.letlois.com/t/*"
 zone_name = "letlois.com"
 [[routes]]
 pattern = "*.bi.letlois.com/api/*"
@@ -50,7 +50,7 @@ zone_name = "letlois.com"
 pattern = "*.bi.letlois.com/t.js"
 zone_name = "letlois.com"
 [[routes]]
-pattern = "*.bi.letlois.com/t/*.js"
+pattern = "*.bi.letlois.com/t/*"
 zone_name = "letlois.com"
 
 [vars]
