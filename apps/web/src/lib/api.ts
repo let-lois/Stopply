@@ -2,6 +2,9 @@
 // hostname as the static app. The CSRF token from login or /me rides on
 // every mutating request.
 
+import { isDemoMode } from './demoMode';
+import { getDemoResponse } from './demoApi';
+
 let csrfToken: string | null = null;
 
 export function setCsrf(token: string | null): void {
@@ -26,13 +29,20 @@ export async function api<T = Record<string, unknown>>(
   path: string,
   init: RequestInit & { json?: unknown } = {}
 ): Promise<T> {
+  const method = (init.method ?? 'GET').toUpperCase();
+
+  // Preview demo mode: never touch the network, the API Worker is not
+  // reachable from a pages.dev origin at all. See demoMode.ts / demoApi.ts.
+  if (isDemoMode()) {
+    return getDemoResponse(path, method) as T;
+  }
+
   const headers: Record<string, string> = { ...(init.headers as Record<string, string>) };
   let body = init.body;
   if (init.json !== undefined) {
     headers['content-type'] = 'application/json';
     body = JSON.stringify(init.json);
   }
-  const method = (init.method ?? 'GET').toUpperCase();
   if (method !== 'GET' && csrfToken) headers['x-csrf-token'] = csrfToken;
   const res = await fetch(path, { ...init, headers, body, credentials: 'same-origin' });
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;

@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, getCsrf } from '@/lib/api';
+import { isDemoMode } from '@/lib/demoMode';
 import { fmtStamp } from '@/lib/format';
 import type { FunnelLabels, SourceInfo, TenantSettings } from '@/lib/types';
 import { useToast } from '../Toasts';
@@ -884,6 +885,10 @@ function SettingsSection({
 
   // The api helper does not handle binary bodies; the logo goes raw.
   const uploadLogo = async (file: File) => {
+    if (isDemoMode()) {
+      toast('Preview demo mode: uploads are disabled');
+      return;
+    }
     const res = await fetch('/api/tenant/settings/logo', {
       method: 'PUT',
       headers: { 'content-type': file.type, 'x-csrf-token': getCsrf() ?? '' },

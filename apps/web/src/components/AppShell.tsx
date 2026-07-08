@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
+import { isDemoMode } from '@/lib/demoMode';
 import type { Comparison, SourceInfo, TenantSettings } from '@/lib/types';
 import { DEFAULT_LABELS } from '@/lib/types';
 import { PerformanceTab } from './tabs/Performance';
@@ -80,7 +81,12 @@ export function AppShell({
     api<{ months: string[] }>('/api/tenant/months')
       .then((r) => setMonths(r.months))
       .catch(() => undefined);
-    fetch('/api/tenant/logo', { method: 'HEAD' }).then((r) => setHasLogo(r.ok)).catch(() => undefined);
+    // Demo mode never touches the network, there is no real logo to check for.
+    if (isDemoMode()) {
+      setHasLogo(false);
+    } else {
+      fetch('/api/tenant/logo', { method: 'HEAD' }).then((r) => setHasLogo(r.ok)).catch(() => undefined);
+    }
   }, [loadSettings, loadSources]);
 
   // Apply the tenant theme as CSS variables on the app container.

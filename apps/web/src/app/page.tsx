@@ -6,9 +6,11 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api, fetchMe, setCsrf, type Me } from '@/lib/api';
+import { isDemoMode } from '@/lib/demoMode';
 import { Login } from '@/components/Login';
 import { AppShell } from '@/components/AppShell';
 import { AgencyShell } from '@/components/AgencyShell';
+import { DemoBadge } from '@/components/DemoBadge';
 import { ToastProvider } from '@/components/Toasts';
 
 export default function Page() {
@@ -29,6 +31,12 @@ export default function Page() {
   };
 
   if (me === 'loading') {
+    // Static export prerenders this branch server side, where window is
+    // undefined, so isDemoMode() must not be read here: doing so would
+    // disagree with the client's hydration pass and throw a hydration
+    // mismatch. Every other branch below only ever renders after the
+    // fetchMe() effect resolves, client side only, so isDemoMode() is
+    // safe to read there.
     return (
       <div className="shell stack">
         <div className="skeleton" style={{ minHeight: 50 }} />
@@ -37,7 +45,14 @@ export default function Page() {
     );
   }
 
-  if (!me) return <ToastProvider><Login onLoggedIn={refresh} /></ToastProvider>;
+  if (!me) {
+    return (
+      <ToastProvider>
+        <Login onLoggedIn={refresh} />
+        {isDemoMode() && <DemoBadge />}
+      </ToastProvider>
+    );
+  }
 
   const isAgencyUser = me.userType === 'agency';
   // Agency users drive tenant context through the switcher; tenant users
@@ -65,6 +80,7 @@ export default function Page() {
           onLogout={logout}
         />
       )}
+      {isDemoMode() && <DemoBadge />}
     </ToastProvider>
   );
 }
