@@ -191,8 +191,8 @@ function monthData(month: string, meta: number, google: number, scale: number): 
       spend: meta,
     });
     campaigns.push(
-      { period_month: month, channel: 'meta', campaign: 'Meta - Spring Promo', spend: Math.round(meta * 0.55), leads: Math.round(leadsMeta * 0.5), completed: Math.round(leadsMeta * 0.2), revenue: Math.round(meta * 1.3) },
-      { period_month: month, channel: 'meta', campaign: 'Meta - Retargeting', spend: Math.round(meta * 0.45), leads: Math.round(leadsMeta * 0.5), completed: Math.round(leadsMeta * 0.2), revenue: Math.round(meta * 1.2) }
+      { period_month: month, channel: 'meta', campaign: 'Meta - Spring Promo', campaign_type: 'Lead Generation', spend: Math.round(meta * 0.55), leads: Math.round(leadsMeta * 0.5), completed: Math.round(leadsMeta * 0.2), revenue: Math.round(meta * 1.3) },
+      { period_month: month, channel: 'meta', campaign: 'Meta - Retargeting', campaign_type: 'Retargeting', spend: Math.round(meta * 0.45), leads: Math.round(leadsMeta * 0.5), completed: Math.round(leadsMeta * 0.2), revenue: Math.round(meta * 1.2) }
     );
     adLineItems.push(
       { period_month: month, channel: 'meta', campaign: 'Meta - Spring Promo', ad_name: 'Before/After Carousel', ad_id: 'demo-ad-1', creative_type: 'carousel', creative_type_source: 'auto' as const, spend: Math.round(meta * 0.3), leads_reported: Math.round(leadsMeta * 0.28), cost_per_lead: Math.round((meta * 0.3) / Math.max(1, leadsMeta * 0.28)), status: 'top' as const },
@@ -212,8 +212,8 @@ function monthData(month: string, meta: number, google: number, scale: number): 
       spend: google,
     });
     campaigns.push(
-      { period_month: month, channel: 'google', campaign: 'Google - Search Brand', spend: Math.round(google * 0.4), leads: Math.round(leadsGoogle * 0.45), completed: Math.round(leadsGoogle * 0.22), revenue: Math.round(google * 1.6) },
-      { period_month: month, channel: 'google', campaign: 'Google - Near Me', spend: Math.round(google * 0.6), leads: Math.round(leadsGoogle * 0.55), completed: Math.round(leadsGoogle * 0.26), revenue: Math.round(google * 2.3) }
+      { period_month: month, channel: 'google', campaign: 'Google - Search Brand', campaign_type: 'Search', spend: Math.round(google * 0.4), leads: Math.round(leadsGoogle * 0.45), completed: Math.round(leadsGoogle * 0.22), revenue: Math.round(google * 1.6) },
+      { period_month: month, channel: 'google', campaign: 'Google - Near Me', campaign_type: null, spend: Math.round(google * 0.6), leads: Math.round(leadsGoogle * 0.55), completed: Math.round(leadsGoogle * 0.26), revenue: Math.round(google * 2.3) }
     );
     adLineItems.push({
       period_month: month, channel: 'google', campaign: 'Google - Near Me', ad_name: 'Near Me - RSA', ad_id: 'demo-ad-3', creative_type: 'text', creative_type_source: 'auto' as const, spend: Math.round(google * 0.5), leads_reported: Math.round(leadsGoogle * 0.5), cost_per_lead: Math.round((google * 0.5) / Math.max(1, leadsGoogle * 0.5)), status: 'top' as const,

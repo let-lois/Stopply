@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { isDemoMode } from '@/lib/demoMode';
-import type { Comparison, SourceInfo, TenantSettings } from '@/lib/types';
+import type { SourceInfo, TenantSettings } from '@/lib/types';
 import { DEFAULT_LABELS } from '@/lib/types';
 import { PerformanceTab } from './tabs/Performance';
 import { WorkBackwardsTab } from './tabs/WorkBackwards';
@@ -100,7 +100,6 @@ export function AppShell({
   // Profile-level platform flip: null shows everything, 'meta'/'google'
   // narrows the Performance section to that platform's numbers only.
   const [platformFilter, setPlatformFilter] = useState<'meta' | 'google' | null>(null);
-  const [comparison, setComparison] = useState<Comparison>('previous');
   const [menuOpen, setMenuOpen] = useState(false);
   const [hasLogo, setHasLogo] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -303,23 +302,7 @@ export function AppShell({
                 }))
               : []),
           ]}
-          footer={
-            <>
-              {settings && (
-                <select
-                  value={comparison}
-                  onChange={(e) => setComparison(e.target.value as Comparison)}
-                  aria-label="Comparison"
-                >
-                  <option value="previous">vs previous month</option>
-                  <option value="year">vs same month last year</option>
-                  <option value="target">vs target</option>
-                  <option value="none">no comparison</option>
-                </select>
-              )}
-              <ProfileMenu onLogout={onLogout} />
-            </>
-          }
+          footer={<ProfileMenu onLogout={onLogout} />}
           mobileOpen={menuOpen}
           onMobileOpenChange={setMenuOpen}
         />
@@ -394,7 +377,6 @@ export function AppShell({
                     labels={labels}
                     months={months}
                     sources={sources}
-                    comparison={comparison}
                     channelFilter={platformFilter}
                     refreshSources={loadSources}
                   />

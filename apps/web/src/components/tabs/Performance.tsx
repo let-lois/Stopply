@@ -14,6 +14,39 @@ import { SourceCheck } from '../SourceCheck';
 
 const CREATIVE_TYPE_OPTIONS = ['Video', 'Carousel', 'Static', 'UGC', 'Other'];
 
+// Campaign objectives differ per platform, so the tag picker offers the
+// right vocabulary for each channel.
+const CAMPAIGN_TYPE_OPTIONS: Record<string, string[]> = {
+  meta: ['Lead Generation', 'Conversions / Sales', 'Traffic', 'Awareness', 'Engagement', 'Retargeting', 'Other'],
+  google: ['Search', 'Performance Max', 'Display', 'Video / YouTube', 'Shopping', 'Demand Gen', 'Other'],
+};
+
+function campaignTypeOptions(channel: string): string[] {
+  return (
+    CAMPAIGN_TYPE_OPTIONS[channel.toLowerCase()] ?? [
+      'Lead Generation',
+      'Conversions / Sales',
+      'Traffic',
+      'Awareness',
+      'Retargeting',
+      'Other',
+    ]
+  );
+}
+
+// Glyph for the creative tile next to each ad title. There are no actual
+// creative assets in CSV exports (thumbnails need the ad platform APIs),
+// so the tile identifies the format at a glance instead.
+function creativeGlyph(t: string | null): string {
+  const k = (t ?? '').toLowerCase();
+  if (k.includes('video')) return '▶';
+  if (k.includes('carousel')) return '⧉';
+  if (k.includes('ugc')) return '☺';
+  if (k.includes('text') || k.includes('search') || k.includes('rsa')) return 'Aa';
+  if (k.includes('static') || k.includes('image')) return '▣';
+  return '◇';
+}
+
 function statusLabel(status: AdLineItem['status']): string {
   if (status === 'top') return 'Top performer';
   if (status === 'under') return 'Underperforming';
@@ -26,7 +59,6 @@ interface Props {
   labels: FunnelLabels;
   months: string[];
   sources: SourceInfo[];
-  comparison: Comparison;
   // Narrows every number on this tab to one ad platform (the profile
   // header's All/Meta/Google flip). null shows everything.
   channelFilter?: 'meta' | 'google' | null;
@@ -65,8 +97,11 @@ function sumChannels(data: MonthData | undefined, field: 'leads' | 'scheduled' |
   return data.channels.reduce((acc, ch) => acc + Number(ch[field] ?? 0), 0);
 }
 
-export function PerformanceTab({ settings, labels, months, sources, comparison, channelFilter, refreshSources }: Props) {
+export function PerformanceTab({ settings, labels, months, sources, channelFilter, refreshSources }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set(months.slice(0, 1)));
+  // The comparison basis lives here, next to the months it applies to,
+  // rather than in the sidebar.
+  const [comparison, setComparison] = useState<Comparison>('previous');
   const canAdmin = settings.role !== 'viewer';
 
   const toggle = (m: string) =>
@@ -90,6 +125,22 @@ export function PerformanceTab({ settings, labels, months, sources, comparison, 
 
   return (
     <div className="stack" style={{ gap: 20 }}>
+      <div className="row" style={{ justifyContent: 'flex-end' }}>
+        <label className="row" style={{ gap: 8, width: 'auto', fontSize: 13, color: 'var(--ink-soft)' }}>
+          Compare
+          <select
+            value={comparison}
+            onChange={(e) => setComparison(e.target.value as Comparison)}
+            aria-label="Comparison"
+            style={{ width: 'auto' }}
+          >
+            <option value="previous">vs previous month</option>
+            <option value="year">vs same month last year</option>
+            <option value="target">vs target</option>
+            <option value="none">no comparison</option>
+          </select>
+        </label>
+      </div>
       {months.map((month, idx) => (
         <MonthSection
           key={month}
@@ -150,7 +201,30 @@ function MonthSection({
   const [openCampaigns, setOpenCampaigns] = useState<Set<string>>(new Set());
   const [creativeFilter, setCreativeFilter] = useState<string | null>(null);
   const [editingAd, setEditingAd] = useState<string | null>(null);
+  const [editingCampaign, setEditingCampaign] = useState<string | null>(null);
   const timezone = settings.tenant.timezone;
+
+  const updateCampaignType = async (channel: string, campaign: string, campaignType: string) => {
+    setEditingCampaign(null);
+    try {
+      await api('/api/tenant/campaigns/type', {
+        method: 'PATCH',
+        json: { channel, campaign, campaignType },
+      });
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              campaigns: prev.campaigns.map((r) =>
+                r.channel === channel && r.campaign === campaign ? { ...r, campaign_type: campaignType } : r
+              ),
+            }
+          : prev
+      );
+    } catch {
+      // Leave the tag as it was; the user can retry.
+    }
+  };
 
   const updateCreativeType = async (item: AdLineItem, creativeType: string) => {
     setEditingAd(null);
@@ -366,7 +440,7 @@ function MonthSection({
           <h3>Lead cohort</h3>
           <CohortStrip data={view} month={month} />
 
-          <h3>Spend by platform</h3>
+          <h3>Campaigns and ads</h3>
           {view.adLineItems.length > 0 && (
             <div className="type-filters">
               <button className={creativeFilter === null ? 'active' : ''} onClick={() => setCreativeFilter(null)}>
@@ -387,7 +461,7 @@ function MonthSection({
               const total = rows.reduce((a, r) => a + r.spend, 0);
               const isOpen = openCampaigns.has(channel);
               return (
-                <div key={channel} className="stack" style={{ gap: 6 }}>
+                <div key={channel} className="stack" style={{ gap: 8 }}>
                   <button
                     className="row small"
                     style={{ justifyContent: 'space-between', width: '100%' }}
@@ -403,37 +477,89 @@ function MonthSection({
                     <span>
                       <span style={{ color: channelColor(channel), marginRight: 6 }}>{'●'}</span>
                       {channel}
+                      <span className="muted" style={{ marginLeft: 8, fontWeight: 400 }}>
+                        {rows.length} campaign{rows.length === 1 ? '' : 's'}
+                      </span>
                     </span>
                     <span className="num">{fmtMoney(total)}</span>
                   </button>
                   {isOpen && (
-                    <div className="stack" style={{ gap: 14 }}>
+                    <div className="stack" style={{ gap: 12 }}>
                       {rows.map((r) => {
                         const ads = view.adLineItems
                           .filter((a) => a.channel === channel && a.campaign === r.campaign)
                           .filter((a) => !creativeFilter || a.creative_type === creativeFilter);
+                        const campaignKey = `${channel}|${r.campaign}`;
                         return (
-                          <div key={r.campaign} className="stack" style={{ gap: 6 }}>
-                            <div className="row" style={{ justifyContent: 'space-between', fontSize: 13 }}>
-                              <span style={{ fontWeight: 600 }}>{r.campaign}</span>
-                              <span className="row" style={{ gap: 14 }}>
-                                <span className="num muted">
-                                  {fmtMoney(r.spend)} &middot; {fmtNum(r.leads)} {labels.lead.toLowerCase()}
-                                  {' '}&middot; {fmtMoney(r.revenue)} revenue
+                          <div key={r.campaign} className="campaign-block stack" style={{ gap: 10 }}>
+                            <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
+                              <span style={{ fontWeight: 700, fontSize: 15 }}>{r.campaign}</span>
+                              {editingCampaign === campaignKey ? (
+                                <select
+                                  autoFocus
+                                  defaultValue={r.campaign_type ?? ''}
+                                  onBlur={() => setEditingCampaign(null)}
+                                  onChange={(e) => updateCampaignType(channel, r.campaign, e.target.value)}
+                                  style={{ width: 'auto', minHeight: 30 }}
+                                >
+                                  <option value="" disabled>
+                                    Pick a campaign type
+                                  </option>
+                                  {campaignTypeOptions(channel).map((t) => (
+                                    <option key={t} value={t}>
+                                      {t}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span
+                                  className={`creative-tag ${r.campaign_type ? 'manual' : ''}`}
+                                  onClick={() => canAdmin && setEditingCampaign(campaignKey)}
+                                  role="button"
+                                  tabIndex={0}
+                                >
+                                  {r.campaign_type ?? 'Set campaign type'} <span className="edit">&#9998;</span>
                                 </span>
+                              )}
+                            </div>
+
+                            <div className="campaign-stats">
+                              <span>
+                                <span className="muted">Spend</span>
+                                <span className="num">{fmtMoney(r.spend)}</span>
+                              </span>
+                              <span>
+                                <span className="muted">{labels.lead}</span>
+                                <span className="num">{fmtNum(r.leads)}</span>
+                              </span>
+                              <span>
+                                <span className="muted">{labels.completed}</span>
+                                <span className="num">{fmtNum(r.completed)}</span>
+                              </span>
+                              <span>
+                                <span className="muted">Revenue</span>
+                                <span className="num">{fmtMoney(r.revenue)}</span>
+                              </span>
+                              <span>
+                                <span className="muted">ROAS</span>
                                 <span className="num" style={{ fontWeight: 700 }}>
-                                  {r.spend > 0 ? (r.revenue / r.spend).toFixed(1) + 'x ROAS' : '- ROAS'}
+                                  {r.spend > 0 ? (r.revenue / r.spend).toFixed(1) + 'x' : '-'}
                                 </span>
                               </span>
+                              <span>
+                                <span className="muted">Cost / {labels.lead.toLowerCase().replace(/s$/, '')}</span>
+                                <span className="num">{r.leads > 0 ? fmtMoney(r.spend / r.leads) : '-'}</span>
+                              </span>
                             </div>
+
                             {ads.length > 0 && (
                               <div style={{ overflowX: 'auto' }}>
                                 <table className="data">
                                   <thead>
                                     <tr>
-                                      <th>Ad</th>
-                                      <th>Creative</th>
+                                      <th>Ad / creative</th>
                                       <th>Spend</th>
+                                      <th>% of campaign</th>
                                       <th>Leads</th>
                                       <th>Cost / lead</th>
                                       <th>Status</th>
@@ -444,37 +570,47 @@ function MonthSection({
                                       const adKey = `${a.channel}|${a.campaign}|${a.ad_name}`;
                                       return (
                                         <tr key={adKey}>
-                                          <td>{a.ad_name}</td>
                                           <td>
-                                            {editingAd === adKey ? (
-                                              <select
-                                                autoFocus
-                                                defaultValue={a.creative_type ?? ''}
-                                                onBlur={() => setEditingAd(null)}
-                                                onChange={(e) => updateCreativeType(a, e.target.value)}
-                                                style={{ width: 'auto', minHeight: 30 }}
-                                              >
-                                                <option value="" disabled>
-                                                  Pick a type
-                                                </option>
-                                                {CREATIVE_TYPE_OPTIONS.map((t) => (
-                                                  <option key={t} value={t}>
-                                                    {t}
-                                                  </option>
-                                                ))}
-                                              </select>
-                                            ) : (
-                                              <span
-                                                className={`creative-tag ${a.creative_type_source === 'manual' ? 'manual' : ''}`}
-                                                onClick={() => setEditingAd(adKey)}
-                                                role="button"
-                                                tabIndex={0}
-                                              >
-                                                {a.creative_type ?? 'Untagged'} <span className="edit">&#9998;</span>
+                                            <span className="row" style={{ gap: 10, flexWrap: 'nowrap' }}>
+                                              <span className="creative-tile" aria-hidden="true">
+                                                {creativeGlyph(a.creative_type)}
                                               </span>
-                                            )}
+                                              <span style={{ minWidth: 0 }}>
+                                                <span style={{ fontWeight: 600, display: 'block' }}>{a.ad_name}</span>
+                                                {editingAd === adKey ? (
+                                                  <select
+                                                    autoFocus
+                                                    defaultValue={a.creative_type ?? ''}
+                                                    onBlur={() => setEditingAd(null)}
+                                                    onChange={(e) => updateCreativeType(a, e.target.value)}
+                                                    style={{ width: 'auto', minHeight: 30 }}
+                                                  >
+                                                    <option value="" disabled>
+                                                      Pick a type
+                                                    </option>
+                                                    {CREATIVE_TYPE_OPTIONS.map((t) => (
+                                                      <option key={t} value={t}>
+                                                        {t}
+                                                      </option>
+                                                    ))}
+                                                  </select>
+                                                ) : (
+                                                  <span
+                                                    className={`creative-tag ${a.creative_type_source === 'manual' ? 'manual' : ''}`}
+                                                    onClick={() => setEditingAd(adKey)}
+                                                    role="button"
+                                                    tabIndex={0}
+                                                  >
+                                                    {a.creative_type ?? 'Untagged'} <span className="edit">&#9998;</span>
+                                                  </span>
+                                                )}
+                                              </span>
+                                            </span>
                                           </td>
                                           <td className="num">{fmtMoney(a.spend)}</td>
+                                          <td className="num">
+                                            {r.spend > 0 ? ((a.spend / r.spend) * 100).toFixed(0) + '%' : '—'}
+                                          </td>
                                           <td className="num">{a.leads_reported ?? '—'}</td>
                                           <td className="num">
                                             {a.cost_per_lead !== null ? fmtMoney(a.cost_per_lead) : '—'}
@@ -493,6 +629,12 @@ function MonthSection({
                                   </tbody>
                                 </table>
                               </div>
+                            )}
+                            {ads.length === 0 && (
+                              <p className="muted" style={{ fontSize: 12 }}>
+                                No ad level rows for this campaign yet. Upload the by-ad CSV export from Data and
+                                Team to break it down per ad.
+                              </p>
                             )}
                           </div>
                         );
