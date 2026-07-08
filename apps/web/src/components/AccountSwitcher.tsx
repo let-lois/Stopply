@@ -136,7 +136,7 @@ export function AccountSwitcher({
               <span style={{ minWidth: 0 }}>
                 <span className="acct-row-name">{t.name}</span>
                 <br />
-                <span className="acct-row-sub">{t.custom_hostname ?? `${t.slug}.stopply.com`}</span>
+                <span className="acct-row-sub">{t.custom_hostname ?? `${t.slug}.bi.letlois.com`}</span>
               </span>
             </button>
           ))}

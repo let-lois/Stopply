@@ -60,9 +60,9 @@ export function isAgencyHost(env: Env, hostname: string): boolean {
   return agencyHosts(env).includes(host);
 }
 
-// AGENCY_HOST and TENANT_HOST_SUFFIX are comma-separated during the
-// stopply.com migration so both domains resolve while bi.letlois.com stays
-// live for existing client tracking.
+// Comma-separated so more than one host/suffix can resolve at once. Only
+// bi.letlois.com is configured today (see CLAUDE.md on the abandoned
+// stopply.com migration), but the parsing stays generic.
 function agencyHosts(env: Env): string[] {
   return env.AGENCY_HOST.split(',')
     .map((h) => h.trim().toLowerCase())
