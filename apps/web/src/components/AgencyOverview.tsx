@@ -1,6 +1,6 @@
 'use client';
 
-// Agency console sections rendered inside AgencyShell:
+// Agency console sections rendered as tabs inside AppShell:
 //   - ClientsSection: the tenant grid from agency_rollup snapshots with
 //     click through into each tenant's dashboard in agency context.
 //   - TeamSection: agency user management (invite, role, tenant

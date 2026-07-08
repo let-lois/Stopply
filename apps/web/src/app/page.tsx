@@ -9,7 +9,6 @@ import { api, fetchMe, setCsrf, type Me } from '@/lib/api';
 import { isDemoMode } from '@/lib/demoMode';
 import { Login } from '@/components/Login';
 import { AppShell } from '@/components/AppShell';
-import { AgencyShell } from '@/components/AgencyShell';
 import { DemoBadge } from '@/components/DemoBadge';
 import { ToastProvider } from '@/components/Toasts';
 
@@ -55,40 +54,32 @@ export default function Page() {
   }
 
   const isAgencyUser = me.userType === 'agency';
-  // Agency users drive tenant context through the Clients tab; tenant users
-  // are always in their own context. Demo mode always goes straight to
-  // AppShell (its own Clients tab included), never AgencyShell, that's the
-  // unified nav direction; this is scoped to demo for now, real agency
-  // routing below is unchanged pending a decision on rolling it out fully.
-  const inTenantContext = !isAgencyUser || agencyTenant !== null || isDemoMode();
+  // Agency users drive tenant context through the Clients tab, one
+  // continuous nav instead of a separate agency console with its own
+  // switcher. hasTenant is false only before an agency user has entered a
+  // specific client: no tenant is selected server side yet, so AppShell
+  // shows the agency console tabs (Clients / Team / Audit log / Keys and
+  // secrets) instead of attempting tenant scoped API calls that would
+  // fail. Tenant users and demo mode always have a tenant in context.
+  const hasTenant = !isAgencyUser || agencyTenant !== null || isDemoMode();
 
   return (
     <ToastProvider>
-      {isAgencyUser && !inTenantContext && (
-        <AgencyShell
-          role={me.role as 'agency_admin' | 'agency_staff'}
-          userId={me.userId}
-          onEnterTenant={(t) => setAgencyTenant(t)}
-          onLogout={logout}
-        />
-      )}
-      {inTenantContext && (
-        <AppShell
-          // Remount when the active sub-account changes so all tenant scoped
-          // data reloads cleanly under the new context.
-          key={agencyTenant?.id ?? 'self'}
-          isAgencyUser={isAgencyUser}
-          agencyRole={isAgencyUser ? (me.role as 'agency_admin' | 'agency_staff') : undefined}
-          onSwitchTenant={isAgencyUser ? (t) => setAgencyTenant(t) : null}
-          onLogout={logout}
-          initialTab={isAgencyUser && !agencyTenant ? 'clients' : undefined}
-        />
-      )}
+      <AppShell
+        // Remount when the active sub-account changes so all tenant scoped
+        // data reloads cleanly under the new context.
+        key={agencyTenant?.id ?? 'self'}
+        isAgencyUser={isAgencyUser}
+        agencyRole={isAgencyUser ? (me.role as 'agency_admin' | 'agency_staff') : undefined}
+        userId={me.userId}
+        hasTenant={hasTenant}
+        onSwitchTenant={isAgencyUser ? (t) => setAgencyTenant(t) : null}
+        onLogout={logout}
+        initialTab={isAgencyUser && !agencyTenant ? 'clients' : undefined}
+      />
       {/* AppShell renders its own inline demo badge in the sidebar, since a
           fixed corner badge here would overlap in-page controls (e.g. the
-          Clients tab's "New client" button). AgencyShell has no demo badge
-          of its own, but demo mode never renders AgencyShell (see
-          inTenantContext above), so there is nothing to cover here. */}
+          Clients tab's "New client" button). */}
     </ToastProvider>
   );
 }

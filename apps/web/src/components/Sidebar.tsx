@@ -1,7 +1,7 @@
 'use client';
 
-// Shared left-hand navigation rail used by both AppShell (tenant dashboard)
-// and AgencyShell (agency console). Mirrors the Claude.ai pattern: a fixed
+// Shared left-hand navigation rail used by AppShell, for both the tenant
+// dashboard and the agency console tabs. Mirrors the Claude.ai pattern: a fixed
 // width column with the brand/account switcher up top, section links in the
 // middle, and account controls pinned to the bottom. Collapses to an
 // off-canvas drawer, opened by a hamburger button, below 900px.
