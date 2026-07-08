@@ -23,6 +23,11 @@ export const CONTROL_MIGRATIONS: Migration[] = [
     "version": 3,
     "name": "0003_ad_budget",
     "sql": "-- Retainer level ad spend budget and platform mix per client, captured at\n-- provisioning time and editable afterward from the roster. This is the\n-- agency's committed monthly number, distinct from the actual spend rolled\n-- up from each tenant's own imported CSVs (agency_rollup.spend) -- the\n-- roster compares the two side by side.\nALTER TABLE tenants ADD COLUMN monthly_ad_spend_budget REAL;\nALTER TABLE tenants ADD COLUMN ad_platforms_json TEXT;\n"
+  },
+  {
+    "version": 4,
+    "name": "0004_ad_platform_budget_split",
+    "sql": "-- Per platform breakdown of the committed monthly ad spend budget, e.g.\n-- {\"meta\": 19000, \"google\": 9500}. monthly_ad_spend_budget (0003) stays the\n-- authoritative total; this is optional detail on top of it, keyed by the\n-- same platform codes as ad_platforms_json. Not required to sum exactly to\n-- the total, the roster shows both and lets a mismatch be visible rather\n-- than silently rejecting one.\nALTER TABLE tenants ADD COLUMN ad_platform_budget_json TEXT;\n"
   }
 ];
 

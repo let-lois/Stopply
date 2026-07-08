@@ -25,6 +25,7 @@ export interface TenantRow {
   funnel_labels_json: string | null;
   monthly_ad_spend_budget: number | null;
   ad_platforms_json: string | null;
+  ad_platform_budget_json: string | null;
   created_at: string;
 }
 

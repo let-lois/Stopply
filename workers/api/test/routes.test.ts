@@ -177,7 +177,29 @@ describe('role enforcement', () => {
       body: JSON.stringify({ monthlyAdSpendBudget: 28500, adPlatforms: ['meta', 'google'] }),
     });
     expect(res.status).toBe(200);
-    expect(writes).toEqual([[28500, JSON.stringify(['meta', 'google']), 't_beclinical']]);
+    expect(writes).toEqual([[28500, JSON.stringify(['meta', 'google']), null, 't_beclinical']]);
+  });
+
+  it('lets agency_admin set a per platform budget split', async () => {
+    const writes: unknown[][] = [];
+    (env.CONTROL_DB as FakeD1).on(/UPDATE tenants SET monthly_ad_spend_budget/, (params) => {
+      writes.push(params);
+      return {};
+    });
+    const { cookie, csrf } = await login('agency_admin', 'agency', null);
+    const res = await request(env, '/api/agency/tenants/t_beclinical/budget', {
+      method: 'PUT',
+      headers: { cookie, 'x-csrf-token': csrf, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        monthlyAdSpendBudget: 28500,
+        adPlatforms: ['meta', 'google'],
+        platformBudgets: { meta: 19000, google: 9500 },
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(writes).toEqual([
+      [28500, JSON.stringify(['meta', 'google']), JSON.stringify({ meta: 19000, google: 9500 }), 't_beclinical'],
+    ]);
   });
 
   it('404s a budget edit for an unknown tenant', async () => {

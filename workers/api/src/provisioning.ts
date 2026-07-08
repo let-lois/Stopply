@@ -26,6 +26,9 @@ export interface ProvisionInput {
   // the tenant's own imported CSVs.
   monthlyAdSpendBudget?: number | null;
   adPlatforms?: Array<'meta' | 'google'>;
+  // Per platform breakdown of the total above, e.g. { meta: 19000, google:
+  // 9500 }. Optional detail, not required to sum to monthlyAdSpendBudget.
+  platformBudgets?: Partial<Record<'meta' | 'google', number>>;
   actor: { id: string; name: string };
 }
 
@@ -170,13 +173,14 @@ export async function provisionTenant(env: Env, input: ProvisionInput): Promise<
   const schemaVersion = await applyTenantMigrations(env, databaseId, existing?.schema_version ?? 0);
 
   const adPlatformsJson = input.adPlatforms ? JSON.stringify(input.adPlatforms) : null;
+  const platformBudgetJson = input.platformBudgets ? JSON.stringify(input.platformBudgets) : null;
 
   if (!existing) {
     await env.CONTROL_DB.prepare(
       `INSERT INTO tenants (id, slug, name, status, plan, timezone, d1_database_id, d1_database_name,
         schema_version, theme_json, layout_json, footer_credit, funnel_labels_json,
-        monthly_ad_spend_budget, ad_platforms_json)
-       VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`
+        monthly_ad_spend_budget, ad_platforms_json, ad_platform_budget_json)
+       VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`
     )
       .bind(
         tenantId,
@@ -191,7 +195,8 @@ export async function provisionTenant(env: Env, input: ProvisionInput): Promise<
         JSON.stringify(DEFAULT_LAYOUT),
         JSON.stringify(input.funnelLabels ?? DEFAULT_FUNNEL_LABELS),
         input.monthlyAdSpendBudget ?? null,
-        adPlatformsJson
+        adPlatformsJson,
+        platformBudgetJson
       )
       .run();
   } else {
@@ -200,10 +205,19 @@ export async function provisionTenant(env: Env, input: ProvisionInput): Promise<
     await env.CONTROL_DB.prepare(
       `UPDATE tenants SET d1_database_id = ?, d1_database_name = ?, schema_version = ?,
         monthly_ad_spend_budget = COALESCE(?, monthly_ad_spend_budget),
-        ad_platforms_json = COALESCE(?, ad_platforms_json)
+        ad_platforms_json = COALESCE(?, ad_platforms_json),
+        ad_platform_budget_json = COALESCE(?, ad_platform_budget_json)
        WHERE id = ?`
     )
-      .bind(databaseId, dbName, schemaVersion, input.monthlyAdSpendBudget ?? null, adPlatformsJson, tenantId)
+      .bind(
+        databaseId,
+        dbName,
+        schemaVersion,
+        input.monthlyAdSpendBudget ?? null,
+        adPlatformsJson,
+        platformBudgetJson,
+        tenantId
+      )
       .run();
   }
 
