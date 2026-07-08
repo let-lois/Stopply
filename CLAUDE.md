@@ -51,7 +51,6 @@ next build
 
 **API (`workers/api`) and `workers/sync`:**
 - Both workers have a **native Cloudflare Workers Builds Git integration** (configured in the Cloudflare dashboard, not in this repo) that auto-builds and deploys on every push, this does not show up as a GitHub Actions workflow, look for "Workers Builds: bi-dashboard-api-worker" / "Workers Builds: bi-dashboard-sync-worker" checks on a PR or commit to see it.
-- The API worker additionally has `.github/workflows/deploy-worker.yml`, a GitHub Actions workflow that also runs `wrangler deploy` on push to `main` when `workers/api/**` or root `wrangler.toml` change (plus manual `workflow_dispatch`). This is redundant with the Workers Builds integration above; both exist.
 - **Still confirm a deploy actually succeeded before assuming code is live.** The Workers Builds check for `bi-dashboard-api-worker` failed on every push for a stretch during the `stopply.com` migration attempt (wrong account/zone, see above), so a merge to `main` does not by itself guarantee the Worker is running the latest code, check the "Workers Builds" status.
 - This gap was the root cause of a prior unexplained HTTP 405 on login: before the routes below existed at all, `wrangler.toml` had zero `[[routes]]`, so requests to `bi.letlois.com/api/*` were never reaching the Worker.
 
