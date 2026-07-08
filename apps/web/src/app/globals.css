@@ -65,10 +65,13 @@
   box-sizing: border-box;
 }
 
-/* Mobile rules: no horizontal scroll anywhere. */
+/* Mobile rules: no horizontal scroll anywhere. clip, not hidden: hidden
+   turns body into a scroll container, which silently breaks position:
+   sticky on the sidebar (it sticks to body's never-moving scrollport
+   instead of the viewport). clip just cuts overflow without doing that. */
 html,
 body {
-  overflow-x: hidden;
+  overflow-x: clip;
   margin: 0;
   padding: 0;
   background: var(--paper);
@@ -177,6 +180,23 @@ textarea {
 .main-content {
   flex: 1;
   min-width: 0;
+}
+
+/* One-page client dashboard: each former tab is a section on a single
+   continuous page. Sidebar links scroll here instead of swapping views. */
+.page-section {
+  scroll-margin-top: 16px;
+}
+
+.page-section + .page-section {
+  margin-top: 16px;
+  padding-top: 28px;
+  border-top: 1px solid var(--hairline);
+}
+
+.section-title {
+  font-family: var(--font-display);
+  font-size: 22px;
 }
 
 .sidebar {
