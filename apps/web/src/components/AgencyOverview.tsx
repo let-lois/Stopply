@@ -854,7 +854,7 @@ function ProvisionForm({ onDone }: { onDone: () => void }) {
       <div className="card stack">
         <h3>Tenant provisioned</h3>
         <p>
-          Dashboard: <code>{result.slug}.stopply.com</code>
+          Dashboard: <code>{result.slug}.bi.letlois.com</code>
         </p>
         {result.tempPassword && (
           <p>

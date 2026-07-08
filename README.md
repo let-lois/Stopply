@@ -1,21 +1,14 @@
 # LetLois BI
 
 White label, multi tenant business intelligence for marketing
-attribution. Served from stopply.com with per client custom domains
+attribution. Served from bi.letlois.com with per client custom domains
 (bi.clientname.com). Cloudflare end to end: Next.js on Pages, Hono API
 Worker, D1, R2, KV, cron triggers.
-
-**Domain migration in progress:** rebranding from bi.letlois.com to
-stopply.com. Login and the app shell live on stopply.com now.
-bi.letlois.com stays attached in parallel for `/t.js` and `/ingest` only,
-so existing client tracking snippets and webhooks keep working until
-clients migrate. Don't remove the bi.letlois.com Worker routes until
-that migration is confirmed done.
 
 ## Architecture: two planes
 
 ```
-                       stopply.com             bi.clientname.com
+                       bi.letlois.com          bi.clientname.com
                             |                        |
                   +---------v------------------------v---------+
                   |        letlois-bi-api (Hono Worker)        |
@@ -120,21 +113,16 @@ pnpm --filter web build
 wrangler pages deploy apps/web/out --project-name letlois-bi
 ```
 
-Routing: attach the API Worker to `stopply.com/api/*`,
-`stopply.com/ingest/*`, `stopply.com/t.js`, `stopply.com/t/*`, and the
-same paths on `*.stopply.com` plus the custom hostname fallback origin.
-The same four paths stay attached on `bi.letlois.com` and
-`*.bi.letlois.com` during the migration (legacy client tracking only,
-see the note above). Pages serves everything else.
+Routing: attach the API Worker to `bi.letlois.com/api/*`,
+`bi.letlois.com/ingest/*`, `bi.letlois.com/t.js`, `bi.letlois.com/t/*`,
+and the same paths on `*.bi.letlois.com` plus the custom hostname
+fallback origin. Pages serves everything else.
 
 ### Custom hostname prerequisites (Cloudflare for SaaS)
 
 1. Enable Cloudflare for SaaS on the zone and set the **fallback
    origin** to the Pages deployment (the host that serves the app
-   shell). New custom hostnames should CNAME to `stopply.com`.
-   Hostnames provisioned before the migration may still point at
-   `bi.letlois.com`. Check the actual fallback origin configured in
-   the Cloudflare dashboard rather than assuming from this doc.
+   shell). Custom hostnames CNAME to `bi.letlois.com`.
 2. The `CF_API_TOKEN` needs the Custom Hostnames edit permission on the
    zone.
 3. The self serve flow in Data and Team, Settings creates the custom
@@ -148,7 +136,7 @@ see the note above). Pages serves everything else.
 From the agency UI (New client) or the CLI:
 
 ```sh
-API_BASE=https://stopply.com SESSION_COOKIE='lbi_session=...' CSRF_TOKEN=... \
+API_BASE=https://bi.letlois.com SESSION_COOKIE='lbi_session=...' CSRF_TOKEN=... \
 pnpm provision:tenant -- --slug acme --name "Acme Plumbing" \
   --admin-email owner@acme.com --admin-name "Pat Owner" \
   --timezone America/Phoenix --plan starter
@@ -170,19 +158,19 @@ it can also be edited later from Edit budget on the client card, or
 ### Current clients
 
 ```sh
-API_BASE=https://stopply.com SESSION_COOKIE='lbi_session=...' CSRF_TOKEN=... \
+API_BASE=https://bi.letlois.com SESSION_COOKIE='lbi_session=...' CSRF_TOKEN=... \
 pnpm provision:tenant -- --slug beclinical --name "Be Clinical" \
   --admin-email admin@beclinical.com --admin-name "Be Clinical Admin" \
   --timezone America/Los_Angeles --plan whitelabel \
   --budget 28500 --platforms meta,google
 
-API_BASE=https://stopply.com SESSION_COOKIE='lbi_session=...' CSRF_TOKEN=... \
+API_BASE=https://bi.letlois.com SESSION_COOKIE='lbi_session=...' CSRF_TOKEN=... \
 pnpm provision:tenant -- --slug b9golf --name "B9 Golf" \
   --admin-email admin@b9golf.com --admin-name "B9 Golf Admin" \
   --timezone America/Phoenix --plan starter \
   --budget 2500 --platforms google
 
-API_BASE=https://stopply.com SESSION_COOKIE='lbi_session=...' CSRF_TOKEN=... \
+API_BASE=https://bi.letlois.com SESSION_COOKIE='lbi_session=...' CSRF_TOKEN=... \
 pnpm provision:tenant -- --slug hire --name "Hire" \
   --admin-email admin@hire.com --admin-name "Hire Admin" \
   --timezone America/Phoenix --plan starter \

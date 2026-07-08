@@ -6,6 +6,10 @@ name = "bi-dashboard-api-worker"
 main = "workers/api/src/index.ts"
 compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
+# Pinned explicitly: this Worker's D1/R2/KV bindings below, and the
+# bi.letlois.com routes, all live in the LetLois account. Do not point
+# this at the All LetLois Domains account (af6cdf4448e16dc7a72f84c3dd7cf7fb).
+account_id = "40d6a92830a7cb75278c823f7f1b19a0"
 
 [[d1_databases]]
 binding = "CONTROL_DB"
@@ -23,34 +27,6 @@ bucket_name = "letlois-bi-csv"
 [[kv_namespaces]]
 binding = "SESSIONS"
 id = "1bc1e97a05fd43edbb98b4768c29fd67"
-
-# Rebrand in progress: stopply.com is the new primary domain. bi.letlois.com
-# routes stay live during the transition for existing client tracking
-# (/t.js, /ingest). Do not remove them until clients have migrated.
-[[routes]]
-pattern = "stopply.com/api/*"
-zone_name = "stopply.com"
-[[routes]]
-pattern = "stopply.com/ingest/*"
-zone_name = "stopply.com"
-[[routes]]
-pattern = "stopply.com/t.js"
-zone_name = "stopply.com"
-[[routes]]
-pattern = "stopply.com/t/*.js"
-zone_name = "stopply.com"
-[[routes]]
-pattern = "*.stopply.com/api/*"
-zone_name = "stopply.com"
-[[routes]]
-pattern = "*.stopply.com/ingest/*"
-zone_name = "stopply.com"
-[[routes]]
-pattern = "*.stopply.com/t.js"
-zone_name = "stopply.com"
-[[routes]]
-pattern = "*.stopply.com/t/*.js"
-zone_name = "stopply.com"
 
 [[routes]]
 pattern = "bi.letlois.com/api/*"
@@ -78,8 +54,5 @@ pattern = "*.bi.letlois.com/t/*.js"
 zone_name = "letlois.com"
 
 [vars]
-# Comma-separated: both domains are recognized during the stopply.com
-# migration. isAgencyHost()/resolveTenantByHost() in tenantResolver.ts
-# split on comma and check each value.
-AGENCY_HOST = "stopply.com,bi.letlois.com"
-TENANT_HOST_SUFFIX = ".stopply.com,.bi.letlois.com"
+AGENCY_HOST = "bi.letlois.com"
+TENANT_HOST_SUFFIX = ".bi.letlois.com"

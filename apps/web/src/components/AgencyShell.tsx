@@ -1,6 +1,6 @@
 'use client';
 
-// The agency console shell on stopply.com: the left sidebar navigation,
+// The agency console shell on bi.letlois.com: the left sidebar navigation,
 // section switching, and sign out. Mirrors the tenant AppShell sidebar
 // (brand + account switcher up top, section links, mobile drawer) so the
 // two planes feel like one product. Admins manage clients, their team, and
