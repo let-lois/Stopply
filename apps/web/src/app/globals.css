@@ -1,16 +1,23 @@
-/* LetLois BI base styles. Theme tokens land as CSS variables set by the
+/* Stopply BI base styles. Theme tokens land as CSS variables set by the
    AppShell from each tenant's theme_json; the values here are the default
-   LetLois theme, matched to letlois.com (blue forward, clean, modern).
-   A dark variant lives under :root[data-theme='dark'] and applies to the
-   agency console and default themed tenants; white labeled tenants keep
-   their own inline theme vars, which always win. */
+   Stopply theme. The neutral scale (paper/sidebar-bg/card/ink/hairline)
+   follows the Claude.ai pattern: the sidebar sits at a middle gray tone,
+   the main content area goes to the extreme (near white in light mode,
+   near black in dark), and card surfaces sit between the two with a
+   hairline border so they still read as distinct against a paper
+   background that is close to the same tone. Functional colors (accent,
+   positive/negative, channel colors) are unchanged by this and still
+   apply on top. A dark variant lives under :root[data-theme='dark'] and
+   applies to the agency console and default themed tenants; white
+   labeled tenants keep their own inline theme vars, which always win. */
 
 :root {
-  --paper: #f4f7fb;
+  --paper: #ffffff;
+  --sidebar-bg: #f5f4ef;
   --card: #ffffff;
-  --ink: #16202e;
-  --ink-soft: #5b6675;
-  --hairline: #e3e9f1;
+  --ink: #1b1b18;
+  --ink-soft: #6b6a65;
+  --hairline: #e5e3dd;
   --accent: #1f7ae0;
   --accent-soft: #e8f1fc;
   --positive: #1f9d6b;
@@ -30,11 +37,12 @@
 }
 
 :root[data-theme='dark'] {
-  --paper: #0e141d;
-  --card: #19212d;
-  --ink: #e9eef6;
-  --ink-soft: #9aa7b8;
-  --hairline: #28323f;
+  --paper: #1a1918;
+  --sidebar-bg: #30302e;
+  --card: #262624;
+  --ink: #ede9e2;
+  --ink-soft: #9a9891;
+  --hairline: #3a3936;
   --accent: #4da3ff;
   --accent-soft: #15273c;
   --positive: #3fc08a;
@@ -178,7 +186,7 @@ textarea {
   flex-direction: column;
   gap: 4px;
   padding: 16px 12px;
-  background: var(--card);
+  background: var(--sidebar-bg);
   border-right: 1px solid var(--hairline);
   position: sticky;
   top: 0;
