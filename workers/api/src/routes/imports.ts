@@ -81,7 +81,14 @@ importRoutes.post('/', async (c) => {
     return c.json({ error: `parse failed: ${err instanceof Error ? err.message : 'unknown'}` }, 422);
   }
 
-  await applyParseResult(d1, databaseId, sourceKey, month, parsed);
+  // Import failures name their failing step. A bare "internal error" made
+  // a production import failure undiagnosable from the outside: every
+  // side effect had persisted and the only record of what actually threw
+  // was a console line nobody could read.
+  let step = 'apply';
+  try {
+    await applyParseResult(d1, databaseId, sourceKey, month, parsed);
+    step = 'record';
 
   // Record the import and reset verification: a fresh import goes gray.
   await d1.query(
@@ -108,18 +115,25 @@ importRoutes.post('/', async (c) => {
     [parsed.recordsThrough, sourceKey]
   );
 
-  await writeAudit(c.env, {
-    actorType: session.userType,
-    actorId: session.userId,
-    tenantId: tenant.id,
-    action: 'import.csv',
-    target: `${sourceKey}/${month}`,
-    after: { rowCount: parsed.rowCount, kind: parsed.kind, r2Key },
-  });
+    step = 'audit';
+    await writeAudit(c.env, {
+      actorType: session.userType,
+      actorId: session.userId,
+      tenantId: tenant.id,
+      action: 'import.csv',
+      target: `${sourceKey}/${month}`,
+      after: { rowCount: parsed.rowCount, kind: parsed.kind, r2Key },
+    });
 
-  // Imports recompute the month inline so the dashboard is current the
-  // moment the upload returns.
-  await runTenantRollup(c.env, databaseId, month);
+    // Imports recompute the month inline so the dashboard is current the
+    // moment the upload returns.
+    step = 'rollup';
+    await runTenantRollup(c.env, databaseId, month);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error('import failed', step, detail);
+    return c.json({ error: `import failed at ${step}: ${detail.slice(0, 300)}` }, 500);
+  }
   return c.json(
     {
       ok: true,
