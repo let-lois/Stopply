@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
+import { isDemoMode } from '@/lib/demoMode';
 import type { Comparison, SourceInfo, TenantSettings } from '@/lib/types';
 import { DEFAULT_LABELS } from '@/lib/types';
 import { PerformanceTab } from './tabs/Performance';
@@ -16,7 +17,8 @@ import { PresentTab } from './tabs/Present';
 import { DataTeamTab } from './tabs/DataTeam';
 import { ChatWidget } from './ChatWidget';
 import { StopplyLogo } from './StopplyLogo';
-import { AccountSwitcher } from './AccountSwitcher';
+import { DemoBadge } from './DemoBadge';
+import { ClientsSection } from './AgencyOverview';
 import { ProfileMenu } from './ProfileMenu';
 import { CodeBox } from './CodeBox';
 import { Sidebar } from './Sidebar';
@@ -40,23 +42,27 @@ const TOKEN_TO_VAR: Record<string, string> = {
   channelWebsite: '--ch-website',
 };
 
-type TabKey = 'performance' | 'work-backwards' | 'planning' | 'present' | 'data-team';
+type TabKey = 'clients' | 'performance' | 'work-backwards' | 'planning' | 'present' | 'data-team';
 
 export function AppShell({
   isAgencyUser,
-  onExitTenant,
+  agencyRole,
   onSwitchTenant,
   onLogout,
+  initialTab,
 }: {
   isAgencyUser: boolean;
-  onExitTenant: (() => void) | null;
+  // Needed for the Clients tab: agency_admin sees "New client" and roster
+  // controls that agency_staff does not.
+  agencyRole?: 'agency_admin' | 'agency_staff';
   onSwitchTenant: ((tenant: { id: string; slug: string; name: string }) => void) | null;
   onLogout: () => void;
+  initialTab?: TabKey;
 }) {
   const [settings, setSettings] = useState<TenantSettings | null>(null);
   const [months, setMonths] = useState<string[]>([]);
   const [sources, setSources] = useState<SourceInfo[]>([]);
-  const [tab, setTab] = useState<TabKey>('performance');
+  const [tab, setTab] = useState<TabKey>(initialTab ?? 'performance');
   const [comparison, setComparison] = useState<Comparison>('previous');
   const [menuOpen, setMenuOpen] = useState(false);
   const [hasLogo, setHasLogo] = useState(false);
@@ -80,7 +86,12 @@ export function AppShell({
     api<{ months: string[] }>('/api/tenant/months')
       .then((r) => setMonths(r.months))
       .catch(() => undefined);
-    fetch('/api/tenant/logo', { method: 'HEAD' }).then((r) => setHasLogo(r.ok)).catch(() => undefined);
+    // Demo mode never touches the network, there is no real logo to check for.
+    if (isDemoMode()) {
+      setHasLogo(false);
+    } else {
+      fetch('/api/tenant/logo', { method: 'HEAD' }).then((r) => setHasLogo(r.ok)).catch(() => undefined);
+    }
   }, [loadSettings, loadSources]);
 
   // Apply the tenant theme as CSS variables on the app container.
@@ -120,11 +131,19 @@ export function AppShell({
   const isViewer = settings.role === 'viewer';
   const allowedTabs: TabKey[] = isViewer
     ? ((settings.viewConfig?.tabs ?? ['performance']) as TabKey[])
-    : ['performance', 'work-backwards', 'planning', 'present', 'data-team'];
+    : [
+        ...(isAgencyUser ? (['clients'] as TabKey[]) : []),
+        'performance',
+        'work-backwards',
+        'planning',
+        'present',
+        'data-team',
+      ];
 
   const staleCount = sources.filter((s) => s.freshness === 'red').length;
 
   const tabLabel: Record<TabKey, string> = {
+    clients: 'Clients',
     performance: 'Performance',
     'work-backwards': 'Work Backwards',
     planning: 'Planning',
@@ -144,26 +163,27 @@ export function AppShell({
       <div className="tenant-app app-layout">
         <Sidebar
           brand={
-            // Top of sidebar: for agency users this is the account switcher
-            // that tells you which sub-account you are in versus agency
-            // view. For tenant users it is their logo, falling back to the
-            // Stopply mark when no client logo has been uploaded.
-            isAgencyUser ? (
-              <AccountSwitcher
-                current={{ id: settings.tenant.id, name: settings.tenant.name }}
-                onSwitchTenant={(t) => onSwitchTenant?.(t)}
-                onEnterAgencyView={onExitTenant}
-              />
-            ) : hasLogo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src="/api/tenant/logo" alt={settings.tenant.name} style={{ height: 32, maxWidth: 140, objectFit: 'contain' }} />
-            ) : settings.tenant.theme?.wordmark ? (
-              <strong style={{ fontFamily: 'var(--font-display)', fontSize: 18 }}>
-                {settings.tenant.theme.wordmark}
-              </strong>
-            ) : (
-              <StopplyLogo />
-            )
+            <>
+              {/* Top of sidebar: the client's own logo when set, falling
+                  back to the Stopply mark. Agency users switch between
+                  clients via the Clients tab in the nav below, not a
+                  dropdown here, one continuous nav instead of a separate
+                  switcher context. */}
+              {hasLogo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src="/api/tenant/logo" alt={settings.tenant.name} style={{ height: 32, maxWidth: 140, objectFit: 'contain' }} />
+              ) : settings.tenant.theme?.wordmark ? (
+                <strong style={{ fontFamily: 'var(--font-display)', fontSize: 18 }}>
+                  {settings.tenant.theme.wordmark}
+                </strong>
+              ) : (
+                <StopplyLogo />
+              )}
+              {/* Rendered in normal flow here (not page.tsx's fixed corner
+                  badge) so it can never overlap in-page controls like the
+                  Clients tab's "New client" button. */}
+              {isDemoMode() && <DemoBadge inline />}
+            </>
           }
           items={allowedTabs.map((t) => ({
             key: t,
@@ -192,7 +212,13 @@ export function AppShell({
         />
 
         <main className="main-content shell stack" style={{ gap: 20 }}>
-          {showOnboarding && <OnboardingChecklist sources={sources} onTabChange={setTab} />}
+          {activeTab === 'clients' && (
+            // Switching a client re-renders AppShell fresh via the key prop
+            // in page.tsx (agencyTenant.id changes), which also recomputes
+            // initialTab back to "performance", no local setTab needed here.
+            <ClientsSection role={agencyRole ?? 'agency_staff'} onEnterTenant={(t) => onSwitchTenant?.(t)} />
+          )}
+          {activeTab !== 'clients' && showOnboarding && <OnboardingChecklist sources={sources} onTabChange={setTab} />}
           {activeTab === 'performance' && (
             <PerformanceTab
               settings={settings}
