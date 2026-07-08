@@ -388,8 +388,14 @@ function MonthSection({
                           <div key={r.campaign} className="stack" style={{ gap: 6 }}>
                             <div className="row" style={{ justifyContent: 'space-between', fontSize: 13 }}>
                               <span style={{ fontWeight: 600 }}>{r.campaign}</span>
-                              <span className="num muted">
-                                {fmtMoney(r.spend)} &middot; {fmtNum(r.leads)} {labels.lead.toLowerCase()}
+                              <span className="row" style={{ gap: 14 }}>
+                                <span className="num muted">
+                                  {fmtMoney(r.spend)} &middot; {fmtNum(r.leads)} {labels.lead.toLowerCase()}
+                                  {' '}&middot; {fmtMoney(r.revenue)} revenue
+                                </span>
+                                <span className="num" style={{ fontWeight: 700 }}>
+                                  {r.spend > 0 ? (r.revenue / r.spend).toFixed(1) + 'x ROAS' : '- ROAS'}
+                                </span>
                               </span>
                             </div>
                             {ads.length > 0 && (
