@@ -61,6 +61,7 @@ export function AppShell({
   userId,
   hasTenant,
   onSwitchTenant,
+  onExitTenant,
   onLogout,
   initialTab,
 }: {
@@ -80,6 +81,8 @@ export function AppShell({
   // tenant scoped.
   hasTenant: boolean;
   onSwitchTenant: ((tenant: { id: string; slug: string; name: string }) => void) | null;
+  // Closes the open client profile and returns to the Clients list.
+  onExitTenant?: (() => void) | null;
   onLogout: () => void;
   initialTab?: TabKey;
 }) {
@@ -94,6 +97,9 @@ export function AppShell({
   // Which section of the one-page client dashboard is in view (scroll spy),
   // purely for highlighting the sidebar link.
   const [activeSection, setActiveSection] = useState<SectionKey>('performance');
+  // Profile-level platform flip: null shows everything, 'meta'/'google'
+  // narrows the Performance section to that platform's numbers only.
+  const [platformFilter, setPlatformFilter] = useState<'meta' | 'google' | null>(null);
   const [comparison, setComparison] = useState<Comparison>('previous');
   const [menuOpen, setMenuOpen] = useState(false);
   const [hasLogo, setHasLogo] = useState(false);
@@ -274,22 +280,28 @@ export function AppShell({
             </>
           }
           items={[
-            // Agency console views: swap the main area entirely.
+            // Agency console views: swap the main area entirely. An open
+            // client's section links live inside the profile's own header,
+            // not here, so the sidebar stays purely agency-level. Clients
+            // remains highlighted while a profile is open, that is the
+            // area you are in.
             ...consoleKeys.map((t) => ({
               key: t,
               label: tabLabel[t],
-              active: t === activeConsole,
+              active: t === activeConsole || (t === 'clients' && activeConsole === null),
               onClick: () => setConsoleView(t),
             })),
-            // Client dashboard sections: scroll links into the one-page
-            // dashboard, highlighted by the scroll spy.
-            ...sectionKeys.map((t) => ({
-              key: t,
-              label: tabLabel[t],
-              badge: t === 'data-team' ? staleCount : undefined,
-              active: activeConsole === null && t === activeSection,
-              onClick: () => scrollToSection(t),
-            })),
+            // Tenant users have no Clients list; their sections are the
+            // top-level nav.
+            ...(!isAgencyUser
+              ? sectionKeys.map((s) => ({
+                  key: s,
+                  label: tabLabel[s],
+                  badge: s === 'data-team' ? staleCount : undefined,
+                  active: s === activeSection,
+                  onClick: () => scrollToSection(s),
+                }))
+              : []),
           ]}
           footer={
             <>
@@ -312,11 +324,14 @@ export function AppShell({
           onMobileOpenChange={setMenuOpen}
         />
 
-        <main className="main-content shell stack" style={{ gap: 20 }}>
+        <main
+          className={`main-content shell stack ${isAgencyUser && activeConsole === null && settings ? 'has-profile-head' : ''}`.trim()}
+          style={{ gap: 20 }}
+        >
           {activeConsole === 'clients' && (
             // Switching a client re-renders AppShell fresh via the key prop
             // in page.tsx (agencyTenant.id changes), landing on the top of
-            // that client's one-page dashboard.
+            // that client's profile.
             <ClientsSection role={agencyRole ?? 'agency_staff'} onEnterTenant={(t) => onSwitchTenant?.(t)} />
           )}
           {activeConsole === 'team' && <TeamSection currentUserId={userId} />}
@@ -324,9 +339,51 @@ export function AppShell({
           {activeConsole === 'secrets' && <SecretsSection />}
 
           {activeConsole === null && settings && (
-            // The client's dashboard: every section on one continuous page,
+            // The client's profile: every section on one continuous page,
             // in sidebar order, each anchored for the scroll links above.
             <>
+              {isAgencyUser && (
+                // Profile header: keeps the open client's identity, its
+                // section nav, and the platform flip pinned while scrolling
+                // the long page. The sections belong to this profile, so
+                // their nav lives here rather than in the agency sidebar.
+                <div className="client-profile-head">
+                  <div className="row" style={{ gap: 12, flexWrap: 'wrap', width: '100%' }}>
+                    <button className="small" onClick={() => onExitTenant?.()}>
+                      &larr; All clients
+                    </button>
+                    <span className="profile-name">{settings.tenant.name}</span>
+                    <span className="muted" style={{ fontSize: 12 }}>{settings.tenant.plan}</span>
+                    <div className="type-filters" style={{ marginLeft: 'auto' }}>
+                      <button className={platformFilter === null ? 'active' : ''} onClick={() => setPlatformFilter(null)}>
+                        All platforms
+                      </button>
+                      <button className={platformFilter === 'meta' ? 'active' : ''} onClick={() => setPlatformFilter('meta')}>
+                        Meta
+                      </button>
+                      <button
+                        className={platformFilter === 'google' ? 'active' : ''}
+                        onClick={() => setPlatformFilter('google')}
+                      >
+                        Google
+                      </button>
+                    </div>
+                  </div>
+                  <nav className="profile-nav" aria-label="Client sections">
+                    {sectionKeys.map((s) => (
+                      <button
+                        key={s}
+                        className={s === activeSection ? 'active' : ''}
+                        onClick={() => scrollToSection(s)}
+                      >
+                        {tabLabel[s]}
+                        {s === 'data-team' && staleCount > 0 && <span className="badge">{staleCount}</span>}
+                      </button>
+                    ))}
+                  </nav>
+                </div>
+              )}
+
               {showOnboarding && <OnboardingChecklist sources={sources} onOpenDataTeam={() => scrollToSection('data-team')} />}
 
               {sectionKeys.includes('performance') && (
@@ -338,6 +395,7 @@ export function AppShell({
                     months={months}
                     sources={sources}
                     comparison={comparison}
+                    channelFilter={platformFilter}
                     refreshSources={loadSources}
                   />
                 </section>
