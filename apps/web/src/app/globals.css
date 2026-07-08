@@ -189,16 +189,17 @@ textarea {
 }
 
 /* Client profile header: pins the open client's name, the way back to the
-   Clients list, and the All/Meta/Google platform flip while scrolling. */
+   Clients list, its section nav, and the All/Meta/Google platform flip
+   while scrolling. The sections belong to the profile, so their nav lives
+   here rather than in the agency sidebar. */
 .client-profile-head {
   position: sticky;
   top: 0;
   z-index: 40;
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding: 12px 0;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0 0;
   margin: -16px 0 0;
   background: var(--paper);
   border-bottom: 1px solid var(--hairline);
@@ -210,16 +211,35 @@ textarea {
   font-weight: 700;
 }
 
-/* Anchored sections need to land below the sticky profile header. */
-.main-content.has-profile-head .page-section {
-  scroll-margin-top: 76px;
+.profile-nav {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
 }
 
-/* An open client's section links sit nested under the Clients entry. */
-.sidebar-nav button.indent {
-  padding-left: 28px;
+.profile-nav button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
   font-size: 13px;
-  min-height: 32px;
+  font-weight: 600;
+  padding: 8px 10px;
+  min-height: 0;
+  border-radius: 8px 8px 0 0;
+  border-bottom: 2px solid transparent;
+}
+
+.profile-nav button.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* Anchored sections need to land below the sticky profile header. */
+.main-content.has-profile-head .page-section {
+  scroll-margin-top: 108px;
 }
 
 .page-section + .page-section {

@@ -280,28 +280,17 @@ export function AppShell({
             </>
           }
           items={[
-            // Agency console views: swap the main area entirely. The open
-            // client's profile lives under Clients, so its section links
-            // nest indented right below that item instead of standing as
-            // top-level destinations of their own.
-            ...consoleKeys.flatMap((t) => [
-              {
-                key: t,
-                label: tabLabel[t],
-                active: t === activeConsole || (t === 'clients' && activeConsole === null),
-                onClick: () => setConsoleView(t),
-              },
-              ...(t === 'clients' && hasTenant && settings
-                ? sectionKeys.map((s) => ({
-                    key: s,
-                    label: tabLabel[s],
-                    indent: true,
-                    badge: s === 'data-team' ? staleCount : undefined,
-                    active: activeConsole === null && s === activeSection,
-                    onClick: () => scrollToSection(s),
-                  }))
-                : []),
-            ]),
+            // Agency console views: swap the main area entirely. An open
+            // client's section links live inside the profile's own header,
+            // not here, so the sidebar stays purely agency-level. Clients
+            // remains highlighted while a profile is open, that is the
+            // area you are in.
+            ...consoleKeys.map((t) => ({
+              key: t,
+              label: tabLabel[t],
+              active: t === activeConsole || (t === 'clients' && activeConsole === null),
+              onClick: () => setConsoleView(t),
+            })),
             // Tenant users have no Clients list; their sections are the
             // top-level nav.
             ...(!isAgencyUser
@@ -354,30 +343,44 @@ export function AppShell({
             // in sidebar order, each anchored for the scroll links above.
             <>
               {isAgencyUser && (
-                // Profile header: keeps the open client's identity and the
-                // platform flip pinned while scrolling the long page. This
-                // is a profile under the Clients list, not a separate
-                // destination, so the way back is right here.
+                // Profile header: keeps the open client's identity, its
+                // section nav, and the platform flip pinned while scrolling
+                // the long page. The sections belong to this profile, so
+                // their nav lives here rather than in the agency sidebar.
                 <div className="client-profile-head">
-                  <button className="small" onClick={() => onExitTenant?.()}>
-                    &larr; All clients
-                  </button>
-                  <span className="profile-name">{settings.tenant.name}</span>
-                  <span className="muted" style={{ fontSize: 12 }}>{settings.tenant.plan}</span>
-                  <div className="type-filters" style={{ marginLeft: 'auto' }}>
-                    <button className={platformFilter === null ? 'active' : ''} onClick={() => setPlatformFilter(null)}>
-                      All platforms
+                  <div className="row" style={{ gap: 12, flexWrap: 'wrap', width: '100%' }}>
+                    <button className="small" onClick={() => onExitTenant?.()}>
+                      &larr; All clients
                     </button>
-                    <button className={platformFilter === 'meta' ? 'active' : ''} onClick={() => setPlatformFilter('meta')}>
-                      Meta
-                    </button>
-                    <button
-                      className={platformFilter === 'google' ? 'active' : ''}
-                      onClick={() => setPlatformFilter('google')}
-                    >
-                      Google
-                    </button>
+                    <span className="profile-name">{settings.tenant.name}</span>
+                    <span className="muted" style={{ fontSize: 12 }}>{settings.tenant.plan}</span>
+                    <div className="type-filters" style={{ marginLeft: 'auto' }}>
+                      <button className={platformFilter === null ? 'active' : ''} onClick={() => setPlatformFilter(null)}>
+                        All platforms
+                      </button>
+                      <button className={platformFilter === 'meta' ? 'active' : ''} onClick={() => setPlatformFilter('meta')}>
+                        Meta
+                      </button>
+                      <button
+                        className={platformFilter === 'google' ? 'active' : ''}
+                        onClick={() => setPlatformFilter('google')}
+                      >
+                        Google
+                      </button>
+                    </div>
                   </div>
+                  <nav className="profile-nav" aria-label="Client sections">
+                    {sectionKeys.map((s) => (
+                      <button
+                        key={s}
+                        className={s === activeSection ? 'active' : ''}
+                        onClick={() => scrollToSection(s)}
+                      >
+                        {tabLabel[s]}
+                        {s === 'data-team' && staleCount > 0 && <span className="badge">{staleCount}</span>}
+                      </button>
+                    ))}
+                  </nav>
                 </div>
               )}
 
