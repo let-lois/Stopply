@@ -18,7 +18,7 @@ import { DataTeamTab } from './tabs/DataTeam';
 import { ChatWidget } from './ChatWidget';
 import { StopplyLogo } from './StopplyLogo';
 import { DemoBadge } from './DemoBadge';
-import { ClientsSection } from './AgencyOverview';
+import { ClientsSection, TeamSection, AuditSection, SecretsSection } from './AgencyOverview';
 import { ProfileMenu } from './ProfileMenu';
 import { CodeBox } from './CodeBox';
 import { Sidebar } from './Sidebar';
@@ -42,19 +42,43 @@ const TOKEN_TO_VAR: Record<string, string> = {
   channelWebsite: '--ch-website',
 };
 
-type TabKey = 'clients' | 'performance' | 'work-backwards' | 'planning' | 'present' | 'data-team';
+type TabKey =
+  | 'clients'
+  | 'team'
+  | 'audit'
+  | 'secrets'
+  | 'performance'
+  | 'work-backwards'
+  | 'planning'
+  | 'present'
+  | 'data-team';
+
+const TENANT_TABS: TabKey[] = ['performance', 'work-backwards', 'planning', 'present', 'data-team'];
 
 export function AppShell({
   isAgencyUser,
   agencyRole,
+  userId,
+  hasTenant,
   onSwitchTenant,
   onLogout,
   initialTab,
 }: {
   isAgencyUser: boolean;
   // Needed for the Clients tab: agency_admin sees "New client" and roster
-  // controls that agency_staff does not.
+  // controls that agency_staff does not, and gates the Team/Audit tabs.
   agencyRole?: 'agency_admin' | 'agency_staff';
+  // Needed for the Team tab, to mark the signed in user's own row.
+  userId: string;
+  // False only for an agency user who has not entered a specific client's
+  // dashboard yet: no tenant is selected server side, so /api/tenant/*
+  // routes are not reachable (the API returns "no tenant selected"). True
+  // for tenant users always, for agency users once they switch into a
+  // client, and always true in demo mode (it has a synthetic active
+  // client). When false, this renders the agency console tabs only
+  // (Clients / Team / Audit log / Keys and secrets), none of which are
+  // tenant scoped.
+  hasTenant: boolean;
   onSwitchTenant: ((tenant: { id: string; slug: string; name: string }) => void) | null;
   onLogout: () => void;
   initialTab?: TabKey;
@@ -62,11 +86,12 @@ export function AppShell({
   const [settings, setSettings] = useState<TenantSettings | null>(null);
   const [months, setMonths] = useState<string[]>([]);
   const [sources, setSources] = useState<SourceInfo[]>([]);
-  const [tab, setTab] = useState<TabKey>(initialTab ?? 'performance');
+  const [tab, setTab] = useState<TabKey>(initialTab ?? (hasTenant ? 'performance' : 'clients'));
   const [comparison, setComparison] = useState<Comparison>('previous');
   const [menuOpen, setMenuOpen] = useState(false);
   const [hasLogo, setHasLogo] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [canSecrets, setCanSecrets] = useState(false);
 
   const loadSettings = useCallback(() => {
     api<TenantSettings>('/api/tenant/settings')
@@ -81,6 +106,7 @@ export function AppShell({
   }, []);
 
   useEffect(() => {
+    if (!hasTenant) return;
     loadSettings();
     loadSources();
     api<{ months: string[] }>('/api/tenant/months')
@@ -92,7 +118,17 @@ export function AppShell({
     } else {
       fetch('/api/tenant/logo', { method: 'HEAD' }).then((r) => setHasLogo(r.ok)).catch(() => undefined);
     }
-  }, [loadSettings, loadSources]);
+  }, [hasTenant, loadSettings, loadSources]);
+
+  // Agency staff may have been granted the manageSecrets permission. We
+  // probe the endpoint rather than threading the flag through the session:
+  // a 200 means this user is allowed to see the keys & secrets console.
+  useEffect(() => {
+    if (!isAgencyUser) return;
+    api('/api/agency/secrets')
+      .then(() => setCanSecrets(true))
+      .catch(() => setCanSecrets(false));
+  }, [isAgencyUser]);
 
   // Apply the tenant theme as CSS variables on the app container.
   const themeStyle = useMemo(() => {
@@ -107,7 +143,7 @@ export function AppShell({
     return style as React.CSSProperties;
   }, [settings]);
 
-  if (error) {
+  if (hasTenant && error) {
     return (
       <div className="shell">
         <div className="card stack">
@@ -118,7 +154,7 @@ export function AppShell({
     );
   }
 
-  if (!settings) {
+  if (hasTenant && !settings) {
     return (
       <div className="shell stack">
         <div className="skeleton" style={{ minHeight: 50 }} />
@@ -127,23 +163,30 @@ export function AppShell({
     );
   }
 
-  const labels = settings.tenant.funnelLabels ?? DEFAULT_LABELS;
-  const isViewer = settings.role === 'viewer';
-  const allowedTabs: TabKey[] = isViewer
-    ? ((settings.viewConfig?.tabs ?? ['performance']) as TabKey[])
-    : [
-        ...(isAgencyUser ? (['clients'] as TabKey[]) : []),
-        'performance',
-        'work-backwards',
-        'planning',
-        'present',
-        'data-team',
-      ];
+  const labels = settings?.tenant.funnelLabels ?? DEFAULT_LABELS;
+  const isViewer = settings?.role === 'viewer';
+
+  const agencyTabs: TabKey[] = isAgencyUser
+    ? [
+        'clients',
+        ...(agencyRole === 'agency_admin' ? (['team', 'audit'] as TabKey[]) : []),
+        ...(canSecrets ? (['secrets'] as TabKey[]) : []),
+      ]
+    : [];
+
+  const allowedTabs: TabKey[] = !hasTenant
+    ? agencyTabs
+    : isViewer
+      ? ((settings?.viewConfig?.tabs ?? ['performance']) as TabKey[])
+      : [...agencyTabs, ...TENANT_TABS];
 
   const staleCount = sources.filter((s) => s.freshness === 'red').length;
 
   const tabLabel: Record<TabKey, string> = {
     clients: 'Clients',
+    team: 'Team',
+    audit: 'Audit log',
+    secrets: 'Keys & secrets',
     performance: 'Performance',
     'work-backwards': 'Work Backwards',
     planning: 'Planning',
@@ -151,37 +194,37 @@ export function AppShell({
     'data-team': 'Data and Team',
   };
 
-  const activeTab = allowedTabs.includes(tab) ? tab : allowedTabs[0] ?? 'performance';
+  const activeTab = allowedTabs.includes(tab) ? tab : allowedTabs[0] ?? 'clients';
 
-  const showOnboarding = months.length === 0 && !isViewer;
+  const showOnboarding = !!settings && months.length === 0 && !isViewer;
 
   return (
     <div style={themeStyle}>
-      {settings.tenant.theme?.customCss && (
+      {settings?.tenant.theme?.customCss && (
         <style dangerouslySetInnerHTML={{ __html: `.tenant-app { ${''} } ${scopeCss(settings.tenant.theme.customCss)}` }} />
       )}
       <div className="tenant-app app-layout">
         <Sidebar
           brand={
             <>
-              {/* Top of sidebar: the client's own logo when set, falling
-                  back to the Stopply mark. Agency users switch between
-                  clients via the Clients tab in the nav below, not a
-                  dropdown here, one continuous nav instead of a separate
-                  switcher context. */}
-              {hasLogo ? (
+              {/* Top of sidebar: the client's own logo when in a client's
+                  context, falling back to the Stopply mark on the agency
+                  console. Agency users switch between clients via the
+                  Clients tab in the nav below, not a dropdown here, one
+                  continuous nav instead of a separate switcher context. */}
+              {settings && hasLogo ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src="/api/tenant/logo" alt={settings.tenant.name} style={{ height: 32, maxWidth: 140, objectFit: 'contain' }} />
-              ) : settings.tenant.theme?.wordmark ? (
+              ) : settings?.tenant.theme?.wordmark ? (
                 <strong style={{ fontFamily: 'var(--font-display)', fontSize: 18 }}>
                   {settings.tenant.theme.wordmark}
                 </strong>
               ) : (
                 <StopplyLogo />
               )}
-              {/* Rendered in normal flow here (not page.tsx's fixed corner
-                  badge) so it can never overlap in-page controls like the
-                  Clients tab's "New client" button. */}
+              {/* Rendered in normal flow here (not a fixed corner overlay)
+                  so it can never overlap in-page controls like the Clients
+                  tab's "New client" button. */}
               {isDemoMode() && <DemoBadge inline />}
             </>
           }
@@ -194,16 +237,18 @@ export function AppShell({
           }))}
           footer={
             <>
-              <select
-                value={comparison}
-                onChange={(e) => setComparison(e.target.value as Comparison)}
-                aria-label="Comparison"
-              >
-                <option value="previous">vs previous month</option>
-                <option value="year">vs same month last year</option>
-                <option value="target">vs target</option>
-                <option value="none">no comparison</option>
-              </select>
+              {settings && (
+                <select
+                  value={comparison}
+                  onChange={(e) => setComparison(e.target.value as Comparison)}
+                  aria-label="Comparison"
+                >
+                  <option value="previous">vs previous month</option>
+                  <option value="year">vs same month last year</option>
+                  <option value="target">vs target</option>
+                  <option value="none">no comparison</option>
+                </select>
+              )}
               <ProfileMenu onLogout={onLogout} />
             </>
           }
@@ -218,34 +263,44 @@ export function AppShell({
             // initialTab back to "performance", no local setTab needed here.
             <ClientsSection role={agencyRole ?? 'agency_staff'} onEnterTenant={(t) => onSwitchTenant?.(t)} />
           )}
-          {activeTab !== 'clients' && showOnboarding && <OnboardingChecklist sources={sources} onTabChange={setTab} />}
-          {activeTab === 'performance' && (
-            <PerformanceTab
-              settings={settings}
-              labels={labels}
-              months={months}
-              sources={sources}
-              comparison={comparison}
-              refreshSources={loadSources}
-            />
-          )}
-          {activeTab === 'work-backwards' && <WorkBackwardsTab settings={settings} labels={labels} months={months} />}
-          {activeTab === 'planning' && <PlanningTab settings={settings} labels={labels} months={months} />}
-          {activeTab === 'present' && !isViewer && <PresentTab settings={settings} labels={labels} months={months} />}
-          {activeTab === 'data-team' && !isViewer && (
-            <DataTeamTab
-              settings={settings}
-              labels={labels}
-              sources={sources}
-              refreshSources={loadSources}
-              refreshSettings={loadSettings}
-            />
-          )}
+          {activeTab === 'team' && <TeamSection currentUserId={userId} />}
+          {activeTab === 'audit' && <AuditSection />}
+          {activeTab === 'secrets' && <SecretsSection />}
 
-          {settings.tenant.footerCredit && <div className="footer-credit">Managed by Stopply</div>}
+          {settings && (
+            <>
+              {TENANT_TABS.includes(activeTab) && showOnboarding && (
+                <OnboardingChecklist sources={sources} onTabChange={setTab} />
+              )}
+              {activeTab === 'performance' && (
+                <PerformanceTab
+                  settings={settings}
+                  labels={labels}
+                  months={months}
+                  sources={sources}
+                  comparison={comparison}
+                  refreshSources={loadSources}
+                />
+              )}
+              {activeTab === 'work-backwards' && <WorkBackwardsTab settings={settings} labels={labels} months={months} />}
+              {activeTab === 'planning' && <PlanningTab settings={settings} labels={labels} months={months} />}
+              {activeTab === 'present' && !isViewer && <PresentTab settings={settings} labels={labels} months={months} />}
+              {activeTab === 'data-team' && !isViewer && (
+                <DataTeamTab
+                  settings={settings}
+                  labels={labels}
+                  sources={sources}
+                  refreshSources={loadSources}
+                  refreshSettings={loadSettings}
+                />
+              )}
+
+              {settings.tenant.footerCredit && <div className="footer-credit">Managed by Stopply</div>}
+            </>
+          )}
         </main>
 
-        <ChatWidget settings={settings} currentTab={activeTab} />
+        {settings && <ChatWidget settings={settings} currentTab={activeTab} />}
       </div>
     </div>
   );
