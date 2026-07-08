@@ -8,9 +8,24 @@
 //   - AuditSection: the cross tenant audit log with filters.
 
 import { useEffect, useState } from 'react';
-import { api, setCsrf } from '@/lib/api';
+import { api, ApiError, setCsrf } from '@/lib/api';
 import { fmtMoney, fmtNum } from '@/lib/format';
 import { CodeBox } from './CodeBox';
+
+// The API's 400 responses carry a zod flatten() body under `details`:
+// { fieldErrors: { [field]: string[] }, formErrors: string[] }. The
+// top level error string alone ("invalid request") does not say which
+// field or why, so pull the specific message out when one is present.
+function describeApiError(err: unknown): string {
+  if (err instanceof ApiError) {
+    const details = err.body.details as { fieldErrors?: Record<string, string[]> } | undefined;
+    const fieldErrors = details?.fieldErrors ?? {};
+    const first = Object.entries(fieldErrors).find(([, msgs]) => msgs?.length > 0);
+    if (first) return `${first[0]}: ${first[1][0]}`;
+    return err.message;
+  }
+  return err instanceof Error ? err.message : 'request failed';
+}
 
 const PLATFORM_LABEL: Record<string, string> = { meta: 'Meta', google: 'Google' };
 
@@ -215,6 +230,7 @@ export function ClientsSection({
 
       {provisioning && (
         <ProvisionForm
+          existingSlugs={tenants.map((t) => t.slug)}
           onDone={() => {
             setProvisioning(false);
             load();
@@ -867,9 +883,29 @@ export function SecretsSection() {
   );
 }
 
-function ProvisionForm({ onDone }: { onDone: () => void }) {
+// Client-facing subdomain the tenant provisions to (e.g. be-clinical in
+// be-clinical.bi.letlois.com). Derived from the client name instead of
+// asking the agency to come up with and type one themselves.
+function slugify(name: string): string {
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  return base.length >= 2 ? base : 'client';
+}
+
+function uniqueSlug(name: string, existingSlugs: string[]): string {
+  const base = slugify(name);
+  if (!existingSlugs.includes(base)) return base;
+  for (let n = 2; ; n++) {
+    const candidate = `${base}-${n}`.slice(0, 40);
+    if (!existingSlugs.includes(candidate)) return candidate;
+  }
+}
+
+function ProvisionForm({ existingSlugs, onDone }: { existingSlugs: string[]; onDone: () => void }) {
   const [form, setForm] = useState({
-    slug: '',
     name: '',
     adminEmail: '',
     adminName: '',
@@ -892,7 +928,7 @@ function ProvisionForm({ onDone }: { onDone: () => void }) {
     setError(null);
     try {
       const { monthlyAdSpendBudget, ...rest } = form;
-      const payload: Record<string, unknown> = { ...rest, adPlatforms };
+      const payload: Record<string, unknown> = { ...rest, slug: uniqueSlug(form.name, existingSlugs), adPlatforms };
       if (monthlyAdSpendBudget.trim() !== '') payload.monthlyAdSpendBudget = Number(monthlyAdSpendBudget);
       const platformBudgetsPayload: Record<string, number> = {};
       for (const p of adPlatforms) {
@@ -906,7 +942,7 @@ function ProvisionForm({ onDone }: { onDone: () => void }) {
       });
       setResult(res);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'provisioning failed');
+      setError(describeApiError(err));
     } finally {
       setBusy(false);
     }
@@ -934,21 +970,10 @@ function ProvisionForm({ onDone }: { onDone: () => void }) {
   return (
     <form className="card stack" onSubmit={submit}>
       <h3>New client</h3>
-      <div className="row">
-        <label style={{ flex: 1 }}>
-          Name
-          <input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} required />
-        </label>
-        <label style={{ flex: 1 }}>
-          Slug
-          <input
-            value={form.slug}
-            pattern="[a-z0-9-]+"
-            onChange={(e) => setForm((p) => ({ ...p, slug: e.target.value }))}
-            required
-          />
-        </label>
-      </div>
+      <label>
+        Name
+        <input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} required />
+      </label>
       <div className="row">
         <label style={{ flex: 1 }}>
           Admin name
