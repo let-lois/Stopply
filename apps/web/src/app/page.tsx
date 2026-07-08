@@ -74,6 +74,7 @@ export default function Page() {
         userId={me.userId}
         hasTenant={hasTenant}
         onSwitchTenant={isAgencyUser ? (t) => setAgencyTenant(t) : null}
+        onExitTenant={isAgencyUser ? () => setAgencyTenant(null) : null}
         onLogout={logout}
         initialTab={isAgencyUser && !agencyTenant ? 'clients' : undefined}
       />

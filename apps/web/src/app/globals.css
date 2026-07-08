@@ -188,6 +188,40 @@ textarea {
   scroll-margin-top: 16px;
 }
 
+/* Client profile header: pins the open client's name, the way back to the
+   Clients list, and the All/Meta/Google platform flip while scrolling. */
+.client-profile-head {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 0;
+  margin: -16px 0 0;
+  background: var(--paper);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.client-profile-head .profile-name {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* Anchored sections need to land below the sticky profile header. */
+.main-content.has-profile-head .page-section {
+  scroll-margin-top: 76px;
+}
+
+/* An open client's section links sit nested under the Clients entry. */
+.sidebar-nav button.indent {
+  padding-left: 28px;
+  font-size: 13px;
+  min-height: 32px;
+}
+
 .page-section + .page-section {
   margin-top: 16px;
   padding-top: 28px;

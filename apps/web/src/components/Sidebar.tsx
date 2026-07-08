@@ -11,6 +11,9 @@ export interface SidebarNavItem {
   label: string;
   badge?: number;
   active: boolean;
+  // Nested under the item above it (e.g. an open client's sections under
+  // the Clients entry).
+  indent?: boolean;
   onClick: () => void;
 }
 
@@ -42,7 +45,7 @@ export function Sidebar({
           {items.map((item) => (
             <button
               key={item.key}
-              className={item.active ? 'active' : ''}
+              className={`${item.active ? 'active' : ''} ${item.indent ? 'indent' : ''}`.trim()}
               onClick={() => {
                 item.onClick();
                 onMobileOpenChange(false);

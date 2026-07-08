@@ -27,7 +27,24 @@ interface Props {
   months: string[];
   sources: SourceInfo[];
   comparison: Comparison;
+  // Narrows every number on this tab to one ad platform (the profile
+  // header's All/Meta/Google flip). null shows everything.
+  channelFilter?: 'meta' | 'google' | null;
   refreshSources: () => void;
+}
+
+// Channel names arrive capitalized from the rollup ('Meta', 'Google') so
+// the match is case-insensitive.
+function filterMonthData(d: MonthData | null, ch: 'meta' | 'google' | null): MonthData | null {
+  if (!d || !ch) return d;
+  const match = (c: string) => c.toLowerCase() === ch;
+  return {
+    ...d,
+    channels: d.channels.filter((r) => match(r.channel)),
+    campaigns: d.campaigns.filter((r) => match(r.channel)),
+    adLineItems: d.adLineItems.filter((r) => match(r.channel)),
+    cohort: d.cohort.filter((r) => match(r.channel)),
+  };
 }
 
 function kpiDelta(current: number, prev: number | null, lowerIsBetter: boolean): React.ReactNode {
@@ -48,7 +65,7 @@ function sumChannels(data: MonthData | undefined, field: 'leads' | 'scheduled' |
   return data.channels.reduce((acc, ch) => acc + Number(ch[field] ?? 0), 0);
 }
 
-export function PerformanceTab({ settings, labels, months, sources, comparison, refreshSources }: Props) {
+export function PerformanceTab({ settings, labels, months, sources, comparison, channelFilter, refreshSources }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set(months.slice(0, 1)));
   const canAdmin = settings.role !== 'viewer';
 
@@ -91,6 +108,7 @@ export function PerformanceTab({ settings, labels, months, sources, comparison, 
           labels={labels}
           sources={sources}
           canAdmin={canAdmin}
+          channelFilter={channelFilter ?? null}
           refreshSources={refreshSources}
         />
       ))}
@@ -108,6 +126,7 @@ function MonthSection({
   labels,
   sources,
   canAdmin,
+  channelFilter,
   refreshSources,
 }: {
   month: string;
@@ -119,6 +138,7 @@ function MonthSection({
   labels: FunnelLabels;
   sources: SourceInfo[];
   canAdmin: boolean;
+  channelFilter: 'meta' | 'google' | null;
   refreshSources: () => void;
 }) {
   const [basis, setBasis] = useState<'first' | 'latest'>('first');
@@ -187,10 +207,18 @@ function MonthSection({
     return map;
   }, [data]);
 
+  // What actually renders: the fetched month narrowed to one platform when
+  // the profile's Meta/Google flip is set. `data` stays unfiltered so the
+  // creative-type edit handler above keeps operating on the full payload.
+  const view = useMemo(() => filterMonthData(data, channelFilter), [data, channelFilter]);
+  const compareView = useMemo(() => filterMonthData(compare, channelFilter), [compare, channelFilter]);
+
   const prevFor = (field: 'leads' | 'scheduled' | 'completed' | 'revenue' | 'spend'): number | null => {
-    if (comparison === 'target') return targets.get(field) ?? null;
-    if (!compare) return null;
-    return sumChannels(compare, field === 'revenue' ? 'revenue' : field);
+    // Targets are whole-account numbers; comparing a single platform's
+    // slice against them would read as a miss, so skip the delta.
+    if (comparison === 'target') return channelFilter ? null : targets.get(field) ?? null;
+    if (!compareView) return null;
+    return sumChannels(compareView, field === 'revenue' ? 'revenue' : field);
   };
 
   const pixelSource = sources.find((s) => s.kind === 'pixel');
@@ -242,7 +270,7 @@ function MonthSection({
         </div>
       )}
 
-      {open && data && (
+      {open && view && (
         <>
           <div className="kpi-grid">
             {(
@@ -254,7 +282,7 @@ function MonthSection({
                 { key: 'revenue', label: 'Revenue', money: true, lowerBetter: false },
               ] as const
             ).map((kpi) => {
-              const value = sumChannels(data, kpi.key);
+              const value = sumChannels(view, kpi.key);
               return (
                 <div className="kpi" key={kpi.key}>
                   <div className="label">
@@ -308,7 +336,7 @@ function MonthSection({
                 </tr>
               </thead>
               <tbody>
-                {data.channels.map((ch) => (
+                {view.channels.map((ch) => (
                   <tr key={ch.channel}>
                     <td>
                       <span style={{ color: channelColor(ch.channel), marginRight: 6 }}>{'●'}</span>
@@ -336,15 +364,15 @@ function MonthSection({
           </div>
 
           <h3>Lead cohort</h3>
-          <CohortStrip data={data} month={month} />
+          <CohortStrip data={view} month={month} />
 
           <h3>Spend by platform</h3>
-          {data.adLineItems.length > 0 && (
+          {view.adLineItems.length > 0 && (
             <div className="type-filters">
               <button className={creativeFilter === null ? 'active' : ''} onClick={() => setCreativeFilter(null)}>
                 All ads
               </button>
-              {[...new Set(data.adLineItems.map((a) => a.creative_type).filter((t): t is string => !!t))].map(
+              {[...new Set(view.adLineItems.map((a) => a.creative_type).filter((t): t is string => !!t))].map(
                 (t) => (
                   <button key={t} className={creativeFilter === t ? 'active' : ''} onClick={() => setCreativeFilter(t)}>
                     {t}
@@ -354,8 +382,8 @@ function MonthSection({
             </div>
           )}
           <div className="stack">
-            {[...new Set(data.campaigns.map((c) => c.channel))].map((channel) => {
-              const rows = data.campaigns.filter((c) => c.channel === channel);
+            {[...new Set(view.campaigns.map((c) => c.channel))].map((channel) => {
+              const rows = view.campaigns.filter((c) => c.channel === channel);
               const total = rows.reduce((a, r) => a + r.spend, 0);
               const isOpen = openCampaigns.has(channel);
               return (
@@ -381,7 +409,7 @@ function MonthSection({
                   {isOpen && (
                     <div className="stack" style={{ gap: 14 }}>
                       {rows.map((r) => {
-                        const ads = data.adLineItems
+                        const ads = view.adLineItems
                           .filter((a) => a.channel === channel && a.campaign === r.campaign)
                           .filter((a) => !creativeFilter || a.creative_type === creativeFilter);
                         return (
@@ -474,7 +502,7 @@ function MonthSection({
                 </div>
               );
             })}
-            {data.campaigns.length === 0 && <p className="muted">No spend imported for this month.</p>}
+            {view.campaigns.length === 0 && <p className="muted">No spend imported for this month.</p>}
           </div>
 
           {canAdmin && (

@@ -61,6 +61,7 @@ export function AppShell({
   userId,
   hasTenant,
   onSwitchTenant,
+  onExitTenant,
   onLogout,
   initialTab,
 }: {
@@ -80,6 +81,8 @@ export function AppShell({
   // tenant scoped.
   hasTenant: boolean;
   onSwitchTenant: ((tenant: { id: string; slug: string; name: string }) => void) | null;
+  // Closes the open client profile and returns to the Clients list.
+  onExitTenant?: (() => void) | null;
   onLogout: () => void;
   initialTab?: TabKey;
 }) {
@@ -94,6 +97,9 @@ export function AppShell({
   // Which section of the one-page client dashboard is in view (scroll spy),
   // purely for highlighting the sidebar link.
   const [activeSection, setActiveSection] = useState<SectionKey>('performance');
+  // Profile-level platform flip: null shows everything, 'meta'/'google'
+  // narrows the Performance section to that platform's numbers only.
+  const [platformFilter, setPlatformFilter] = useState<'meta' | 'google' | null>(null);
   const [comparison, setComparison] = useState<Comparison>('previous');
   const [menuOpen, setMenuOpen] = useState(false);
   const [hasLogo, setHasLogo] = useState(false);
@@ -274,22 +280,39 @@ export function AppShell({
             </>
           }
           items={[
-            // Agency console views: swap the main area entirely.
-            ...consoleKeys.map((t) => ({
-              key: t,
-              label: tabLabel[t],
-              active: t === activeConsole,
-              onClick: () => setConsoleView(t),
-            })),
-            // Client dashboard sections: scroll links into the one-page
-            // dashboard, highlighted by the scroll spy.
-            ...sectionKeys.map((t) => ({
-              key: t,
-              label: tabLabel[t],
-              badge: t === 'data-team' ? staleCount : undefined,
-              active: activeConsole === null && t === activeSection,
-              onClick: () => scrollToSection(t),
-            })),
+            // Agency console views: swap the main area entirely. The open
+            // client's profile lives under Clients, so its section links
+            // nest indented right below that item instead of standing as
+            // top-level destinations of their own.
+            ...consoleKeys.flatMap((t) => [
+              {
+                key: t,
+                label: tabLabel[t],
+                active: t === activeConsole || (t === 'clients' && activeConsole === null),
+                onClick: () => setConsoleView(t),
+              },
+              ...(t === 'clients' && hasTenant && settings
+                ? sectionKeys.map((s) => ({
+                    key: s,
+                    label: tabLabel[s],
+                    indent: true,
+                    badge: s === 'data-team' ? staleCount : undefined,
+                    active: activeConsole === null && s === activeSection,
+                    onClick: () => scrollToSection(s),
+                  }))
+                : []),
+            ]),
+            // Tenant users have no Clients list; their sections are the
+            // top-level nav.
+            ...(!isAgencyUser
+              ? sectionKeys.map((s) => ({
+                  key: s,
+                  label: tabLabel[s],
+                  badge: s === 'data-team' ? staleCount : undefined,
+                  active: s === activeSection,
+                  onClick: () => scrollToSection(s),
+                }))
+              : []),
           ]}
           footer={
             <>
@@ -312,11 +335,14 @@ export function AppShell({
           onMobileOpenChange={setMenuOpen}
         />
 
-        <main className="main-content shell stack" style={{ gap: 20 }}>
+        <main
+          className={`main-content shell stack ${isAgencyUser && activeConsole === null && settings ? 'has-profile-head' : ''}`.trim()}
+          style={{ gap: 20 }}
+        >
           {activeConsole === 'clients' && (
             // Switching a client re-renders AppShell fresh via the key prop
             // in page.tsx (agencyTenant.id changes), landing on the top of
-            // that client's one-page dashboard.
+            // that client's profile.
             <ClientsSection role={agencyRole ?? 'agency_staff'} onEnterTenant={(t) => onSwitchTenant?.(t)} />
           )}
           {activeConsole === 'team' && <TeamSection currentUserId={userId} />}
@@ -324,9 +350,37 @@ export function AppShell({
           {activeConsole === 'secrets' && <SecretsSection />}
 
           {activeConsole === null && settings && (
-            // The client's dashboard: every section on one continuous page,
+            // The client's profile: every section on one continuous page,
             // in sidebar order, each anchored for the scroll links above.
             <>
+              {isAgencyUser && (
+                // Profile header: keeps the open client's identity and the
+                // platform flip pinned while scrolling the long page. This
+                // is a profile under the Clients list, not a separate
+                // destination, so the way back is right here.
+                <div className="client-profile-head">
+                  <button className="small" onClick={() => onExitTenant?.()}>
+                    &larr; All clients
+                  </button>
+                  <span className="profile-name">{settings.tenant.name}</span>
+                  <span className="muted" style={{ fontSize: 12 }}>{settings.tenant.plan}</span>
+                  <div className="type-filters" style={{ marginLeft: 'auto' }}>
+                    <button className={platformFilter === null ? 'active' : ''} onClick={() => setPlatformFilter(null)}>
+                      All platforms
+                    </button>
+                    <button className={platformFilter === 'meta' ? 'active' : ''} onClick={() => setPlatformFilter('meta')}>
+                      Meta
+                    </button>
+                    <button
+                      className={platformFilter === 'google' ? 'active' : ''}
+                      onClick={() => setPlatformFilter('google')}
+                    >
+                      Google
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {showOnboarding && <OnboardingChecklist sources={sources} onOpenDataTeam={() => scrollToSection('data-team')} />}
 
               {sectionKeys.includes('performance') && (
@@ -338,6 +392,7 @@ export function AppShell({
                     months={months}
                     sources={sources}
                     comparison={comparison}
+                    channelFilter={platformFilter}
                     refreshSources={loadSources}
                   />
                 </section>
