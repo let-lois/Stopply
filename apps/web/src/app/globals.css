@@ -400,8 +400,42 @@ table.data td {
   background: color-mix(in srgb, var(--negative) 14%, transparent);
 }
 
-/* Client roster: the platform mix tag and the budget vs actual spend
-   pacing bar shown on each client card. */
+/* Client roster: a plain selection list, not a dashboard. Each row is
+   just enough to tell clients apart and click into one; everything else
+   (leads, revenue, ROAS, budget pacing) lives inside that client's own
+   dashboard instead. */
+.client-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--hairline);
+  cursor: pointer;
+}
+
+.client-row:last-child {
+  border-bottom: none;
+}
+
+.client-row:hover {
+  background: var(--accent-soft);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.status-dot.green {
+  background: var(--positive);
+}
+
+.status-dot.gray {
+  background: var(--ink-soft);
+}
+
 .platform-tag {
   display: inline-flex;
   align-items: center;

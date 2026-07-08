@@ -7,11 +7,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, getCsrf } from '@/lib/api';
 import { isDemoMode } from '@/lib/demoMode';
-import { fmtStamp } from '@/lib/format';
+import { fmtMoney, fmtStamp } from '@/lib/format';
 import type { FunnelLabels, SourceInfo, TenantSettings } from '@/lib/types';
 import { useToast } from '../Toasts';
 import { CodeBox } from '../CodeBox';
 import { applyThemeMode, getThemeMode, type ThemeMode } from '@/lib/theme';
+import { BudgetForm, type TenantCard } from '../AgencyOverview';
 
 interface TeamUser {
   id: string;
@@ -65,6 +66,7 @@ export function DataTeamTab({
       <ImportsSection tz={tz} />
       <TeamSection toast={toast} />
       <TargetsSection labels={labels} toast={toast} />
+      {settings.role === 'agency_admin' && <ClientBudgetSection tenantId={settings.tenant.id} />}
       <SettingsSection settings={settings} labels={labels} toast={toast} isAgency={isAgency} refreshSettings={refreshSettings} />
 
       {/* API integrations are buried by design: getting started is about
@@ -824,6 +826,49 @@ function TargetsSection({ labels, toast }: { labels: FunnelLabels; toast: (s: st
       <button className="primary" style={{ alignSelf: 'flex-start' }} onClick={save}>
         Save targets
       </button>
+    </section>
+  );
+}
+
+// Agency admin only: this client's committed ad spend budget and platform
+// mix, moved here from the Clients roster so that list can stay a plain
+// selection list instead of a dashboard.
+function ClientBudgetSection({ tenantId }: { tenantId: string }) {
+  const [tenant, setTenant] = useState<TenantCard | null>(null);
+
+  const load = useCallback(() => {
+    api<{ tenants: TenantCard[] }>('/api/agency/overview')
+      .then((r) => setTenant(r.tenants.find((t) => t.id === tenantId) ?? null))
+      .catch(() => undefined);
+  }, [tenantId]);
+
+  useEffect(load, [load]);
+
+  if (!tenant) return null;
+
+  const budget = tenant.monthly_ad_spend_budget;
+  const pacePct = budget && budget > 0 ? ((tenant.spend ?? 0) / budget) * 100 : null;
+  const paceState = pacePct === null ? null : pacePct >= 100 ? 'under' : pacePct >= 85 ? 'watch' : 'top';
+
+  return (
+    <section className="card stack">
+      <h3>Ad budget</h3>
+      <div className="stack" style={{ gap: 4 }}>
+        <div className="row" style={{ justifyContent: 'space-between', fontSize: 13 }}>
+          <span className="muted">Ad spend this month</span>
+          <span className="num">
+            {fmtMoney(tenant.spend ?? 0)}
+            {budget ? ` of ${fmtMoney(budget)} budget` : ''}
+          </span>
+        </div>
+        {budget && pacePct !== null && (
+          <div className="pacing-bar">
+            <div className={`pacing-fill ${paceState}`} style={{ width: `${Math.min(100, pacePct)}%` }} />
+          </div>
+        )}
+        {!budget && <span className="muted" style={{ fontSize: 12 }}>No budget set yet</span>}
+      </div>
+      <BudgetForm tenant={tenant} onSaved={load} />
     </section>
   );
 }
