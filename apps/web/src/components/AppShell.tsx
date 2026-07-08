@@ -15,7 +15,7 @@ import { PlanningTab } from './tabs/Planning';
 import { PresentTab } from './tabs/Present';
 import { DataTeamTab } from './tabs/DataTeam';
 import { ChatWidget } from './ChatWidget';
-import { LetLoisLogo } from './LetLoisLogo';
+import { StopplyLogo } from './StopplyLogo';
 import { AccountSwitcher } from './AccountSwitcher';
 import { ProfileMenu } from './ProfileMenu';
 import { CodeBox } from './CodeBox';
@@ -147,7 +147,7 @@ export function AppShell({
             // Top of sidebar: for agency users this is the account switcher
             // that tells you which sub-account you are in versus agency
             // view. For tenant users it is their logo, falling back to the
-            // LetLois mark when no client logo has been uploaded.
+            // Stopply mark when no client logo has been uploaded.
             isAgencyUser ? (
               <AccountSwitcher
                 current={{ id: settings.tenant.id, name: settings.tenant.name }}
@@ -162,7 +162,7 @@ export function AppShell({
                 {settings.tenant.theme.wordmark}
               </strong>
             ) : (
-              <LetLoisLogo />
+              <StopplyLogo />
             )
           }
           items={allowedTabs.map((t) => ({
@@ -216,7 +216,7 @@ export function AppShell({
             />
           )}
 
-          {settings.tenant.footerCredit && <div className="footer-credit">Managed by LetLois</div>}
+          {settings.tenant.footerCredit && <div className="footer-credit">Managed by Stopply</div>}
         </main>
 
         <ChatWidget settings={settings} currentTab={activeTab} />

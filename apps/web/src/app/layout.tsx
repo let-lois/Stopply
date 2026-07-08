@@ -3,7 +3,7 @@ import './globals.css';
 import { themeInitScript } from '@/lib/theme';
 
 export const metadata: Metadata = {
-  title: 'Dashboard',
+  title: 'Stopply',
   description: 'Marketing attribution dashboard',
 };
 

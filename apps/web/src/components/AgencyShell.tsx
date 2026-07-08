@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from 'react';
 import { ClientsSection, TeamSection, AuditSection, SecretsSection } from './AgencyOverview';
-import { LetLoisLogo } from './LetLoisLogo';
+import { StopplyLogo } from './StopplyLogo';
 import { AccountSwitcher } from './AccountSwitcher';
 import { ProfileMenu } from './ProfileMenu';
 import { Sidebar } from './Sidebar';
@@ -61,10 +61,10 @@ export function AgencyShell({
     <div className="app-layout">
       <Sidebar
         brand={
-          // Agency console: the LetLois mark plus the account switcher,
+          // Agency console: the Stopply mark plus the account switcher,
           // which here sits in agency view and can drop into any sub-account.
           <>
-            <LetLoisLogo />
+            <StopplyLogo />
             <AccountSwitcher current={null} onSwitchTenant={onEnterTenant} onEnterAgencyView={null} />
           </>
         }

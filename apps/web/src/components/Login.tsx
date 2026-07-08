@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { api, ApiError, setCsrf } from '@/lib/api';
-import { LetLoisLogo } from './LetLoisLogo';
+import { StopplyLogo } from './StopplyLogo';
 
 export function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
   const [email, setEmail] = useState('');
@@ -39,7 +39,7 @@ export function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
     <div className="shell" style={{ maxWidth: 420, paddingTop: '12vh' }}>
       <form className="card stack" onSubmit={submit}>
         <div style={{ marginBottom: 4 }}>
-          <LetLoisLogo height={36} />
+          <StopplyLogo height={36} />
         </div>
         <h1>Sign in</h1>
         <label>

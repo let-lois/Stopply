@@ -1057,7 +1057,7 @@ function SettingsSection({
                 refreshSettings();
               }}
             />
-            Show Managed by LetLois footer credit
+            Show Managed by Stopply footer credit
           </label>
         </div>
       )}

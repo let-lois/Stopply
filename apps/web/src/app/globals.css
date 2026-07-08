@@ -644,12 +644,22 @@ table.data td {
   overflow: hidden;
 }
 
-/* Brand mark used top left when no client logo is present. */
+/* Brand mark used top left when no client logo is present. The Stopply
+   wordmark image has fixed dark ink on a transparent background, it does
+   not invert for theme the way the old currentColor SVG did. In dark mode
+   give it a light backing plate so it stays legible; light mode is
+   unaffected since the ink already reads fine there. */
 .brand-logo {
   display: inline-flex;
   align-items: center;
   height: 30px;
   width: auto;
+}
+
+:root[data-theme='dark'] .brand-logo {
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 4px 10px;
 }
 
 /* Account switcher: the top left control that tells you which sub-account
