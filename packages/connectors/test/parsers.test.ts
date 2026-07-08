@@ -12,11 +12,12 @@ import {
 } from '../src/parsers';
 
 describe('parser registry', () => {
-  it('exposes the seven Be Clinical parsers plus the two ad line item parsers', () => {
+  it('exposes every registered parser', () => {
     expect(Object.keys(PARSER_REGISTRY).sort()).toEqual([
       'blvd-appointments',
       'blvd-clients',
       'blvd-line-items',
+      'd2d-accounts',
       'ghl-contacts',
       'ghl-website',
       'google-ad-lineitem',

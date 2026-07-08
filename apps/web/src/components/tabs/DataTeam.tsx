@@ -98,6 +98,7 @@ const PARSER_OPTIONS: Array<{ key: string; label: string }> = [
   { key: 'blvd-appointments', label: 'Boulevard — appointments' },
   { key: 'blvd-line-items', label: 'Boulevard — sales' },
   { key: 'blvd-clients', label: 'Boulevard — clients' },
+  { key: 'd2d-accounts', label: 'Door to door — accounts (knocks, appointments, sits, closes)' },
 ];
 
 function SourcesSection({

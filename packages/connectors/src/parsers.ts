@@ -4,7 +4,7 @@
 // Parsers never special case a provider downstream: everything funnels
 // into the same events and stage_events tables.
 
-import { parseCsv, pick } from './csv';
+import { parseCsv, parseCsvRecords, pick } from './csv';
 import {
   deriveChannel,
   emailNorm,
@@ -72,13 +72,39 @@ export interface ClientRecordRow {
   nameNorm: string | null;
 }
 
+// Stage event from a door-to-door accounts export: the account id IS the
+// contact id (the export is the system of record), so no identity
+// matching is needed downstream.
+export interface D2dStageEventRow {
+  contactId: string;
+  stage: 'lead' | 'scheduled' | 'completed' | 'purchase';
+  occurredAt: string;
+}
+
+// Per-rep counters for one month, split by which side of the appointment
+// the rep worked: setters knock doors and set appointments, closers sit
+// them and close. One rep can appear on both sides.
+export interface RepMetricRow {
+  periodMonth: string;
+  rep: string;
+  knocks: number;
+  pitches: number;
+  appointmentsSet: number;
+  sitsSet: number;
+  sitsRun: number;
+  closes: number;
+  installs: number;
+}
+
 export interface ParseResult {
-  kind: 'ad-spend' | 'ad-line-items' | 'contacts' | 'stage-events' | 'client-records';
+  kind: 'ad-spend' | 'ad-line-items' | 'contacts' | 'stage-events' | 'client-records' | 'd2d-accounts';
   adSpend?: AdSpendRow[];
   adLineItems?: AdLineItemRow[];
   contacts?: ContactLeadRow[];
   stageEvents?: StageEventRow[];
   clientRecords?: ClientRecordRow[];
+  d2dStageEvents?: D2dStageEventRow[];
+  repMetrics?: RepMetricRow[];
   rowCount: number;
   recordsFrom: string | null;
   recordsThrough: string | null;
@@ -354,6 +380,145 @@ export const parseBlvdClients: Parser = (text) => {
   };
 };
 
+// 10. Door-to-door accounts export (Rogue Solar's knocking CRM): one row
+// per account with a timestamp column per funnel stage (Knock, Pitch,
+// Appointment, Sit, Closed, Installed) plus setter (owner) and closer
+// attribution. Two channels fall out of it: accounts with a Knock
+// timestamp are Door to Door; the rest were dispatched from a dialer.
+// The export's header row contains BOTH "Appointment" and "Appointment "
+// (trailing space, a stage and a disposition, nearly disjoint), so this
+// parser reads raw records and unions duplicate columns instead of using
+// the dict rows, which would silently drop one of them.
+export const parseD2dAccounts: Parser = (text, periodMonth) => {
+  const { headers, records } = parseCsvRecords(text);
+  const norm = (h: string) => h.trim().toLowerCase();
+  const colsFor = (name: string): number[] =>
+    headers.map((h, i) => (norm(h) === name ? i : -1)).filter((i) => i >= 0);
+  const col = (name: string): number => colsFor(name)[0] ?? -1;
+
+  const cols = {
+    accountId: col('accountid'),
+    owner: col('owner.name'),
+    closer: col('closer.name'),
+    firstName: col('resident.firstname'),
+    lastName: col('resident.lastname'),
+    email: col('resident.email'),
+    phone: col('resident.phone'),
+    created: col('createddate'),
+    source: col('source'),
+    stage: col('workflowstage'),
+    knock: col('knock'),
+    pitch: col('pitch'),
+    appointment: colsFor('appointment'),
+    sit: col('sit'),
+    closed: col('closed'),
+    installed: col('installed'),
+  };
+
+  const at = (rec: string[], i: number): string => (i >= 0 ? (rec[i] ?? '').trim() : '');
+  // Earliest non-empty timestamp among duplicate columns.
+  const earliest = (rec: string[], idxs: number[]): string | null => {
+    const vals = idxs.map((i) => toIso(at(rec, i))).filter((v): v is string => !!v);
+    return vals.sort()[0] ?? null;
+  };
+
+  const contacts: ContactLeadRow[] = [];
+  const d2dStageEvents: D2dStageEventRow[] = [];
+  const reps = new Map<string, RepMetricRow>();
+  const inMonthDates: string[] = [];
+
+  const bumpRep = (rep: string, field: keyof Omit<RepMetricRow, 'periodMonth' | 'rep'>) => {
+    const key = rep.trim() || 'Unattributed';
+    let row = reps.get(key);
+    if (!row) {
+      row = { periodMonth, rep: key, knocks: 0, pitches: 0, appointmentsSet: 0, sitsSet: 0, sitsRun: 0, closes: 0, installs: 0 };
+      reps.set(key, row);
+    }
+    row[field] += 1;
+  };
+
+  for (const rec of records) {
+    const accountId = at(rec, cols.accountId);
+    if (!accountId) continue;
+    const knock = toIso(at(rec, cols.knock));
+    const pitch = toIso(at(rec, cols.pitch));
+    const appointment = earliest(rec, cols.appointment);
+    const sit = toIso(at(rec, cols.sit));
+    const closed = toIso(at(rec, cols.closed));
+    const installed = toIso(at(rec, cols.installed));
+    // Rows with no funnel activity at all (e.g. an imported list marked
+    // Does Not Qualify without ever being knocked) are not leads.
+    if (!knock && !appointment && !sit && !closed && !installed) continue;
+
+    const created = toIso(at(rec, cols.created));
+    // The contact exists from its earliest recorded touch; stage events
+    // before the contact's created_at are discarded by the rollup.
+    const createdAtEff =
+      [created, knock, appointment, sit, closed].filter((v): v is string => !!v).sort()[0] ?? null;
+    if (!createdAtEff) continue;
+    const leadAt = knock ?? createdAtEff;
+    const channel = knock ? 'Door to Door' : 'Dispatch';
+    const owner = at(rec, cols.owner);
+    const closer = at(rec, cols.closer);
+    const firstName = at(rec, cols.firstName);
+    const lastName = at(rec, cols.lastName);
+    const fullName = `${firstName} ${lastName}`.trim();
+
+    if (monthOf(createdAtEff) === periodMonth) {
+      contacts.push({
+        externalRef: accountId,
+        firstName,
+        lastName,
+        email: emailNorm(at(rec, cols.email)),
+        phoneLast10: phoneLast10(at(rec, cols.phone)),
+        nameNorm: nameNorm(fullName),
+        createdAt: createdAtEff,
+        channel,
+        sourceRaw: at(rec, cols.source) || channel,
+        campaign: null,
+        followupStage: at(rec, cols.stage) || null,
+        treatment: null,
+        clickId: null,
+        utm: { source: null, medium: null, campaign: null, term: null, content: null },
+      });
+    }
+
+    const pushStage = (stage: D2dStageEventRow['stage'], ts: string | null) => {
+      if (ts && monthOf(ts) === periodMonth) {
+        d2dStageEvents.push({ contactId: accountId, stage, occurredAt: ts });
+        inMonthDates.push(ts);
+      }
+    };
+    pushStage('lead', leadAt);
+    pushStage('scheduled', appointment);
+    pushStage('completed', sit);
+    pushStage('purchase', closed);
+
+    // Rep counters, bucketed by the month each action actually happened.
+    const inMonth = (ts: string | null) => !!ts && monthOf(ts) === periodMonth;
+    if (inMonth(knock)) bumpRep(owner, 'knocks');
+    if (inMonth(pitch)) bumpRep(owner, 'pitches');
+    if (inMonth(appointment)) bumpRep(owner, 'appointmentsSet');
+    if (inMonth(sit)) {
+      bumpRep(owner, 'sitsSet');
+      bumpRep(closer, 'sitsRun');
+    }
+    if (inMonth(closed)) bumpRep(closer, 'closes');
+    if (inMonth(installed)) bumpRep(closer, 'installs');
+  }
+
+  const range = dateRange(inMonthDates);
+  return {
+    kind: 'd2d-accounts',
+    contacts,
+    d2dStageEvents,
+    repMetrics: [...reps.values()],
+    rowCount: records.length,
+    recordsFrom: range.from,
+    recordsThrough: range.through,
+  };
+};
+
 export const PARSER_REGISTRY: Record<string, Parser> = {
   'meta-campaign': parseMetaCampaign,
   'google-campaign': parseGoogleCampaign,
@@ -364,4 +529,5 @@ export const PARSER_REGISTRY: Record<string, Parser> = {
   'blvd-appointments': parseBlvdAppointments,
   'blvd-line-items': parseBlvdLineItems,
   'blvd-clients': parseBlvdClients,
+  'd2d-accounts': parseD2dAccounts,
 };

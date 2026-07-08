@@ -480,6 +480,22 @@ table.data td {
   font-size: 15px;
 }
 
+/* Door-to-door team leaderboard: setters and closers side by side on wide
+   screens, stacked when narrow. */
+.leaderboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+
+.leaderboard-title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+}
+
 /* Format tile beside each ad title. CSV exports carry no creative assets
    (thumbnails need the ad platform APIs), so the tile identifies the
    format at a glance instead. */
