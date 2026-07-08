@@ -28,6 +28,7 @@ interface TenantCard {
   pulled_at: string | null;
   monthly_ad_spend_budget: number | null;
   ad_platforms_json: string | null;
+  ad_platform_budget_json: string | null;
 }
 
 function parsePlatforms(json: string | null): string[] {
@@ -37,6 +38,16 @@ function parsePlatforms(json: string | null): string[] {
     return Array.isArray(v) ? (v as string[]) : [];
   } catch {
     return [];
+  }
+}
+
+function parsePlatformBudgets(json: string | null): Record<string, number> {
+  if (!json) return {};
+  try {
+    const v = JSON.parse(json);
+    return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, number>) : {};
+  } catch {
+    return {};
   }
 }
 
@@ -98,6 +109,7 @@ export function ClientsSection({
         {tenants.map((t) => {
           const roas = t.spend && t.spend > 0 ? (t.revenue ?? 0) / t.spend : null;
           const platforms = parsePlatforms(t.ad_platforms_json);
+          const platformBudgets = parsePlatformBudgets(t.ad_platform_budget_json);
           const budget = t.monthly_ad_spend_budget;
           const pacePct = budget && budget > 0 ? ((t.spend ?? 0) / budget) * 100 : null;
           const paceState = pacePct === null ? null : pacePct >= 100 ? 'under' : pacePct >= 85 ? 'watch' : 'top';
@@ -125,6 +137,15 @@ export function ClientsSection({
                       {PLATFORM_LABEL[p] ?? p}
                     </span>
                   ))}
+                </div>
+              )}
+
+              {Object.keys(platformBudgets).length > 0 && (
+                <div className="muted" style={{ fontSize: 12 }}>
+                  {(['meta', 'google'] as const)
+                    .filter((p) => platformBudgets[p] != null)
+                    .map((p) => `${PLATFORM_LABEL[p]} ${fmtMoney(platformBudgets[p])}`)
+                    .join(' · ')}
                 </div>
               )}
 
@@ -221,6 +242,11 @@ function BudgetForm({ tenant, onDone }: { tenant: TenantCard; onDone: () => void
     tenant.monthly_ad_spend_budget != null ? String(tenant.monthly_ad_spend_budget) : ''
   );
   const [platforms, setPlatforms] = useState<string[]>(parsePlatforms(tenant.ad_platforms_json));
+  const initialPlatformBudgets = parsePlatformBudgets(tenant.ad_platform_budget_json);
+  const [platformBudgets, setPlatformBudgets] = useState<Record<string, string>>({
+    meta: initialPlatformBudgets.meta != null ? String(initialPlatformBudgets.meta) : '',
+    google: initialPlatformBudgets.google != null ? String(initialPlatformBudgets.google) : '',
+  });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -232,11 +258,17 @@ function BudgetForm({ tenant, onDone }: { tenant: TenantCard; onDone: () => void
     setBusy(true);
     setError(null);
     try {
+      const platformBudgetsPayload: Record<string, number> = {};
+      for (const p of platforms) {
+        const raw = platformBudgets[p]?.trim();
+        if (raw) platformBudgetsPayload[p] = Number(raw);
+      }
       await api(`/api/agency/tenants/${tenant.id}/budget`, {
         method: 'PUT',
         json: {
           monthlyAdSpendBudget: budget.trim() === '' ? null : Number(budget),
           adPlatforms: platforms,
+          platformBudgets: Object.keys(platformBudgetsPayload).length > 0 ? platformBudgetsPayload : null,
         },
       });
       onDone();
@@ -249,7 +281,7 @@ function BudgetForm({ tenant, onDone }: { tenant: TenantCard; onDone: () => void
 
   return (
     <form className="card stack" onSubmit={submit}>
-      <h3>{tenant.name} — ad spend budget</h3>
+      <h3>{tenant.name}, ad spend budget</h3>
       <label>
         Monthly ad spend budget
         <input
@@ -279,6 +311,30 @@ function BudgetForm({ tenant, onDone }: { tenant: TenantCard; onDone: () => void
           ))}
         </div>
       </div>
+      {platforms.length > 0 && (
+        <div className="stack" style={{ gap: 6 }}>
+          <span className="muted" style={{ fontSize: 13 }}>
+            Budget split by platform (optional, does not need to sum to the total above)
+          </span>
+          <div className="row">
+            {(['meta', 'google'] as const)
+              .filter((p) => platforms.includes(p))
+              .map((p) => (
+                <label key={p} style={{ flex: 1 }}>
+                  {PLATFORM_LABEL[p]}
+                  <input
+                    type="number"
+                    min={0}
+                    step="1"
+                    placeholder="e.g. 3000"
+                    value={platformBudgets[p] ?? ''}
+                    onChange={(e) => setPlatformBudgets((prev) => ({ ...prev, [p]: e.target.value }))}
+                  />
+                </label>
+              ))}
+          </div>
+        </div>
+      )}
       {error && <p className="delta-down">{error}</p>}
       <div className="row">
         <button className="primary" disabled={busy} type="submit">
@@ -822,6 +878,7 @@ function ProvisionForm({ onDone }: { onDone: () => void }) {
     monthlyAdSpendBudget: '',
   });
   const [adPlatforms, setAdPlatforms] = useState<string[]>([]);
+  const [platformBudgets, setPlatformBudgets] = useState<Record<string, string>>({ meta: '', google: '' });
   const [result, setResult] = useState<{ tempPassword: string | null; slug: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -837,6 +894,12 @@ function ProvisionForm({ onDone }: { onDone: () => void }) {
       const { monthlyAdSpendBudget, ...rest } = form;
       const payload: Record<string, unknown> = { ...rest, adPlatforms };
       if (monthlyAdSpendBudget.trim() !== '') payload.monthlyAdSpendBudget = Number(monthlyAdSpendBudget);
+      const platformBudgetsPayload: Record<string, number> = {};
+      for (const p of adPlatforms) {
+        const raw = platformBudgets[p]?.trim();
+        if (raw) platformBudgetsPayload[p] = Number(raw);
+      }
+      if (Object.keys(platformBudgetsPayload).length > 0) payload.platformBudgets = platformBudgetsPayload;
       const res = await api<{ tempPassword: string | null; slug: string }>('/api/agency/tenants', {
         method: 'POST',
         json: payload,
@@ -946,6 +1009,25 @@ function ProvisionForm({ onDone }: { onDone: () => void }) {
           </div>
         </div>
       </div>
+      {adPlatforms.length > 0 && (
+        <div className="row">
+          {(['meta', 'google'] as const)
+            .filter((p) => adPlatforms.includes(p))
+            .map((p) => (
+              <label key={p} style={{ flex: 1 }}>
+                {PLATFORM_LABEL[p]} budget (optional)
+                <input
+                  type="number"
+                  min={0}
+                  step="1"
+                  placeholder="e.g. 3000"
+                  value={platformBudgets[p] ?? ''}
+                  onChange={(e) => setPlatformBudgets((prev) => ({ ...prev, [p]: e.target.value }))}
+                />
+              </label>
+            ))}
+        </div>
+      )}
       {error && <p className="delta-down">{error}</p>}
       <div className="row">
         <button className="primary" disabled={busy} type="submit">

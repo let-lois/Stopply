@@ -30,6 +30,13 @@ const provisionSchema = z
       .optional(),
     monthlyAdSpendBudget: z.number().min(0).max(10_000_000).optional(),
     adPlatforms: z.array(z.enum(['meta', 'google'])).max(2).optional(),
+    platformBudgets: z
+      .object({
+        meta: z.number().min(0).max(10_000_000).optional(),
+        google: z.number().min(0).max(10_000_000).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -52,7 +59,7 @@ agencyRoutes.get('/tenants', async (c) => {
   const session = c.get('session')!;
   const { results } = await c.env.CONTROL_DB.prepare(
     `SELECT id, slug, name, status, plan, timezone, custom_hostname, hostname_status, schema_version, footer_credit,
-       monthly_ad_spend_budget, ad_platforms_json, created_at
+       monthly_ad_spend_budget, ad_platforms_json, ad_platform_budget_json, created_at
      FROM tenants ORDER BY name`
   ).all<Partial<TenantRow>>();
   const visible =
@@ -68,6 +75,14 @@ const budgetSchema = z
   .object({
     monthlyAdSpendBudget: z.number().min(0).max(10_000_000).nullable(),
     adPlatforms: z.array(z.enum(['meta', 'google'])).max(2),
+    platformBudgets: z
+      .object({
+        meta: z.number().min(0).max(10_000_000).optional(),
+        google: z.number().min(0).max(10_000_000).optional(),
+      })
+      .strict()
+      .nullable()
+      .optional(),
   })
   .strict();
 
@@ -79,9 +94,14 @@ agencyRoutes.put('/tenants/:id/budget', requireRole('agency_admin'), async (c) =
   const existing = await c.env.CONTROL_DB.prepare(`SELECT id FROM tenants WHERE id = ?`).bind(id).first();
   if (!existing) return c.json({ error: 'not found' }, 404);
   await c.env.CONTROL_DB.prepare(
-    `UPDATE tenants SET monthly_ad_spend_budget = ?, ad_platforms_json = ? WHERE id = ?`
+    `UPDATE tenants SET monthly_ad_spend_budget = ?, ad_platforms_json = ?, ad_platform_budget_json = ? WHERE id = ?`
   )
-    .bind(body.data.monthlyAdSpendBudget, JSON.stringify(body.data.adPlatforms), id)
+    .bind(
+      body.data.monthlyAdSpendBudget,
+      JSON.stringify(body.data.adPlatforms),
+      body.data.platformBudgets ? JSON.stringify(body.data.platformBudgets) : null,
+      id
+    )
     .run();
   await writeAudit(c.env, {
     actorType: 'agency',
@@ -99,7 +119,7 @@ agencyRoutes.get('/overview', async (c) => {
   const session = c.get('session')!;
   const month = new Date().toISOString().slice(0, 7);
   const { results } = await c.env.CONTROL_DB.prepare(
-    `SELECT t.id, t.slug, t.name, t.plan, t.monthly_ad_spend_budget, t.ad_platforms_json,
+    `SELECT t.id, t.slug, t.name, t.plan, t.monthly_ad_spend_budget, t.ad_platforms_json, t.ad_platform_budget_json,
        r.leads, r.scheduled, r.completed, r.purchases, r.revenue, r.spend, r.pulled_at
      FROM tenants t LEFT JOIN agency_rollup r ON r.tenant_id = t.id AND r.period_month = ?
      WHERE t.status = 'active' ORDER BY t.name`
