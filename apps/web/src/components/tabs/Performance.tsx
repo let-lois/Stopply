@@ -26,7 +26,6 @@ interface Props {
   labels: FunnelLabels;
   months: string[];
   sources: SourceInfo[];
-  comparison: Comparison;
   // Narrows every number on this tab to one ad platform (the profile
   // header's All/Meta/Google flip). null shows everything.
   channelFilter?: 'meta' | 'google' | null;
@@ -65,8 +64,11 @@ function sumChannels(data: MonthData | undefined, field: 'leads' | 'scheduled' |
   return data.channels.reduce((acc, ch) => acc + Number(ch[field] ?? 0), 0);
 }
 
-export function PerformanceTab({ settings, labels, months, sources, comparison, channelFilter, refreshSources }: Props) {
+export function PerformanceTab({ settings, labels, months, sources, channelFilter, refreshSources }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set(months.slice(0, 1)));
+  // The comparison basis lives here, next to the months it applies to,
+  // rather than in the sidebar.
+  const [comparison, setComparison] = useState<Comparison>('previous');
   const canAdmin = settings.role !== 'viewer';
 
   const toggle = (m: string) =>
@@ -90,6 +92,22 @@ export function PerformanceTab({ settings, labels, months, sources, comparison, 
 
   return (
     <div className="stack" style={{ gap: 20 }}>
+      <div className="row" style={{ justifyContent: 'flex-end' }}>
+        <label className="row" style={{ gap: 8, width: 'auto', fontSize: 13, color: 'var(--ink-soft)' }}>
+          Compare
+          <select
+            value={comparison}
+            onChange={(e) => setComparison(e.target.value as Comparison)}
+            aria-label="Comparison"
+            style={{ width: 'auto' }}
+          >
+            <option value="previous">vs previous month</option>
+            <option value="year">vs same month last year</option>
+            <option value="target">vs target</option>
+            <option value="none">no comparison</option>
+          </select>
+        </label>
+      </div>
       {months.map((month, idx) => (
         <MonthSection
           key={month}

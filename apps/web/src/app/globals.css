@@ -180,6 +180,8 @@ textarea {
 .main-content {
   flex: 1;
   min-width: 0;
+  /* Clears the fixed sidebar. Collapses to 0 in the mobile drawer layout. */
+  margin-left: 240px;
 }
 
 /* One-page client dashboard: each former tab is a section on a single
@@ -199,8 +201,10 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px 0 0;
-  margin: -16px 0 0;
+  /* Bleeds across the shell's side padding so scrolled content never
+     peeks past its edges. */
+  padding: 12px 16px 0;
+  margin: -16px -16px 0;
   background: var(--paper);
   border-bottom: 1px solid var(--hairline);
 }
@@ -254,7 +258,6 @@ textarea {
 }
 
 .sidebar {
-  flex: none;
   width: 240px;
   display: flex;
   flex-direction: column;
@@ -262,9 +265,13 @@ textarea {
   padding: 16px 12px;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--hairline);
-  position: sticky;
+  /* Fixed, not sticky: sticky silently degrades to scrolling away in some
+     browsers depending on ancestor overflow, and the sidebar must never
+     move. The content column offsets itself by the same width below. */
+  position: fixed;
   top: 0;
-  height: 100vh;
+  left: 0;
+  bottom: 0;
   overflow-y: auto;
   z-index: 30;
 }
@@ -694,12 +701,13 @@ table.data td {
   }
 
   .sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
     transform: translateX(-100%);
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
     transition: transform 0.2s ease;
+  }
+
+  .main-content {
+    margin-left: 0;
   }
 
   .sidebar.open {
