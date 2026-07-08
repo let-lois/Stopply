@@ -951,4 +951,13 @@ table.data td {
   letter-spacing: 0.02em;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   pointer-events: none;
+  width: fit-content;
+}
+
+/* Dashboard shell variant: normal document flow, next to the sidebar brand,
+   instead of a fixed overlay that would sit on top of in-page controls
+   (e.g. the "New client" button on the Clients tab). */
+.demo-badge.inline {
+  position: static;
+  box-shadow: none;
 }

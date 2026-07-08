@@ -7,29 +7,39 @@
 
 import {
   DEMO_ME,
-  DEMO_MONTHS_RESPONSE,
-  DEMO_PROFILE,
-  DEMO_SETTINGS,
-  DEMO_SOURCES,
-  DEMO_TEAM_USERS,
+  getDemoAgencyOverview,
   getDemoMonthData,
+  getDemoMonthsResponse,
+  getDemoProfile,
+  getDemoSettings,
+  getDemoSources,
+  getDemoTeamUsers,
+  setActiveDemoClient,
 } from './demoData';
 
 const GENERIC_STUB = { ok: true };
 
-export function getDemoResponse(path: string, method: string): unknown {
+export function getDemoResponse(path: string, method: string, body?: unknown): unknown {
   const [pathname] = path.split('?');
+
+  if (method === 'POST' && pathname === '/api/auth/switch-tenant') {
+    const tenantId = (body as { tenantId?: string } | undefined)?.tenantId;
+    const client = tenantId ? setActiveDemoClient(tenantId) : null;
+    if (!client) return { error: 'not found' };
+    return { ok: true, csrf: DEMO_ME.csrf, tenant: { id: client.id, slug: client.slug, name: client.name } };
+  }
 
   if (method === 'GET') {
     if (pathname === '/api/auth/me') return DEMO_ME;
-    if (pathname === '/api/auth/profile') return DEMO_PROFILE;
-    if (pathname === '/api/tenant/settings') return DEMO_SETTINGS;
-    if (pathname === '/api/tenant/sources') return { sources: DEMO_SOURCES };
-    if (pathname === '/api/tenant/months') return DEMO_MONTHS_RESPONSE;
+    if (pathname === '/api/auth/profile') return getDemoProfile();
+    if (pathname === '/api/tenant/settings') return getDemoSettings();
+    if (pathname === '/api/tenant/sources') return { sources: getDemoSources() };
+    if (pathname === '/api/tenant/months') return getDemoMonthsResponse();
     if (pathname === '/api/tenant/settings/custom-domain') return { hostname: null };
-    if (pathname === '/api/tenant/users') return { users: DEMO_TEAM_USERS };
+    if (pathname === '/api/tenant/users') return { users: getDemoTeamUsers() };
     if (pathname === '/api/tenant/integrations') return { integrations: [], requirements: {} };
     if (pathname === '/api/imports') return { imports: [] };
+    if (pathname === '/api/agency/overview') return getDemoAgencyOverview();
     if (pathname.startsWith('/api/help/search')) return { articles: [] };
     if (pathname.startsWith('/api/help/articles/')) return { article: { title: '', body_md: '' } };
 

@@ -34,7 +34,7 @@ export async function api<T = Record<string, unknown>>(
   // Preview demo mode: never touch the network, the API Worker is not
   // reachable from a pages.dev origin at all. See demoMode.ts / demoApi.ts.
   if (isDemoMode()) {
-    return getDemoResponse(path, method) as T;
+    return getDemoResponse(path, method, init.json) as T;
   }
 
   const headers: Record<string, string> = { ...(init.headers as Record<string, string>) };

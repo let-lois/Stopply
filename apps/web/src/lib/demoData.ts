@@ -1,152 +1,284 @@
-// Fabricated data for preview demo mode (see demoMode.ts). A fictional
-// client, "Demo Med Spa", with plausible but made up Meta/Google numbers.
-// Not real client data, not copied from any actual tenant.
+// Fabricated data for preview demo mode (see demoMode.ts). Fictional
+// clients with plausible but made up Meta/Google numbers, not real
+// client data, not copied from any actual tenant.
 
 import type { Me } from './api';
 import type { MonthData, SourceInfo, TenantSettings } from './types';
 
-const DEMO_MONTHS = ['2026-05', '2026-06'];
+interface DemoClient {
+  id: string;
+  slug: string;
+  name: string;
+  plan: 'starter' | 'pro' | 'whitelabel';
+  timezone: string;
+  platforms: Array<'meta' | 'google'>;
+  monthlyBudget: number;
+  platformBudgets: Partial<Record<'meta' | 'google', number>>;
+  months: string[];
+  meta: number; // monthly meta spend baseline, used to derive month data
+  google: number; // monthly google spend baseline
+}
 
-export const DEMO_ME: Me = {
-  userType: 'tenant',
-  userId: 'demo-user',
-  role: 'account_admin',
-  tenantId: 'demo-tenant',
-  csrf: 'demo-csrf-token',
-};
-
-export const DEMO_PROFILE = {
-  id: 'demo-user',
-  email: 'owner@demomedspa.example',
-  name: 'Demo Med Spa Admin',
-  role: 'account_admin',
-};
-
-export const DEMO_SETTINGS: TenantSettings = {
-  tenant: {
-    id: 'demo-tenant',
+const DEMO_CLIENTS: DemoClient[] = [
+  {
+    id: 'demo-tenant-medspa',
     slug: 'demo-med-spa',
     name: 'Demo Med Spa',
-    timezone: 'America/Phoenix',
     plan: 'pro',
-    theme: null,
-    layout: null,
-    funnelLabels: { lead: 'Leads', scheduled: 'Scheduled', completed: 'Completed', purchase: 'Purchases' },
-    footerCredit: true,
-    customHostname: null,
-    hostnameStatus: null,
-  },
-  role: 'account_admin',
-  viewConfig: null,
-};
-
-export const DEMO_SOURCES: SourceInfo[] = [
-  {
-    key: 'ghl-contacts',
-    name: 'Go High Level (contacts)',
-    kind: 'webhook',
-    connector_type: 'ghl-contacts',
-    cadence: 1,
-    platform_link: null,
-    how_to: null,
-    verified_by: 'demo',
-    verified_at: '2026-06-30T12:00:00Z',
-    records_through: '2026-06-30',
-    last_import_at: '2026-06-30T12:00:00Z',
-    freshness: 'green',
+    timezone: 'America/Phoenix',
+    platforms: ['meta', 'google'],
+    monthlyBudget: 28500,
+    platformBudgets: { meta: 19000, google: 9500 },
+    months: ['2026-05', '2026-06'],
+    meta: 7100,
+    google: 4200,
   },
   {
-    key: 'meta-campaign',
-    name: 'Meta Ads (campaigns)',
-    kind: 'csv',
-    connector_type: 'meta-campaign',
-    cadence: 7,
-    platform_link: null,
-    how_to: null,
-    verified_by: 'demo',
-    verified_at: '2026-06-29T09:00:00Z',
-    records_through: '2026-06-28',
-    last_import_at: '2026-06-29T09:00:00Z',
-    freshness: 'green',
+    id: 'demo-tenant-dental',
+    slug: 'demo-dental-group',
+    name: 'Demo Dental Group',
+    plan: 'starter',
+    timezone: 'America/Denver',
+    platforms: ['google'],
+    monthlyBudget: 5200,
+    platformBudgets: { google: 5200 },
+    months: ['2026-06'],
+    meta: 0,
+    google: 5200,
   },
   {
-    key: 'google-campaign',
-    name: 'Google Ads (campaigns)',
-    kind: 'csv',
-    connector_type: 'google-campaign',
-    cadence: 7,
-    platform_link: null,
-    how_to: null,
-    verified_by: 'demo',
-    verified_at: '2026-06-29T09:00:00Z',
-    records_through: '2026-06-28',
-    last_import_at: '2026-06-29T09:00:00Z',
-    freshness: 'green',
+    id: 'demo-tenant-detailing',
+    slug: 'demo-auto-detailing',
+    name: 'Demo Auto Detailing',
+    plan: 'whitelabel',
+    timezone: 'America/Phoenix',
+    platforms: ['meta'],
+    monthlyBudget: 8800,
+    platformBudgets: { meta: 8800 },
+    months: ['2026-06'],
+    meta: 8400,
+    google: 0,
   },
 ];
 
+const DEFAULT_CLIENT = DEMO_CLIENTS[0];
+
+// Mutable, like csrfToken in api.ts: updated when the demo "Clients" tab
+// switches the active client. Read by demoApi.ts for every subsequent
+// tenant-scoped request.
+let activeClientId = DEFAULT_CLIENT.id;
+
+export function setActiveDemoClient(id: string): DemoClient | null {
+  const client = DEMO_CLIENTS.find((c) => c.id === id);
+  if (!client) return null;
+  activeClientId = client.id;
+  return client;
+}
+
+export function getActiveDemoClient(): DemoClient {
+  return DEMO_CLIENTS.find((c) => c.id === activeClientId) ?? DEFAULT_CLIENT;
+}
+
+export const DEMO_ME: Me = {
+  userType: 'agency',
+  userId: 'demo-agency-user',
+  role: 'agency_admin',
+  tenantId: null,
+  csrf: 'demo-csrf-token',
+};
+
+export function getDemoProfile() {
+  const client = getActiveDemoClient();
+  return {
+    id: 'demo-agency-user',
+    email: 'agency@demoagency.example',
+    name: 'Demo Agency Admin',
+    role: 'agency_admin',
+    _forClient: client.name,
+  };
+}
+
+export function getDemoSettings(): TenantSettings {
+  const client = getActiveDemoClient();
+  return {
+    tenant: {
+      id: client.id,
+      slug: client.slug,
+      name: client.name,
+      timezone: client.timezone,
+      plan: client.plan,
+      theme: null,
+      layout: null,
+      funnelLabels: { lead: 'Leads', scheduled: 'Scheduled', completed: 'Completed', purchase: 'Purchases' },
+      footerCredit: true,
+      customHostname: null,
+      hostnameStatus: null,
+    },
+    role: 'agency_admin',
+    viewConfig: null,
+  };
+}
+
+export function getDemoSources(): SourceInfo[] {
+  const client = getActiveDemoClient();
+  const sources: SourceInfo[] = [
+    {
+      key: 'ghl-contacts',
+      name: 'Go High Level (contacts)',
+      kind: 'webhook',
+      connector_type: 'ghl-contacts',
+      cadence: 1,
+      platform_link: null,
+      how_to: null,
+      verified_by: 'demo',
+      verified_at: '2026-06-30T12:00:00Z',
+      records_through: '2026-06-30',
+      last_import_at: '2026-06-30T12:00:00Z',
+      freshness: 'green',
+    },
+  ];
+  if (client.platforms.includes('meta')) {
+    sources.push({
+      key: 'meta-campaign',
+      name: 'Meta Ads (campaigns)',
+      kind: 'csv',
+      connector_type: 'meta-campaign',
+      cadence: 7,
+      platform_link: null,
+      how_to: null,
+      verified_by: 'demo',
+      verified_at: '2026-06-29T09:00:00Z',
+      records_through: '2026-06-28',
+      last_import_at: '2026-06-29T09:00:00Z',
+      freshness: 'green',
+    });
+  }
+  if (client.platforms.includes('google')) {
+    sources.push({
+      key: 'google-campaign',
+      name: 'Google Ads (campaigns)',
+      kind: 'csv',
+      connector_type: 'google-campaign',
+      cadence: 7,
+      platform_link: null,
+      how_to: null,
+      verified_by: 'demo',
+      verified_at: '2026-06-29T09:00:00Z',
+      records_through: '2026-06-28',
+      last_import_at: '2026-06-29T09:00:00Z',
+      freshness: 'green',
+    });
+  }
+  return sources;
+}
+
 function monthData(month: string, meta: number, google: number, scale: number): MonthData {
-  const leadsMeta = Math.round(47 * scale);
-  const leadsGoogle = Math.round(33 * scale);
+  const leadsMeta = meta > 0 ? Math.round(47 * scale) : 0;
+  const leadsGoogle = google > 0 ? Math.round(33 * scale) : 0;
+  const channels = [];
+  const campaigns = [];
+  const adLineItems = [];
+  if (meta > 0) {
+    channels.push({
+      period_month: month,
+      channel: 'meta',
+      attribution_basis: 'first' as const,
+      leads: leadsMeta,
+      scheduled: Math.round(leadsMeta * 0.58),
+      completed: Math.round(leadsMeta * 0.4),
+      purchases: Math.round(leadsMeta * 0.3),
+      revenue: Math.round(meta * 2.5),
+      spend: meta,
+    });
+    campaigns.push(
+      { period_month: month, channel: 'meta', campaign: 'Meta - Spring Promo', spend: Math.round(meta * 0.55), leads: Math.round(leadsMeta * 0.5), completed: Math.round(leadsMeta * 0.2), revenue: Math.round(meta * 1.3) },
+      { period_month: month, channel: 'meta', campaign: 'Meta - Retargeting', spend: Math.round(meta * 0.45), leads: Math.round(leadsMeta * 0.5), completed: Math.round(leadsMeta * 0.2), revenue: Math.round(meta * 1.2) }
+    );
+    adLineItems.push(
+      { period_month: month, channel: 'meta', campaign: 'Meta - Spring Promo', ad_name: 'Before/After Carousel', ad_id: 'demo-ad-1', creative_type: 'carousel', creative_type_source: 'auto' as const, spend: Math.round(meta * 0.3), leads_reported: Math.round(leadsMeta * 0.28), cost_per_lead: Math.round((meta * 0.3) / Math.max(1, leadsMeta * 0.28)), status: 'top' as const },
+      { period_month: month, channel: 'meta', campaign: 'Meta - Retargeting', ad_name: 'Testimonial Video', ad_id: 'demo-ad-2', creative_type: 'video', creative_type_source: 'auto' as const, spend: Math.round(meta * 0.25), leads_reported: Math.round(leadsMeta * 0.22), cost_per_lead: Math.round((meta * 0.25) / Math.max(1, leadsMeta * 0.22)), status: 'watch' as const }
+    );
+  }
+  if (google > 0) {
+    channels.push({
+      period_month: month,
+      channel: 'google',
+      attribution_basis: 'first' as const,
+      leads: leadsGoogle,
+      scheduled: Math.round(leadsGoogle * 0.6),
+      completed: Math.round(leadsGoogle * 0.48),
+      purchases: Math.round(leadsGoogle * 0.36),
+      revenue: Math.round(google * 3.9),
+      spend: google,
+    });
+    campaigns.push(
+      { period_month: month, channel: 'google', campaign: 'Google - Search Brand', spend: Math.round(google * 0.4), leads: Math.round(leadsGoogle * 0.45), completed: Math.round(leadsGoogle * 0.22), revenue: Math.round(google * 1.6) },
+      { period_month: month, channel: 'google', campaign: 'Google - Near Me', spend: Math.round(google * 0.6), leads: Math.round(leadsGoogle * 0.55), completed: Math.round(leadsGoogle * 0.26), revenue: Math.round(google * 2.3) }
+    );
+    adLineItems.push({
+      period_month: month, channel: 'google', campaign: 'Google - Near Me', ad_name: 'Near Me - RSA', ad_id: 'demo-ad-3', creative_type: 'text', creative_type_source: 'auto' as const, spend: Math.round(google * 0.5), leads_reported: Math.round(leadsGoogle * 0.5), cost_per_lead: Math.round((google * 0.5) / Math.max(1, leadsGoogle * 0.5)), status: 'top' as const,
+    });
+  }
   return {
     month,
     basis: 'first',
-    channels: [
-      {
-        period_month: month,
-        channel: 'meta',
-        attribution_basis: 'first',
-        leads: leadsMeta,
-        scheduled: Math.round(leadsMeta * 0.58),
-        completed: Math.round(leadsMeta * 0.4),
-        purchases: Math.round(leadsMeta * 0.3),
-        revenue: Math.round(meta * 2.5),
-        spend: meta,
-      },
-      {
-        period_month: month,
-        channel: 'google',
-        attribution_basis: 'first',
-        leads: leadsGoogle,
-        scheduled: Math.round(leadsGoogle * 0.6),
-        completed: Math.round(leadsGoogle * 0.48),
-        purchases: Math.round(leadsGoogle * 0.36),
-        revenue: Math.round(google * 3.9),
-        spend: google,
-      },
-    ],
-    campaigns: [
-      { period_month: month, channel: 'meta', campaign: 'Meta - Spring Promo', spend: Math.round(meta * 0.55), leads: Math.round(leadsMeta * 0.5), completed: Math.round(leadsMeta * 0.2), revenue: Math.round(meta * 1.3) },
-      { period_month: month, channel: 'meta', campaign: 'Meta - Botox Retargeting', spend: Math.round(meta * 0.45), leads: Math.round(leadsMeta * 0.5), completed: Math.round(leadsMeta * 0.2), revenue: Math.round(meta * 1.2) },
-      { period_month: month, channel: 'google', campaign: 'Google - Search Brand', spend: Math.round(google * 0.4), leads: Math.round(leadsGoogle * 0.45), completed: Math.round(leadsGoogle * 0.22), revenue: Math.round(google * 1.6) },
-      { period_month: month, channel: 'google', campaign: 'Google - Med Spa Near Me', spend: Math.round(google * 0.6), leads: Math.round(leadsGoogle * 0.55), completed: Math.round(leadsGoogle * 0.26), revenue: Math.round(google * 2.3) },
-    ],
-    adLineItems: [
-      { period_month: month, channel: 'meta', campaign: 'Meta - Spring Promo', ad_name: 'Before/After Carousel', ad_id: 'demo-ad-1', creative_type: 'carousel', creative_type_source: 'auto', spend: Math.round(meta * 0.3), leads_reported: Math.round(leadsMeta * 0.28), cost_per_lead: Math.round((meta * 0.3) / Math.max(1, leadsMeta * 0.28)), status: 'top' },
-      { period_month: month, channel: 'meta', campaign: 'Meta - Botox Retargeting', ad_name: 'Testimonial Video', ad_id: 'demo-ad-2', creative_type: 'video', creative_type_source: 'auto', spend: Math.round(meta * 0.25), leads_reported: Math.round(leadsMeta * 0.22), cost_per_lead: Math.round((meta * 0.25) / Math.max(1, leadsMeta * 0.22)), status: 'watch' },
-      { period_month: month, channel: 'google', campaign: 'Google - Med Spa Near Me', ad_name: 'Med Spa Near Me - RSA', ad_id: 'demo-ad-3', creative_type: 'text', creative_type_source: 'auto', spend: Math.round(google * 0.5), leads_reported: Math.round(leadsGoogle * 0.5), cost_per_lead: Math.round((google * 0.5) / Math.max(1, leadsGoogle * 0.5)), status: 'top' },
-    ],
+    channels,
+    campaigns,
+    adLineItems,
     cohort: [],
     quality: null,
     targets: [
-      { period_month: month, metric: 'leads', value: 90 },
-      { period_month: month, metric: 'revenue', value: 40000 },
+      { period_month: month, metric: 'leads', value: Math.round((leadsMeta + leadsGoogle) * 1.15) || 20 },
+      { period_month: month, metric: 'revenue', value: Math.round((meta * 2.5 + google * 3.9) * 1.1) || 5000 },
     ],
   };
 }
 
-const DEMO_MONTH_DATA: Record<string, MonthData> = {
-  '2026-05': monthData('2026-05', 6800, 3900, 0.85),
-  '2026-06': monthData('2026-06', 7100, 4200, 1),
-};
-
 export function getDemoMonthData(month: string): MonthData {
-  return DEMO_MONTH_DATA[month] ?? monthData(month, 7000, 4000, 0.9);
+  const client = getActiveDemoClient();
+  const scale = month === client.months[client.months.length - 1] ? 1 : 0.85;
+  return monthData(month, client.meta, client.google, scale);
 }
 
-export const DEMO_MONTHS_RESPONSE = { months: DEMO_MONTHS };
+export function getDemoMonthsResponse() {
+  return { months: getActiveDemoClient().months };
+}
 
-export const DEMO_TEAM_USERS = [
-  { id: 'demo-user', email: 'owner@demomedspa.example', name: 'Demo Med Spa Admin', role: 'account_admin' as const, view_config_json: null, active: 1 },
-  { id: 'demo-viewer', email: 'viewer@demomedspa.example', name: 'Front Desk Viewer', role: 'viewer' as const, view_config_json: null, active: 1 },
-];
+export function getDemoTeamUsers() {
+  const client = getActiveDemoClient();
+  return [
+    { id: 'demo-user', email: `owner@${client.slug}.example`, name: `${client.name} Admin`, role: 'account_admin' as const, view_config_json: null, active: 1 },
+    { id: 'demo-viewer', email: `viewer@${client.slug}.example`, name: 'Front Desk Viewer', role: 'viewer' as const, view_config_json: null, active: 1 },
+  ];
+}
+
+// Roster row shape for GET /api/agency/overview, the "Clients" tab.
+export function getDemoAgencyOverview() {
+  const month = DEFAULT_CLIENT.months[DEFAULT_CLIENT.months.length - 1];
+  const tenants = DEMO_CLIENTS.map((client) => {
+    const data = monthData(month, client.meta, client.google, 1);
+    const leads = data.channels.reduce((sum, c) => sum + c.leads, 0);
+    const scheduled = data.channels.reduce((sum, c) => sum + c.scheduled, 0);
+    const completed = data.channels.reduce((sum, c) => sum + c.completed, 0);
+    const purchases = data.channels.reduce((sum, c) => sum + c.purchases, 0);
+    const revenue = data.channels.reduce((sum, c) => sum + c.revenue, 0);
+    const spend = data.channels.reduce((sum, c) => sum + c.spend, 0);
+    return {
+      id: client.id,
+      slug: client.slug,
+      name: client.name,
+      plan: client.plan,
+      leads,
+      scheduled,
+      completed,
+      purchases,
+      revenue,
+      spend,
+      pulled_at: '2026-06-30T12:00:00Z',
+      monthly_ad_spend_budget: client.monthlyBudget,
+      ad_platforms_json: JSON.stringify(client.platforms),
+      ad_platform_budget_json: JSON.stringify(client.platformBudgets),
+    };
+  });
+  return { month, tenants };
+}
