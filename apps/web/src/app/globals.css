@@ -450,6 +450,53 @@ table.data td {
   background: var(--accent-soft);
 }
 
+/* One card per campaign in the Campaigns and ads breakdown. */
+.campaign-block {
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: var(--card);
+}
+
+.campaign-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 26px;
+}
+
+.campaign-stats > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.campaign-stats .muted {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.campaign-stats .num {
+  font-size: 15px;
+}
+
+/* Format tile beside each ad title. CSV exports carry no creative assets
+   (thumbnails need the ad platform APIs), so the tile identifies the
+   format at a glance instead. */
+.creative-tile {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  flex: none;
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;

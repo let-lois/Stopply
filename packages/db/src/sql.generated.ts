@@ -41,5 +41,10 @@ export const TENANT_MIGRATIONS: Migration[] = [
     "version": 2,
     "name": "0002_ad_line_items",
     "sql": "-- Ad line item detail: individual Meta/Google ads within a campaign,\n-- imported from ad level CSV exports. Extends raw_ad_spend's campaign\n-- granularity down to the ad. Creative type is read from the export where\n-- the platform reports it and can be corrected by staff afterward; the\n-- source column tells the UI which one happened.\nCREATE TABLE IF NOT EXISTS ad_line_items (\n  period_month TEXT NOT NULL,\n  channel TEXT NOT NULL,\n  campaign TEXT NOT NULL,\n  ad_name TEXT NOT NULL,\n  ad_id TEXT,\n  creative_type TEXT,\n  creative_type_source TEXT NOT NULL DEFAULT 'auto' CHECK (creative_type_source IN ('auto', 'manual')),\n  spend REAL NOT NULL DEFAULT 0,\n  leads_reported INTEGER,\n  imported_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\n  PRIMARY KEY (period_month, channel, campaign, ad_name)\n);\n"
+  },
+  {
+    "version": 3,
+    "name": "0003_campaign_meta",
+    "sql": "-- Per-campaign metadata that must survive rollups and re-imports.\n-- campaign_metrics and ad_line_items are recomputed or replaced wholesale\n-- (delete then insert) every time a rollup runs or a CSV re-uploads, so a\n-- manually assigned campaign type cannot live on those rows. This side\n-- table is keyed the same way ((channel, campaign), the join key used\n-- everywhere else) and is only ever written by explicit user action.\nCREATE TABLE IF NOT EXISTS campaign_meta (\n  channel TEXT NOT NULL,\n  campaign TEXT NOT NULL,\n  campaign_type TEXT,\n  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\n  PRIMARY KEY (channel, campaign)\n);\n"
   }
 ];

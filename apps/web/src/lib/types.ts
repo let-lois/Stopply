@@ -46,6 +46,9 @@ export interface CampaignMetrics {
   period_month: string;
   channel: string;
   campaign: string;
+  // Manually tagged objective/type ("Lead Generation", "Search", ...),
+  // stored in campaign_meta so it survives rollups and re-imports.
+  campaign_type: string | null;
   spend: number;
   leads: number;
   completed: number;
