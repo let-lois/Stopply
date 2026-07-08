@@ -46,5 +46,10 @@ export const TENANT_MIGRATIONS: Migration[] = [
     "version": 3,
     "name": "0003_campaign_meta",
     "sql": "-- Per-campaign metadata that must survive rollups and re-imports.\n-- campaign_metrics and ad_line_items are recomputed or replaced wholesale\n-- (delete then insert) every time a rollup runs or a CSV re-uploads, so a\n-- manually assigned campaign type cannot live on those rows. This side\n-- table is keyed the same way ((channel, campaign), the join key used\n-- everywhere else) and is only ever written by explicit user action.\nCREATE TABLE IF NOT EXISTS campaign_meta (\n  channel TEXT NOT NULL,\n  campaign TEXT NOT NULL,\n  campaign_type TEXT,\n  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\n  PRIMARY KEY (channel, campaign)\n);\n"
+  },
+  {
+    "version": 4,
+    "name": "0004_rep_metrics",
+    "sql": "-- Per-rep monthly counters for door-to-door tenants: setters knock doors\n-- and set appointments, closers sit them and close. One row per rep per\n-- month per source; a rep active on both sides carries both sets of\n-- counters. Replaced wholesale per (month, source) on each import, same\n-- replay semantics as raw_ad_spend.\nCREATE TABLE IF NOT EXISTS rep_metrics (\n  period_month TEXT NOT NULL,\n  source_key TEXT NOT NULL,\n  rep TEXT NOT NULL,\n  knocks INTEGER NOT NULL DEFAULT 0,\n  pitches INTEGER NOT NULL DEFAULT 0,\n  appointments_set INTEGER NOT NULL DEFAULT 0,\n  sits_set INTEGER NOT NULL DEFAULT 0,\n  sits_run INTEGER NOT NULL DEFAULT 0,\n  closes INTEGER NOT NULL DEFAULT 0,\n  installs INTEGER NOT NULL DEFAULT 0,\n  PRIMARY KEY (period_month, source_key, rep)\n);\n"
   }
 ];

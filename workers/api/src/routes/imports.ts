@@ -26,6 +26,8 @@ const PARSER_CATALOG: Record<string, string> = {
   'blvd-appointments': 'Boulevard appointments export. Scheduling stage events (booked, shows).',
   'blvd-line-items': 'Boulevard line items / sales export. Purchase stage events with amounts.',
   'blvd-clients': 'Boulevard client records export. Identity bridge of client id to email/phone/name.',
+  'd2d-accounts':
+    'Door-to-door sales CRM accounts export. One row per account with timestamp columns per funnel stage (Knock, Pitch, Appointment, Sit, Closed, Installed) plus owner/setter and closer names.',
 };
 
 export const importRoutes = new Hono<AppContext>();
@@ -371,6 +373,92 @@ export async function applyParseResult(
             phoneLast10: ev.phoneLast10 ?? null,
             nameNorm: ev.nameNorm ?? null,
           }),
+        ]
+      );
+    }
+  }
+
+  if (parsed.kind === 'd2d-accounts') {
+    // Contacts first, so the stage events inserted below always reference
+    // an existing contact. The account id from the export IS the contact
+    // id, which is what lets a June close land on a May-knocked contact
+    // across separate monthly imports.
+    for (const contact of parsed.contacts ?? []) {
+      const eventId = `ev_imp_${(await sha256Hex(`${sourceKey}:${contact.externalRef}`)).slice(0, 32)}`;
+      await d1.query(
+        databaseId,
+        `INSERT OR IGNORE INTO events (id, occurred_at, source_key, event_type, contact_id, payload_json)
+         VALUES (?, ?, ?, 'integration_event', ?, ?)`,
+        [
+          eventId,
+          contact.createdAt,
+          sourceKey,
+          contact.externalRef,
+          JSON.stringify({ followupStage: contact.followupStage, channel: contact.channel }),
+        ]
+      );
+      await upsertContact(
+        d1,
+        databaseId,
+        {
+          externalRef: contact.externalRef,
+          firstName: contact.firstName,
+          lastName: contact.lastName,
+          email: contact.email,
+          phone: contact.phoneLast10,
+          createdAt: contact.createdAt,
+          followupStage: contact.followupStage,
+          treatment: null,
+        },
+        {
+          at: contact.createdAt,
+          channel: contact.channel,
+          source: contact.sourceRaw,
+          campaign: contact.campaign,
+          json: {},
+          sourceKey,
+          eventId,
+        }
+      );
+    }
+
+    const stages = [...new Set((parsed.d2dStageEvents ?? []).map((e) => e.stage))];
+    for (const stage of stages) {
+      await d1.query(
+        databaseId,
+        `DELETE FROM stage_events WHERE source_key = ? AND stage = ? AND occurred_at >= ? AND occurred_at < ?`,
+        [sourceKey, stage, monthStart, monthEnd]
+      );
+    }
+    for (const ev of parsed.d2dStageEvents ?? []) {
+      await d1.query(
+        databaseId,
+        `INSERT OR IGNORE INTO stage_events (id, contact_id, external_ref, stage, occurred_at, source_key, raw_json)
+         VALUES (?, ?, ?, ?, ?, ?, '{}')`,
+        [`se_${randomToken(8)}`, ev.contactId, `${ev.stage}:${ev.contactId}`, ev.stage, ev.occurredAt, sourceKey]
+      );
+    }
+
+    await d1.query(databaseId, `DELETE FROM rep_metrics WHERE period_month = ? AND source_key = ?`, [
+      month,
+      sourceKey,
+    ]);
+    for (const rep of parsed.repMetrics ?? []) {
+      await d1.query(
+        databaseId,
+        `INSERT INTO rep_metrics (period_month, source_key, rep, knocks, pitches, appointments_set, sits_set, sits_run, closes, installs)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          rep.periodMonth,
+          sourceKey,
+          rep.rep,
+          rep.knocks,
+          rep.pitches,
+          rep.appointmentsSet,
+          rep.sitsSet,
+          rep.sitsRun,
+          rep.closes,
+          rep.installs,
         ]
       );
     }

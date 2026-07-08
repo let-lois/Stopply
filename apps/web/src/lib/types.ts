@@ -84,6 +84,21 @@ export interface MonthQuality {
   partial_only_count: number;
 }
 
+// Per-rep monthly counters for door-to-door tenants. Setter-side counts
+// (knocks, pitches, appointments set, sits set) credit the rep who worked
+// the door; closer-side counts (sits run, closes, installs) credit the rep
+// who ran the appointment. Empty for tenants without door-to-door data.
+export interface RepMetricsRow {
+  rep: string;
+  knocks: number;
+  pitches: number;
+  appointments_set: number;
+  sits_set: number;
+  sits_run: number;
+  closes: number;
+  installs: number;
+}
+
 export interface MonthData {
   month: string;
   basis: 'first' | 'latest';
@@ -93,6 +108,7 @@ export interface MonthData {
   cohort: CohortRow[];
   quality: MonthQuality | null;
   targets: Array<{ period_month: string; metric: string; value: number }>;
+  reps?: RepMetricsRow[];
 }
 
 export interface SourceInfo {

@@ -6,7 +6,17 @@ export interface CsvTable {
   rows: Array<Record<string, string>>;
 }
 
-export function parseCsv(text: string): CsvTable {
+export interface CsvRecords {
+  headers: string[];
+  records: string[][];
+}
+
+// Tokenizes CSV text into raw records without collapsing columns. Some CRM
+// exports carry near-duplicate header names (e.g. "Appointment" and
+// "Appointment " differing only by a trailing space, one a stage and one a
+// disposition); those collide in parseCsv's dict rows since headers are
+// trimmed, so duplicate-sensitive parsers read this form instead.
+export function parseCsvRecords(text: string): CsvRecords {
   const records: string[][] = [];
   let field = '';
   let record: string[] = [];
@@ -53,11 +63,15 @@ export function parseCsv(text: string): CsvTable {
   while (records.length && records[records.length - 1]!.every((f) => f.trim() === '')) {
     records.pop();
   }
-  if (records.length === 0) return { headers: [], rows: [] };
+  if (records.length === 0) return { headers: [], records: [] };
+  return { headers: records[0]!.map((h) => h.trim()), records: records.slice(1) };
+}
 
-  const headers = records[0]!.map((h) => h.trim());
+export function parseCsv(text: string): CsvTable {
+  const { headers, records } = parseCsvRecords(text);
+  if (headers.length === 0) return { headers: [], rows: [] };
   const lowerHeaders = headers.map((h) => h.toLowerCase());
-  const rows = records.slice(1).map((rec) => {
+  const rows = records.map((rec) => {
     const row: Record<string, string> = {};
     for (let i = 0; i < lowerHeaders.length; i++) {
       row[lowerHeaders[i]!] = (rec[i] ?? '').trim();

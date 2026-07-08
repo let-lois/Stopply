@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { channelColor, fmtMoney, fmtNum, monthLabel } from '@/lib/format';
-import type { AdLineItem, Comparison, FunnelLabels, LeadRow, MonthData, SourceInfo, TenantSettings } from '@/lib/types';
+import type { AdLineItem, Comparison, FunnelLabels, LeadRow, MonthData, RepMetricsRow, SourceInfo, TenantSettings } from '@/lib/types';
 import { SourceCheck } from '../SourceCheck';
 
 const CREATIVE_TYPE_OPTIONS = ['Video', 'Carousel', 'Static', 'UGC', 'Other'];
@@ -440,6 +440,10 @@ function MonthSection({
           <h3>Lead cohort</h3>
           <CohortStrip data={view} month={month} />
 
+          {(view.reps?.length ?? 0) > 0 && (
+            <TeamLeaderboard reps={view.reps!} labels={labels} />
+          )}
+
           <h3>Campaigns and ads</h3>
           {view.adLineItems.length > 0 && (
             <div className="type-filters">
@@ -695,6 +699,88 @@ function MonthSection({
         </>
       )}
     </section>
+  );
+}
+
+// Door-to-door team leaderboard: setters ranked by door work, closers by
+// appointments run and deals closed. Only renders for tenants whose
+// imports produce rep metrics; one rep can appear in both tables.
+function TeamLeaderboard({ reps, labels }: { reps: RepMetricsRow[]; labels: FunnelLabels }) {
+  const setters = reps
+    .filter((r) => r.knocks + r.pitches + r.appointments_set + r.sits_set > 0)
+    .sort((a, b) => b.knocks - a.knocks || b.appointments_set - a.appointments_set);
+  const closers = reps
+    .filter((r) => r.sits_run + r.closes + r.installs > 0)
+    .sort((a, b) => b.closes - a.closes || b.sits_run - a.sits_run);
+
+  const pct = (num: number, den: number) => (den > 0 ? ((num / den) * 100).toFixed(0) + '%' : '—');
+
+  return (
+    <>
+      <h3>Team leaderboard</h3>
+      <div className="leaderboard-grid">
+        {setters.length > 0 && (
+          <div className="stack" style={{ gap: 8 }}>
+            <h4 className="leaderboard-title">Setters</h4>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="data">
+                <thead>
+                  <tr>
+                    <th>Rep</th>
+                    <th>{labels.lead}</th>
+                    <th>Pitches</th>
+                    <th>{labels.scheduled} set</th>
+                    <th>{labels.completed} set</th>
+                    <th>{labels.lead.replace(/s$/, '')} &rarr; {labels.scheduled.toLowerCase()}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {setters.map((r) => (
+                    <tr key={r.rep}>
+                      <td>{r.rep}</td>
+                      <td className="num">{fmtNum(r.knocks)}</td>
+                      <td className="num">{fmtNum(r.pitches)}</td>
+                      <td className="num">{fmtNum(r.appointments_set)}</td>
+                      <td className="num">{fmtNum(r.sits_set)}</td>
+                      <td className="num">{pct(r.appointments_set, r.knocks)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+        {closers.length > 0 && (
+          <div className="stack" style={{ gap: 8 }}>
+            <h4 className="leaderboard-title">Closers</h4>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="data">
+                <thead>
+                  <tr>
+                    <th>Rep</th>
+                    <th>{labels.completed} run</th>
+                    <th>{labels.purchase}</th>
+                    <th>Installs</th>
+                    <th>Close rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {closers.map((r) => (
+                    <tr key={r.rep}>
+                      <td>{r.rep}</td>
+                      <td className="num">{fmtNum(r.sits_run)}</td>
+                      <td className="num">{fmtNum(r.closes)}</td>
+                      <td className="num">{fmtNum(r.installs)}</td>
+                      <td className="num">{pct(r.closes, r.sits_run)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 
