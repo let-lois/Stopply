@@ -175,13 +175,15 @@ textarea {
   display: flex;
   align-items: flex-start;
   min-height: 100vh;
+  /* Clears the fixed sidebar; the shell's auto margins then center the
+     content column within the remaining space instead of pinning it
+     against the sidebar. Collapses to 0 in the mobile drawer layout. */
+  padding-left: 240px;
 }
 
 .main-content {
   flex: 1;
   min-width: 0;
-  /* Clears the fixed sidebar. Collapses to 0 in the mobile drawer layout. */
-  margin-left: 240px;
 }
 
 /* One-page client dashboard: each former tab is a section on a single
@@ -706,8 +708,8 @@ table.data td {
     transition: transform 0.2s ease;
   }
 
-  .main-content {
-    margin-left: 0;
+  .app-layout {
+    padding-left: 0;
   }
 
   .sidebar.open {
