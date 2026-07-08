@@ -65,10 +65,13 @@
   box-sizing: border-box;
 }
 
-/* Mobile rules: no horizontal scroll anywhere. */
+/* Mobile rules: no horizontal scroll anywhere. clip, not hidden: hidden
+   turns body into a scroll container, which silently breaks position:
+   sticky on the sidebar (it sticks to body's never-moving scrollport
+   instead of the viewport). clip just cuts overflow without doing that. */
 html,
 body {
-  overflow-x: hidden;
+  overflow-x: clip;
   margin: 0;
   padding: 0;
   background: var(--paper);
@@ -177,6 +180,23 @@ textarea {
 .main-content {
   flex: 1;
   min-width: 0;
+}
+
+/* One-page client dashboard: each former tab is a section on a single
+   continuous page. Sidebar links scroll here instead of swapping views. */
+.page-section {
+  scroll-margin-top: 16px;
+}
+
+.page-section + .page-section {
+  margin-top: 16px;
+  padding-top: 28px;
+  border-top: 1px solid var(--hairline);
+}
+
+.section-title {
+  font-family: var(--font-display);
+  font-size: 22px;
 }
 
 .sidebar {
@@ -400,8 +420,42 @@ table.data td {
   background: color-mix(in srgb, var(--negative) 14%, transparent);
 }
 
-/* Client roster: the platform mix tag and the budget vs actual spend
-   pacing bar shown on each client card. */
+/* Client roster: a plain selection list, not a dashboard. Each row is
+   just enough to tell clients apart and click into one; everything else
+   (leads, revenue, ROAS, budget pacing) lives inside that client's own
+   dashboard instead. */
+.client-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--hairline);
+  cursor: pointer;
+}
+
+.client-row:last-child {
+  border-bottom: none;
+}
+
+.client-row:hover {
+  background: var(--accent-soft);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.status-dot.green {
+  background: var(--positive);
+}
+
+.status-dot.gray {
+  background: var(--ink-soft);
+}
+
 .platform-tag {
   display: inline-flex;
   align-items: center;

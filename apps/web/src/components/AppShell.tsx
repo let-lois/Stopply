@@ -42,18 +42,18 @@ const TOKEN_TO_VAR: Record<string, string> = {
   channelWebsite: '--ch-website',
 };
 
-type TabKey =
-  | 'clients'
-  | 'team'
-  | 'audit'
-  | 'secrets'
-  | 'performance'
-  | 'work-backwards'
-  | 'planning'
-  | 'present'
-  | 'data-team';
+// Agency console views swap the whole main area (they are about the
+// agency, not any one client). Client sections do NOT swap anything:
+// a client's dashboard is one continuous page and the sidebar entries
+// for these just scroll to the matching section on it.
+type ConsoleKey = 'clients' | 'team' | 'audit' | 'secrets';
+type SectionKey = 'performance' | 'work-backwards' | 'planning' | 'present' | 'data-team';
+type TabKey = ConsoleKey | SectionKey;
 
-const TENANT_TABS: TabKey[] = ['performance', 'work-backwards', 'planning', 'present', 'data-team'];
+const CLIENT_SECTIONS: SectionKey[] = ['performance', 'work-backwards', 'planning', 'present', 'data-team'];
+
+const isConsoleKey = (t: TabKey): t is ConsoleKey =>
+  t === 'clients' || t === 'team' || t === 'audit' || t === 'secrets';
 
 export function AppShell({
   isAgencyUser,
@@ -86,12 +86,30 @@ export function AppShell({
   const [settings, setSettings] = useState<TenantSettings | null>(null);
   const [months, setMonths] = useState<string[]>([]);
   const [sources, setSources] = useState<SourceInfo[]>([]);
-  const [tab, setTab] = useState<TabKey>(initialTab ?? (hasTenant ? 'performance' : 'clients'));
+  // Which agency console view is showing, or null for the client's own
+  // one-page dashboard. Tenant users are always on the client page.
+  const [consoleView, setConsoleView] = useState<ConsoleKey | null>(
+    initialTab && isConsoleKey(initialTab) ? initialTab : hasTenant ? null : 'clients'
+  );
+  // Which section of the one-page client dashboard is in view (scroll spy),
+  // purely for highlighting the sidebar link.
+  const [activeSection, setActiveSection] = useState<SectionKey>('performance');
   const [comparison, setComparison] = useState<Comparison>('previous');
   const [menuOpen, setMenuOpen] = useState(false);
   const [hasLogo, setHasLogo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [canSecrets, setCanSecrets] = useState(false);
+
+  // Scroll the one-page dashboard to a section. If a console view is
+  // currently showing, the section is not mounted yet, so the scroll waits
+  // for the next paint after switching back.
+  const scrollToSection = useCallback((key: SectionKey) => {
+    setConsoleView(null);
+    setActiveSection(key);
+    requestAnimationFrame(() => {
+      document.getElementById(`section-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, []);
 
   const loadSettings = useCallback(() => {
     api<TenantSettings>('/api/tenant/settings')
@@ -130,6 +148,29 @@ export function AppShell({
       .catch(() => setCanSecrets(false));
   }, [isAgencyUser]);
 
+  // Scroll spy for the one-page dashboard: highlight the sidebar link of
+  // whichever section currently crosses the upper part of the viewport.
+  useEffect(() => {
+    if (consoleView !== null || !settings) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setActiveSection(entry.target.id.replace('section-', '') as SectionKey);
+          }
+        }
+      },
+      // A section counts as "active" while it crosses a band near the top
+      // of the viewport, so the highlight follows reading position.
+      { rootMargin: '-15% 0px -75% 0px' }
+    );
+    for (const key of CLIENT_SECTIONS) {
+      const el = document.getElementById(`section-${key}`);
+      if (el) observer.observe(el);
+    }
+    return () => observer.disconnect();
+  }, [consoleView, settings]);
+
   // Apply the tenant theme as CSS variables on the app container.
   const themeStyle = useMemo(() => {
     const style: Record<string, string> = {};
@@ -166,19 +207,23 @@ export function AppShell({
   const labels = settings?.tenant.funnelLabels ?? DEFAULT_LABELS;
   const isViewer = settings?.role === 'viewer';
 
-  const agencyTabs: TabKey[] = isAgencyUser
+  const consoleKeys: ConsoleKey[] = isAgencyUser
     ? [
         'clients',
-        ...(agencyRole === 'agency_admin' ? (['team', 'audit'] as TabKey[]) : []),
-        ...(canSecrets ? (['secrets'] as TabKey[]) : []),
+        ...(agencyRole === 'agency_admin' ? (['team', 'audit'] as ConsoleKey[]) : []),
+        ...(canSecrets ? (['secrets'] as ConsoleKey[]) : []),
       ]
     : [];
 
-  const allowedTabs: TabKey[] = !hasTenant
-    ? agencyTabs
+  // The sections of the one-page client dashboard this user may see, in
+  // page order. Viewers get only what their view config grants.
+  const sectionKeys: SectionKey[] = !hasTenant
+    ? []
     : isViewer
-      ? ((settings?.viewConfig?.tabs ?? ['performance']) as TabKey[])
-      : [...agencyTabs, ...TENANT_TABS];
+      ? CLIENT_SECTIONS.filter((s) =>
+          ((settings?.viewConfig?.tabs ?? ['performance']) as SectionKey[]).includes(s)
+        ).filter((s) => s !== 'present' && s !== 'data-team')
+      : CLIENT_SECTIONS;
 
   const staleCount = sources.filter((s) => s.freshness === 'red').length;
 
@@ -194,7 +239,7 @@ export function AppShell({
     'data-team': 'Data and Team',
   };
 
-  const activeTab = allowedTabs.includes(tab) ? tab : allowedTabs[0] ?? 'clients';
+  const activeConsole = consoleView && consoleKeys.includes(consoleView) ? consoleView : consoleView ? 'clients' : null;
 
   const showOnboarding = !!settings && months.length === 0 && !isViewer;
 
@@ -228,13 +273,24 @@ export function AppShell({
               {isDemoMode() && <DemoBadge inline />}
             </>
           }
-          items={allowedTabs.map((t) => ({
-            key: t,
-            label: tabLabel[t],
-            badge: t === 'data-team' ? staleCount : undefined,
-            active: t === activeTab,
-            onClick: () => setTab(t),
-          }))}
+          items={[
+            // Agency console views: swap the main area entirely.
+            ...consoleKeys.map((t) => ({
+              key: t,
+              label: tabLabel[t],
+              active: t === activeConsole,
+              onClick: () => setConsoleView(t),
+            })),
+            // Client dashboard sections: scroll links into the one-page
+            // dashboard, highlighted by the scroll spy.
+            ...sectionKeys.map((t) => ({
+              key: t,
+              label: tabLabel[t],
+              badge: t === 'data-team' ? staleCount : undefined,
+              active: activeConsole === null && t === activeSection,
+              onClick: () => scrollToSection(t),
+            })),
+          ]}
           footer={
             <>
               {settings && (
@@ -257,42 +313,63 @@ export function AppShell({
         />
 
         <main className="main-content shell stack" style={{ gap: 20 }}>
-          {activeTab === 'clients' && (
+          {activeConsole === 'clients' && (
             // Switching a client re-renders AppShell fresh via the key prop
-            // in page.tsx (agencyTenant.id changes), which also recomputes
-            // initialTab back to "performance", no local setTab needed here.
+            // in page.tsx (agencyTenant.id changes), landing on the top of
+            // that client's one-page dashboard.
             <ClientsSection role={agencyRole ?? 'agency_staff'} onEnterTenant={(t) => onSwitchTenant?.(t)} />
           )}
-          {activeTab === 'team' && <TeamSection currentUserId={userId} />}
-          {activeTab === 'audit' && <AuditSection />}
-          {activeTab === 'secrets' && <SecretsSection />}
+          {activeConsole === 'team' && <TeamSection currentUserId={userId} />}
+          {activeConsole === 'audit' && <AuditSection />}
+          {activeConsole === 'secrets' && <SecretsSection />}
 
-          {settings && (
+          {activeConsole === null && settings && (
+            // The client's dashboard: every section on one continuous page,
+            // in sidebar order, each anchored for the scroll links above.
             <>
-              {TENANT_TABS.includes(activeTab) && showOnboarding && (
-                <OnboardingChecklist sources={sources} onTabChange={setTab} />
+              {showOnboarding && <OnboardingChecklist sources={sources} onOpenDataTeam={() => scrollToSection('data-team')} />}
+
+              {sectionKeys.includes('performance') && (
+                <section id="section-performance" className="page-section stack" style={{ gap: 20 }}>
+                  <h2 className="section-title">Performance</h2>
+                  <PerformanceTab
+                    settings={settings}
+                    labels={labels}
+                    months={months}
+                    sources={sources}
+                    comparison={comparison}
+                    refreshSources={loadSources}
+                  />
+                </section>
               )}
-              {activeTab === 'performance' && (
-                <PerformanceTab
-                  settings={settings}
-                  labels={labels}
-                  months={months}
-                  sources={sources}
-                  comparison={comparison}
-                  refreshSources={loadSources}
-                />
+              {/* WorkBackwards, Planning, and Present render their own h2
+                  titles, so their sections add no heading of their own. */}
+              {sectionKeys.includes('work-backwards') && (
+                <section id="section-work-backwards" className="page-section stack" style={{ gap: 20 }}>
+                  <WorkBackwardsTab settings={settings} labels={labels} months={months} />
+                </section>
               )}
-              {activeTab === 'work-backwards' && <WorkBackwardsTab settings={settings} labels={labels} months={months} />}
-              {activeTab === 'planning' && <PlanningTab settings={settings} labels={labels} months={months} />}
-              {activeTab === 'present' && !isViewer && <PresentTab settings={settings} labels={labels} months={months} />}
-              {activeTab === 'data-team' && !isViewer && (
-                <DataTeamTab
-                  settings={settings}
-                  labels={labels}
-                  sources={sources}
-                  refreshSources={loadSources}
-                  refreshSettings={loadSettings}
-                />
+              {sectionKeys.includes('planning') && (
+                <section id="section-planning" className="page-section stack" style={{ gap: 20 }}>
+                  <PlanningTab settings={settings} labels={labels} months={months} />
+                </section>
+              )}
+              {sectionKeys.includes('present') && !isViewer && (
+                <section id="section-present" className="page-section stack" style={{ gap: 20 }}>
+                  <PresentTab settings={settings} labels={labels} months={months} />
+                </section>
+              )}
+              {sectionKeys.includes('data-team') && !isViewer && (
+                <section id="section-data-team" className="page-section stack" style={{ gap: 20 }}>
+                  <h2 className="section-title">Data and Team</h2>
+                  <DataTeamTab
+                    settings={settings}
+                    labels={labels}
+                    sources={sources}
+                    refreshSources={loadSources}
+                    refreshSettings={loadSettings}
+                  />
+                </section>
               )}
 
               {settings.tenant.footerCredit && <div className="footer-credit">Managed by Stopply</div>}
@@ -300,7 +377,7 @@ export function AppShell({
           )}
         </main>
 
-        {settings && <ChatWidget settings={settings} currentTab={activeTab} />}
+        {settings && <ChatWidget settings={settings} currentTab={activeConsole ?? activeSection} />}
       </div>
     </div>
   );
@@ -334,10 +411,11 @@ const SYSTEM_PRESETS: Array<{ id: string; name: string; connectorType: string; n
 
 function OnboardingChecklist({
   sources,
-  onTabChange,
+  onOpenDataTeam,
 }: {
   sources: SourceInfo[];
-  onTabChange: (t: TabKey) => void;
+  // Scrolls to the Data and Team section of the one-page dashboard.
+  onOpenDataTeam: () => void;
 }) {
   const origin = typeof location !== 'undefined' ? location.origin : '';
   const anyImported = sources.some((s) => s.last_import_at);
@@ -360,7 +438,7 @@ function OnboardingChecklist({
         }).catch(() => undefined);
       }
       setAdded(true);
-      onTabChange('data-team');
+      onOpenDataTeam();
     } finally {
       setBusy(false);
     }
@@ -405,7 +483,7 @@ function OnboardingChecklist({
         <button className="primary" disabled={busy || selected.length === 0} onClick={addSources}>
           {busy ? 'Adding…' : `Add ${selected.length || ''} as CSV source${selected.length === 1 ? '' : 's'}`}
         </button>
-        <button className="small" onClick={() => onTabChange('data-team')}>
+        <button className="small" onClick={() => onOpenDataTeam()}>
           Skip — set up sources myself
         </button>
       </div>
@@ -430,7 +508,7 @@ function OnboardingChecklist({
               {item.label}
             </span>
             {!item.done && (
-              <button className="small" onClick={() => onTabChange('data-team')}>
+              <button className="small" onClick={() => onOpenDataTeam()}>
                 Open Data and Team
               </button>
             )}

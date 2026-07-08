@@ -9,7 +9,6 @@
 
 import { useEffect, useState } from 'react';
 import { api, ApiError, setCsrf } from '@/lib/api';
-import { fmtMoney, fmtNum } from '@/lib/format';
 import { CodeBox } from './CodeBox';
 
 // The API's 400 responses carry a zod flatten() body under `details`:
@@ -27,9 +26,9 @@ function describeApiError(err: unknown): string {
   return err instanceof Error ? err.message : 'request failed';
 }
 
-const PLATFORM_LABEL: Record<string, string> = { meta: 'Meta', google: 'Google' };
+export const PLATFORM_LABEL: Record<string, string> = { meta: 'Meta', google: 'Google' };
 
-interface TenantCard {
+export interface TenantCard {
   id: string;
   slug: string;
   name: string;
@@ -46,7 +45,7 @@ interface TenantCard {
   ad_platform_budget_json: string | null;
 }
 
-function parsePlatforms(json: string | null): string[] {
+export function parsePlatforms(json: string | null): string[] {
   if (!json) return [];
   try {
     const v = JSON.parse(json);
@@ -56,7 +55,7 @@ function parsePlatforms(json: string | null): string[] {
   }
 }
 
-function parsePlatformBudgets(json: string | null): Record<string, number> {
+export function parsePlatformBudgets(json: string | null): Record<string, number> {
   if (!json) return {};
   try {
     const v = JSON.parse(json);
@@ -66,6 +65,10 @@ function parsePlatformBudgets(json: string | null): Record<string, number> {
   }
 }
 
+// A plain selection list, not a dashboard. Every number that used to live
+// on each card (leads, revenue, ROAS, budget pacing, edit budget) now lives
+// inside that client's own dashboard instead (see the Ad budget section
+// added to Data and Team), so this is just "which client" and nothing else.
 export function ClientsSection({
   role,
   onEnterTenant,
@@ -76,7 +79,6 @@ export function ClientsSection({
   const [tenants, setTenants] = useState<TenantCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [provisioning, setProvisioning] = useState(false);
-  const [editingBudget, setEditingBudget] = useState<TenantCard | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -120,113 +122,38 @@ export function ClientsSection({
         </div>
       )}
 
-      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
-        {tenants.map((t) => {
-          const roas = t.spend && t.spend > 0 ? (t.revenue ?? 0) / t.spend : null;
-          const platforms = parsePlatforms(t.ad_platforms_json);
-          const platformBudgets = parsePlatformBudgets(t.ad_platform_budget_json);
-          const budget = t.monthly_ad_spend_budget;
-          const pacePct = budget && budget > 0 ? ((t.spend ?? 0) / budget) * 100 : null;
-          const paceState = pacePct === null ? null : pacePct >= 100 ? 'under' : pacePct >= 85 ? 'watch' : 'top';
-          return (
-            <div
-              key={t.id}
-              className="card stack"
-              style={{ gap: 8 }}
-              role="button"
-              tabIndex={0}
-              onClick={() => enter(t)}
-              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && enter(t)}
-            >
-              <div className="row" style={{ justifyContent: 'space-between' }}>
-                <strong>{t.name}</strong>
-                <span className="muted" style={{ fontSize: 12 }}>
+      {tenants.length > 0 && (
+        <div className="card" style={{ padding: 0 }}>
+          {tenants.map((t) => {
+            const platforms = parsePlatforms(t.ad_platforms_json);
+            return (
+              <div
+                key={t.id}
+                className="client-row"
+                role="button"
+                tabIndex={0}
+                onClick={() => enter(t)}
+                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && enter(t)}
+              >
+                <span className={`status-dot ${t.pulled_at ? 'green' : 'gray'}`} title={t.pulled_at ? 'Rolled up' : 'No rollup yet'} />
+                <strong style={{ flex: 1 }}>{t.name}</strong>
+                {platforms.length > 0 && (
+                  <div className="row" style={{ gap: 4, flexWrap: 'wrap', width: 'auto' }}>
+                    {platforms.map((p) => (
+                      <span key={p} className="platform-tag">
+                        {PLATFORM_LABEL[p] ?? p}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <span className="muted" style={{ fontSize: 12, width: 70, textAlign: 'right' }}>
                   {t.plan}
                 </span>
               </div>
-
-              {platforms.length > 0 && (
-                <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
-                  {platforms.map((p) => (
-                    <span key={p} className="platform-tag">
-                      {PLATFORM_LABEL[p] ?? p}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {Object.keys(platformBudgets).length > 0 && (
-                <div className="muted" style={{ fontSize: 12 }}>
-                  {(['meta', 'google'] as const)
-                    .filter((p) => platformBudgets[p] != null)
-                    .map((p) => `${PLATFORM_LABEL[p]} ${fmtMoney(platformBudgets[p])}`)
-                    .join(' · ')}
-                </div>
-              )}
-
-              <div className="row" style={{ gap: 18 }}>
-                <span>
-                  <span className="muted" style={{ fontSize: 11 }}>Leads</span>
-                  <br />
-                  <span className="num">{fmtNum(t.leads ?? 0)}</span>
-                </span>
-                <span>
-                  <span className="muted" style={{ fontSize: 11 }}>Completed</span>
-                  <br />
-                  <span className="num">{fmtNum(t.completed ?? 0)}</span>
-                </span>
-                <span>
-                  <span className="muted" style={{ fontSize: 11 }}>Revenue</span>
-                  <br />
-                  <span className="num">{fmtMoney(t.revenue ?? 0)}</span>
-                </span>
-                <span>
-                  <span className="muted" style={{ fontSize: 11 }}>ROAS</span>
-                  <br />
-                  <span className="num">{roas ? roas.toFixed(1) + 'x' : '-'}</span>
-                </span>
-              </div>
-
-              <div className="stack" style={{ gap: 4 }}>
-                <div className="row" style={{ justifyContent: 'space-between', fontSize: 12 }}>
-                  <span className="muted">Ad spend</span>
-                  <span className="num">
-                    {fmtMoney(t.spend ?? 0)}
-                    {budget ? ` of ${fmtMoney(budget)} budget` : ''}
-                  </span>
-                </div>
-                {budget && pacePct !== null && (
-                  <div className="pacing-bar">
-                    <div
-                      className={`pacing-fill ${paceState}`}
-                      style={{ width: `${Math.min(100, pacePct)}%` }}
-                    />
-                  </div>
-                )}
-                {!budget && (
-                  <span className="muted" style={{ fontSize: 12 }}>No budget set</span>
-                )}
-              </div>
-
-              {!t.pulled_at && <span className="muted" style={{ fontSize: 12 }}>No rollup yet</span>}
-
-              {role === 'agency_admin' && (
-                <button
-                  type="button"
-                  className="small"
-                  style={{ alignSelf: 'flex-start' }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setEditingBudget(t);
-                  }}
-                >
-                  Edit budget
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {provisioning && (
         <ProvisionForm
@@ -237,23 +164,14 @@ export function ClientsSection({
           }}
         />
       )}
-
-      {editingBudget && (
-        <BudgetForm
-          tenant={editingBudget}
-          onDone={() => {
-            setEditingBudget(null);
-            load();
-          }}
-        />
-      )}
     </div>
   );
 }
 
 // Edit a client's committed monthly ad spend and platform mix after it has
-// already been provisioned.
-function BudgetForm({ tenant, onDone }: { tenant: TenantCard; onDone: () => void }) {
+// already been provisioned. Lives inside that client's own Data and Team
+// tab now (see ClientBudgetSection in DataTeam.tsx), not the roster.
+export function BudgetForm({ tenant, onSaved }: { tenant: TenantCard; onSaved: () => void }) {
   const [budget, setBudget] = useState(
     tenant.monthly_ad_spend_budget != null ? String(tenant.monthly_ad_spend_budget) : ''
   );
@@ -287,7 +205,7 @@ function BudgetForm({ tenant, onDone }: { tenant: TenantCard; onDone: () => void
           platformBudgets: Object.keys(platformBudgetsPayload).length > 0 ? platformBudgetsPayload : null,
         },
       });
-      onDone();
+      onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'save failed');
     } finally {
@@ -296,8 +214,7 @@ function BudgetForm({ tenant, onDone }: { tenant: TenantCard; onDone: () => void
   };
 
   return (
-    <form className="card stack" onSubmit={submit}>
-      <h3>{tenant.name}, ad spend budget</h3>
+    <form className="stack" onSubmit={submit}>
       <label>
         Monthly ad spend budget
         <input
@@ -352,14 +269,9 @@ function BudgetForm({ tenant, onDone }: { tenant: TenantCard; onDone: () => void
         </div>
       )}
       {error && <p className="delta-down">{error}</p>}
-      <div className="row">
-        <button className="primary" disabled={busy} type="submit">
-          {busy ? 'Saving' : 'Save'}
-        </button>
-        <button type="button" onClick={onDone}>
-          Cancel
-        </button>
-      </div>
+      <button className="primary" style={{ alignSelf: 'flex-start' }} disabled={busy} type="submit">
+        {busy ? 'Saving' : 'Save budget'}
+      </button>
     </form>
   );
 }
