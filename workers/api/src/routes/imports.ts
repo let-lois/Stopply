@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import Anthropic from '@anthropic-ai/sdk';
 import { PARSER_REGISTRY, parseCsv } from '@letlois/connectors';
+import { bulkInsertStatements } from '@letlois/attribution';
 import type { ParseResult } from '@letlois/connectors';
 import type { TenantD1 } from '@letlois/tenant-d1';
 import type { AppContext } from '../env';
@@ -393,47 +394,75 @@ export async function applyParseResult(
   }
 
   if (parsed.kind === 'd2d-accounts') {
+    // Everything here is written through multi-row bulk statements: each
+    // statement is one Worker subrequest over the D1 HTTP API and Workers
+    // cap subrequests per invocation, so a 5,000-contact month must land
+    // in tens of statements, not tens of thousands. That is also why this
+    // path writes contacts directly instead of calling upsertContact per
+    // row, and why it skips per-contact events/touchpoints rows (nothing
+    // downstream reads them for CSV imports).
+    //
     // Contacts first, so the stage events inserted below always reference
     // an existing contact. The account id from the export IS the contact
     // id, which is what lets a June close land on a May-knocked contact
-    // across separate monthly imports.
-    for (const contact of parsed.contacts ?? []) {
-      const eventId = `ev_imp_${(await sha256Hex(`${sourceKey}:${contact.externalRef}`)).slice(0, 32)}`;
-      await d1.query(
-        databaseId,
-        `INSERT OR IGNORE INTO events (id, occurred_at, source_key, event_type, contact_id, payload_json)
-         VALUES (?, ?, ?, 'integration_event', ?, ?)`,
-        [
-          eventId,
-          contact.createdAt,
-          sourceKey,
-          contact.externalRef,
-          JSON.stringify({ followupStage: contact.followupStage, channel: contact.channel }),
-        ]
-      );
-      await upsertContact(
-        d1,
-        databaseId,
-        {
-          externalRef: contact.externalRef,
-          firstName: contact.firstName,
-          lastName: contact.lastName,
-          email: contact.email,
-          phone: contact.phoneLast10,
-          createdAt: contact.createdAt,
-          followupStage: contact.followupStage,
-          treatment: null,
-        },
-        {
-          at: contact.createdAt,
-          channel: contact.channel,
-          source: contact.sourceRaw,
-          campaign: contact.campaign,
-          json: {},
-          sourceKey,
-          eventId,
-        }
-      );
+    // across separate monthly imports. First touch is frozen on conflict,
+    // matching upsertContact's semantics; latest touch always updates.
+    const contactStatements = bulkInsertStatements({
+      table: 'contacts',
+      columns: [
+        'id',
+        'email_norm',
+        'phone_last10',
+        'name_norm',
+        'first_name',
+        'last_name',
+        'created_at',
+        'first_touch_at',
+        'first_touch_channel',
+        'first_touch_source',
+        'first_touch_campaign',
+        'first_touch_json',
+        'latest_touch_at',
+        'latest_touch_channel',
+        'latest_touch_source',
+        'latest_touch_campaign',
+        'latest_touch_json',
+        'match_method',
+        'match_ambiguous',
+      ],
+      rows: (parsed.contacts ?? []).map((c) => [
+        c.externalRef,
+        c.email,
+        c.phoneLast10,
+        c.nameNorm,
+        c.firstName,
+        c.lastName,
+        c.createdAt,
+        c.createdAt,
+        c.channel,
+        c.sourceRaw,
+        c.campaign,
+        '{}',
+        c.createdAt,
+        c.channel,
+        c.sourceRaw,
+        c.campaign,
+        '{}',
+        'external_ref',
+        0,
+      ]),
+      suffix: `ON CONFLICT (id) DO UPDATE SET
+        email_norm = COALESCE(contacts.email_norm, excluded.email_norm),
+        phone_last10 = COALESCE(contacts.phone_last10, excluded.phone_last10),
+        name_norm = COALESCE(contacts.name_norm, excluded.name_norm),
+        latest_touch_at = excluded.latest_touch_at,
+        latest_touch_channel = excluded.latest_touch_channel,
+        latest_touch_source = excluded.latest_touch_source,
+        latest_touch_campaign = excluded.latest_touch_campaign,
+        latest_touch_json = excluded.latest_touch_json`,
+    });
+    for (const sql of contactStatements) {
+      await d1.query(databaseId, sql);
     }
 
     const stages = [...new Set((parsed.d2dStageEvents ?? []).map((e) => e.stage))];
@@ -444,37 +473,46 @@ export async function applyParseResult(
         [sourceKey, stage, monthStart, monthEnd]
       );
     }
-    for (const ev of parsed.d2dStageEvents ?? []) {
-      await d1.query(
-        databaseId,
-        `INSERT OR IGNORE INTO stage_events (id, contact_id, external_ref, stage, occurred_at, source_key, raw_json)
-         VALUES (?, ?, ?, ?, ?, ?, '{}')`,
-        [`se_${randomToken(8)}`, ev.contactId, `${ev.stage}:${ev.contactId}`, ev.stage, ev.occurredAt, sourceKey]
-      );
+    const stageStatements = bulkInsertStatements({
+      table: 'stage_events',
+      columns: ['id', 'contact_id', 'external_ref', 'stage', 'occurred_at', 'source_key', 'raw_json'],
+      rows: (parsed.d2dStageEvents ?? []).map((ev) => [
+        `se_${randomToken(8)}`,
+        ev.contactId,
+        `${ev.stage}:${ev.contactId}`,
+        ev.stage,
+        ev.occurredAt,
+        sourceKey,
+        '{}',
+      ]),
+      insert: 'INSERT OR IGNORE',
+    });
+    for (const sql of stageStatements) {
+      await d1.query(databaseId, sql);
     }
 
     await d1.query(databaseId, `DELETE FROM rep_metrics WHERE period_month = ? AND source_key = ?`, [
       month,
       sourceKey,
     ]);
-    for (const rep of parsed.repMetrics ?? []) {
-      await d1.query(
-        databaseId,
-        `INSERT INTO rep_metrics (period_month, source_key, rep, knocks, pitches, appointments_set, sits_set, sits_run, closes, installs)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          rep.periodMonth,
-          sourceKey,
-          rep.rep,
-          rep.knocks,
-          rep.pitches,
-          rep.appointmentsSet,
-          rep.sitsSet,
-          rep.sitsRun,
-          rep.closes,
-          rep.installs,
-        ]
-      );
+    const repStatements = bulkInsertStatements({
+      table: 'rep_metrics',
+      columns: ['period_month', 'source_key', 'rep', 'knocks', 'pitches', 'appointments_set', 'sits_set', 'sits_run', 'closes', 'installs'],
+      rows: (parsed.repMetrics ?? []).map((r) => [
+        r.periodMonth,
+        sourceKey,
+        r.rep,
+        r.knocks,
+        r.pitches,
+        r.appointmentsSet,
+        r.sitsSet,
+        r.sitsRun,
+        r.closes,
+        r.installs,
+      ]),
+    });
+    for (const sql of repStatements) {
+      await d1.query(databaseId, sql);
     }
   }
 
