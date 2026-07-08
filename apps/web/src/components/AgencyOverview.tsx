@@ -8,9 +8,24 @@
 //   - AuditSection: the cross tenant audit log with filters.
 
 import { useEffect, useState } from 'react';
-import { api, setCsrf } from '@/lib/api';
+import { api, ApiError, setCsrf } from '@/lib/api';
 import { fmtMoney, fmtNum } from '@/lib/format';
 import { CodeBox } from './CodeBox';
+
+// The API's 400 responses carry a zod flatten() body under `details`:
+// { fieldErrors: { [field]: string[] }, formErrors: string[] }. The
+// top level error string alone ("invalid request") does not say which
+// field or why, so pull the specific message out when one is present.
+function describeApiError(err: unknown): string {
+  if (err instanceof ApiError) {
+    const details = err.body.details as { fieldErrors?: Record<string, string[]> } | undefined;
+    const fieldErrors = details?.fieldErrors ?? {};
+    const first = Object.entries(fieldErrors).find(([, msgs]) => msgs?.length > 0);
+    if (first) return `${first[0]}: ${first[1][0]}`;
+    return err.message;
+  }
+  return err instanceof Error ? err.message : 'request failed';
+}
 
 const PLATFORM_LABEL: Record<string, string> = { meta: 'Meta', google: 'Google' };
 
@@ -906,7 +921,7 @@ function ProvisionForm({ onDone }: { onDone: () => void }) {
       });
       setResult(res);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'provisioning failed');
+      setError(describeApiError(err));
     } finally {
       setBusy(false);
     }
@@ -944,7 +959,13 @@ function ProvisionForm({ onDone }: { onDone: () => void }) {
           <input
             value={form.slug}
             pattern="[a-z0-9-]+"
-            onChange={(e) => setForm((p) => ({ ...p, slug: e.target.value }))}
+            // Lowercased and stripped as you type: the backend's slug
+            // validation is stricter than the sanitizing it does once
+            // provisioning actually runs, so normalizing here avoids a
+            // round trip just to find out "NA" needed to be "na".
+            onChange={(e) =>
+              setForm((p) => ({ ...p, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') }))
+            }
             required
           />
         </label>
