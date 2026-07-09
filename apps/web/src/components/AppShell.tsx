@@ -52,6 +52,10 @@ type TabKey = ConsoleKey | SectionKey;
 
 const CLIENT_SECTIONS: SectionKey[] = ['performance', 'work-backwards', 'planning', 'present', 'data-team'];
 
+// Sections the client never presents from: agency working areas. They
+// group to the right side of the profile nav under an Internal label.
+const INTERNAL_SECTIONS: SectionKey[] = ['present', 'data-team'];
+
 const isConsoleKey = (t: TabKey): t is ConsoleKey =>
   t === 'clients' || t === 'team' || t === 'audit' || t === 'secrets';
 
@@ -237,9 +241,9 @@ export function AppShell({
     team: 'Team',
     audit: 'Audit log',
     secrets: 'Keys & secrets',
-    performance: 'Performance',
-    'work-backwards': 'Work Backwards',
-    planning: 'Planning',
+    performance: 'Main Dashboard',
+    'work-backwards': 'KPIs',
+    planning: 'Goals',
     present: 'Present',
     'data-team': 'Data and Team',
   };
@@ -352,17 +356,37 @@ export function AppShell({
                       </button>
                     </div>
                   </div>
+                  {/* Client-facing pages on the left, agency working areas
+                      grouped to the right under an Internal label. */}
                   <nav className="profile-nav" aria-label="Client sections">
-                    {sectionKeys.map((s) => (
-                      <button
-                        key={s}
-                        className={s === activeSection ? 'active' : ''}
-                        onClick={() => scrollToSection(s)}
-                      >
-                        {tabLabel[s]}
-                        {s === 'data-team' && staleCount > 0 && <span className="badge">{staleCount}</span>}
-                      </button>
-                    ))}
+                    {sectionKeys
+                      .filter((s) => !INTERNAL_SECTIONS.includes(s))
+                      .map((s) => (
+                        <button
+                          key={s}
+                          className={s === activeSection ? 'active' : ''}
+                          onClick={() => scrollToSection(s)}
+                        >
+                          {tabLabel[s]}
+                        </button>
+                      ))}
+                    {sectionKeys.some((s) => INTERNAL_SECTIONS.includes(s)) && (
+                      <div className="profile-nav-internal">
+                        <span className="profile-nav-internal-label">Internal</span>
+                        {sectionKeys
+                          .filter((s) => INTERNAL_SECTIONS.includes(s))
+                          .map((s) => (
+                            <button
+                              key={s}
+                              className={s === activeSection ? 'active' : ''}
+                              onClick={() => scrollToSection(s)}
+                            >
+                              {tabLabel[s]}
+                              {s === 'data-team' && staleCount > 0 && <span className="badge">{staleCount}</span>}
+                            </button>
+                          ))}
+                      </div>
+                    )}
                   </nav>
                 </div>
               )}
@@ -371,7 +395,7 @@ export function AppShell({
 
               {sectionKeys.includes('performance') && (
                 <section id="section-performance" className="page-section stack" style={{ gap: 20 }}>
-                  <h2 className="section-title">Performance</h2>
+                  <h2 className="section-title">Main Dashboard</h2>
                   <PerformanceTab
                     settings={settings}
                     labels={labels}

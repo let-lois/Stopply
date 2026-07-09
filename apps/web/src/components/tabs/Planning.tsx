@@ -87,7 +87,7 @@ export function PlanningTab({
 
   return (
     <div className="stack" style={{ gap: 20 }}>
-      <h2>Planning</h2>
+      <h2>Goals</h2>
 
       <div className="card stack">
         <div className="row">
