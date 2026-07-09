@@ -1,31 +1,30 @@
 'use client';
 
-// Work Backwards: the reverse funnel for the selected month, top down
+// Work Backwards: the reverse funnel for the master date range, top down
 // through the tenant's labeled stages, bars split into channel colored
 // segments, conversion rates between stages, cost per lead and cost per
 // completed, and a ROAS card per channel. All from monthly_metrics.
 
-import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
-import { channelColor, fmtMoney, fmtNum, fmtPct, monthLabel } from '@/lib/format';
-import type { FunnelLabels, MonthData, TenantSettings } from '@/lib/types';
+import { channelColor, fmtMoney, fmtNum, fmtPct } from '@/lib/format';
+import { mergeMonthData } from '@/lib/mergeMonthData';
+import { monthsInRange } from '@/lib/monthRange';
+import type { FunnelLabels } from '@/lib/types';
+import { useMonthRangeData } from '@/lib/useMonthRangeData';
 
 export function WorkBackwardsTab({
-  settings,
   labels,
   months,
+  rangeStart,
+  rangeEnd,
 }: {
-  settings: TenantSettings;
   labels: FunnelLabels;
   months: string[];
+  rangeStart: string;
+  rangeEnd: string;
 }) {
-  const [month, setMonth] = useState(months[0] ?? '');
-  const [data, setData] = useState<MonthData | null>(null);
-
-  useEffect(() => {
-    if (!month) return;
-    api<MonthData>(`/api/tenant/months/${month}?basis=first`).then(setData).catch(() => setData(null));
-  }, [month]);
+  const selectedMonths = monthsInRange(months, rangeStart, rangeEnd);
+  const { raw } = useMonthRangeData(selectedMonths, 'first');
+  const data = mergeMonthData(raw);
 
   if (months.length === 0) {
     return <div className="card muted">No months yet. Import data first.</div>;
@@ -45,16 +44,7 @@ export function WorkBackwardsTab({
 
   return (
     <div className="stack" style={{ gap: 20 }}>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h2>KPIs</h2>
-        <select value={month} onChange={(e) => setMonth(e.target.value)} style={{ width: 'auto' }}>
-          {months.map((m) => (
-            <option key={m} value={m}>
-              {monthLabel(m, settings.tenant.timezone)}
-            </option>
-          ))}
-        </select>
-      </div>
+      <h2>KPIs</h2>
 
       {!data && <div className="skeleton" style={{ minHeight: 200 }} />}
       {data && (

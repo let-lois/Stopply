@@ -18,3 +18,15 @@ export function shiftYear(month: string, deltaYears: number): string {
   const year = Number(month.slice(0, 4)) + deltaYears;
   return `${year}${month.slice(4)}`;
 }
+
+// YYYY-MM sorts chronologically as a plain string, so this reads
+// correctly regardless of which order `months` itself arrived in.
+export function oldestAndNewest(selectedMonths: string[]): [string, string] {
+  let oldest = selectedMonths[0]!;
+  let newest = selectedMonths[0]!;
+  for (const m of selectedMonths) {
+    if (m < oldest) oldest = m;
+    if (m > newest) newest = m;
+  }
+  return [oldest, newest];
+}

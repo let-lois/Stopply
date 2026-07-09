@@ -19,6 +19,7 @@ import { ChatWidget } from './ChatWidget';
 import { StopplyLogo } from './StopplyLogo';
 import { DemoBadge } from './DemoBadge';
 import { ClientsSection, TeamSection, AuditSection, SecretsSection } from './AgencyOverview';
+import { MasterDateBar } from './MasterDateBar';
 import { ProfileMenu } from './ProfileMenu';
 import { CodeBox } from './CodeBox';
 import { Sidebar } from './Sidebar';
@@ -92,6 +93,11 @@ export function AppShell({
 }) {
   const [settings, setSettings] = useState<TenantSettings | null>(null);
   const [months, setMonths] = useState<string[]>([]);
+  // Master date range: shared across Performance, WorkBackwards, Present,
+  // and Planning, so switching the period once affects the whole client
+  // dashboard instead of picking a month separately in every section.
+  const [rangeStart, setRangeStart] = useState('');
+  const [rangeEnd, setRangeEnd] = useState('');
   const [sources, setSources] = useState<SourceInfo[]>([]);
   // Which agency console view is showing, or null for the client's own
   // one-page dashboard. Tenant users are always on the client page.
@@ -149,7 +155,13 @@ export function AppShell({
     loadSettings();
     loadSources();
     api<{ months: string[] }>('/api/tenant/months')
-      .then((r) => setMonths(r.months))
+      .then((r) => {
+        setMonths(r.months);
+        if (r.months[0]) {
+          setRangeStart(r.months[0]);
+          setRangeEnd(r.months[0]);
+        }
+      })
       .catch(() => undefined);
     // Demo mode never touches the network, there is no real logo to check for.
     if (isDemoMode()) {
@@ -413,6 +425,23 @@ export function AppShell({
                 <OnboardingChecklist sources={sources} onOpenDataTeam={() => openInternal('data-team')} />
               )}
 
+              {/* One master date range, shared by every section below
+                  (and by Present, its own view) instead of a picker per
+                  section. Data and Team is not period scoped, so it gets
+                  none of this. */}
+              {internalView !== 'data-team' && months.length > 0 && (
+                <MasterDateBar
+                  months={months}
+                  timezone={settings.tenant.timezone}
+                  start={rangeStart || months[0]!}
+                  end={rangeEnd || months[0]!}
+                  onChange={(s, e) => {
+                    setRangeStart(s);
+                    setRangeEnd(e);
+                  }}
+                />
+              )}
+
               {/* The client-facing one-page dashboard. Internal sections
                   never render here; they replace it as their own view. */}
               {internalView === null && (
@@ -424,6 +453,8 @@ export function AppShell({
                         settings={settings}
                         labels={labels}
                         months={months}
+                        rangeStart={rangeStart || months[0] || ''}
+                        rangeEnd={rangeEnd || months[0] || ''}
                         sources={sources}
                         channelFilter={platformFilter}
                         refreshSources={loadSources}
@@ -434,12 +465,22 @@ export function AppShell({
                       titles, so their sections add no heading of their own. */}
                   {sectionKeys.includes('work-backwards') && (
                     <section id="section-work-backwards" className="page-section stack" style={{ gap: 20 }}>
-                      <WorkBackwardsTab settings={settings} labels={labels} months={months} />
+                      <WorkBackwardsTab
+                        labels={labels}
+                        months={months}
+                        rangeStart={rangeStart || months[0] || ''}
+                        rangeEnd={rangeEnd || months[0] || ''}
+                      />
                     </section>
                   )}
                   {sectionKeys.includes('planning') && (
                     <section id="section-planning" className="page-section stack" style={{ gap: 20 }}>
-                      <PlanningTab settings={settings} labels={labels} months={months} />
+                      <PlanningTab
+                        settings={settings}
+                        labels={labels}
+                        months={months}
+                        rangeEnd={rangeEnd || months[0] || ''}
+                      />
                     </section>
                   )}
                 </>
@@ -447,7 +488,13 @@ export function AppShell({
 
               {internalView === 'present' && !isViewer && (
                 <section id="section-present" className="page-section stack" style={{ gap: 20 }}>
-                  <PresentTab settings={settings} labels={labels} months={months} />
+                  <PresentTab
+                    settings={settings}
+                    labels={labels}
+                    months={months}
+                    rangeStart={rangeStart || months[0] || ''}
+                    rangeEnd={rangeEnd || months[0] || ''}
+                  />
                 </section>
               )}
               {internalView === 'data-team' && !isViewer && (

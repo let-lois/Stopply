@@ -2,7 +2,10 @@
 
 // Planning: target input on the tenant's bottom funnel stage, cascade
 // backwards through stage rates to required leads and spend, projected
-// revenue and ROAS. Assumptions default to the latest month's actuals.
+// revenue and ROAS. Assumptions default to one month's actuals: the end
+// month of the master date range, never summed across a range, since a
+// forward-looking target is inherently a single-period thing, unlike the
+// historical reporting on the other tabs.
 // The What to change panel is deterministic, no LLM.
 
 import { useEffect, useMemo, useState } from 'react';
@@ -14,11 +17,14 @@ export function PlanningTab({
   settings,
   labels,
   months,
+  rangeEnd,
 }: {
   settings: TenantSettings;
   labels: FunnelLabels;
   months: string[];
+  rangeEnd: string;
 }) {
+  const baselineMonth = months.includes(rangeEnd) ? rangeEnd : months[0];
   const [latest, setLatest] = useState<MonthData | null>(null);
   const [target, setTarget] = useState<number>(0);
   const [bookRate, setBookRate] = useState<number>(0.4);
@@ -28,9 +34,10 @@ export function PlanningTab({
   const [seeded, setSeeded] = useState(false);
 
   useEffect(() => {
-    if (!months[0]) return;
-    api<MonthData>(`/api/tenant/months/${months[0]}?basis=first`).then(setLatest).catch(() => undefined);
-  }, [months]);
+    if (!baselineMonth) return;
+    setSeeded(false);
+    api<MonthData>(`/api/tenant/months/${baselineMonth}?basis=first`).then(setLatest).catch(() => undefined);
+  }, [baselineMonth]);
 
   const totals = useMemo(() => {
     const sum = (field: 'leads' | 'scheduled' | 'completed' | 'revenue' | 'spend') =>
