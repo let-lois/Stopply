@@ -308,7 +308,7 @@ export function TeamSection({ currentUserId }: { currentUserId: string }) {
   const load = () => {
     setLoading(true);
     api<{ users: AgencyUser[] }>('/api/agency/users')
-      .then((r) => setUsers(r.users))
+      .then((r) => setUsers(r.users ?? []))
       .finally(() => setLoading(false));
   };
 

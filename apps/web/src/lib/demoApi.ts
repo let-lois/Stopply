@@ -8,6 +8,7 @@
 import {
   DEMO_ME,
   getDemoAgencyOverview,
+  getDemoAgencyUsers,
   getDemoMonthData,
   getDemoMonthsResponse,
   getDemoProfile,
@@ -40,6 +41,10 @@ export function getDemoResponse(path: string, method: string, body?: unknown): u
     if (pathname === '/api/tenant/integrations') return { integrations: [], requirements: {} };
     if (pathname === '/api/imports') return { imports: [] };
     if (pathname === '/api/agency/overview') return getDemoAgencyOverview();
+    if (pathname === '/api/agency/users') return { users: getDemoAgencyUsers() };
+    if (pathname === '/api/agency/tenants') {
+      return { tenants: getDemoAgencyOverview().tenants.map((t) => ({ id: t.id, name: t.name })) };
+    }
     if (pathname.startsWith('/api/help/search')) return { articles: [] };
     if (pathname.startsWith('/api/help/articles/')) return { article: { title: '', body_md: '' } };
 
