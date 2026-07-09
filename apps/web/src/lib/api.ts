@@ -32,7 +32,8 @@ export async function api<T = Record<string, unknown>>(
   const method = (init.method ?? 'GET').toUpperCase();
 
   // Preview demo mode: never touch the network, the API Worker is not
-  // reachable from a pages.dev origin at all. See demoMode.ts / demoApi.ts.
+  // reachable from a pages.dev origin or localhost at all. See
+  // demoMode.ts / demoApi.ts.
   if (isDemoMode()) {
     return getDemoResponse(path, method, init.json) as T;
   }
