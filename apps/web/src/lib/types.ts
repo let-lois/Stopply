@@ -49,6 +49,9 @@ export interface CampaignMetrics {
   // Manually tagged objective/type ("Lead Generation", "Search", ...),
   // stored in campaign_meta so it survives rollups and re-imports.
   campaign_type: string | null;
+  // Service/treatment category ("BBL", "PDO Threads", ...) for tenants
+  // that report by treatment line. Null for tenants that don't use this.
+  treatment: string | null;
   spend: number;
   leads: number;
   completed: number;
@@ -66,6 +69,10 @@ export interface AdLineItem {
   spend: number;
   leads_reported: number | null;
   cost_per_lead: number | null;
+  // Funnel stages past the lead, at ad level (mirrors ChannelMetrics'
+  // completed/purchases). Null where a tenant only reports leads per ad.
+  completed: number | null;
+  purchases: number | null;
   status: 'top' | 'watch' | 'under' | null;
 }
 
