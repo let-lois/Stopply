@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
-import { isDemoMode } from '@/lib/demoMode';
+import { isDemoMode, shouldShowDemoBadge } from '@/lib/demoMode';
 import type { SourceInfo, TenantSettings } from '@/lib/types';
 import { DEFAULT_LABELS } from '@/lib/types';
 import { PerformanceTab } from './tabs/Performance';
@@ -304,7 +304,7 @@ export function AppShell({
               {/* Rendered in normal flow here (not a fixed corner overlay)
                   so it can never overlap in-page controls like the Clients
                   tab's "New client" button. */}
-              {isDemoMode() && <DemoBadge inline />}
+              {shouldShowDemoBadge() && <DemoBadge inline />}
             </>
           }
           items={[
