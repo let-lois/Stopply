@@ -4,30 +4,39 @@
 // tokens and logo, stage labels from the funnel config, large display
 // numbers, dark title slide.
 
-import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { useState } from 'react';
 import { fmtMoney, fmtNum, monthLabel } from '@/lib/format';
-import type { FunnelLabels, MonthData, TenantSettings } from '@/lib/types';
+import { mergeMonthData } from '@/lib/mergeMonthData';
+import { monthsInRange, oldestAndNewest } from '@/lib/monthRange';
+import type { FunnelLabels, TenantSettings } from '@/lib/types';
+import { useMonthRangeData } from '@/lib/useMonthRangeData';
 
 export function PresentTab({
   settings,
   labels,
   months,
+  rangeStart,
+  rangeEnd,
 }: {
   settings: TenantSettings;
   labels: FunnelLabels;
   months: string[];
+  rangeStart: string;
+  rangeEnd: string;
 }) {
-  const [month, setMonth] = useState(months[0] ?? '');
-  const [data, setData] = useState<MonthData | null>(null);
   const [slide, setSlide] = useState(0);
 
-  useEffect(() => {
-    if (!month) return;
-    api<MonthData>(`/api/tenant/months/${month}?basis=first`).then(setData).catch(() => setData(null));
-  }, [month]);
+  const selectedMonths = monthsInRange(months, rangeStart, rangeEnd);
+  const { raw } = useMonthRangeData(selectedMonths, 'first');
+  const data = mergeMonthData(raw);
 
   if (months.length === 0) return <div className="card muted">No months to present yet.</div>;
+
+  const [oldestMonth, newestMonth] = oldestAndNewest(selectedMonths);
+  const rangeLabel =
+    selectedMonths.length === 1
+      ? monthLabel(oldestMonth, settings.tenant.timezone)
+      : `${monthLabel(oldestMonth, settings.tenant.timezone)} – ${monthLabel(newestMonth, settings.tenant.timezone)}`;
 
   const total = (field: 'leads' | 'scheduled' | 'completed' | 'revenue' | 'spend') =>
     (data?.channels ?? []).reduce((a, ch) => a + Number(ch[field]), 0);
@@ -54,21 +63,12 @@ export function PresentTab({
 
   return (
     <div className="stack" style={{ gap: 16 }}>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h2>Present</h2>
-        <select value={month} onChange={(e) => { setMonth(e.target.value); setSlide(0); }} style={{ width: 'auto' }}>
-          {months.map((m) => (
-            <option key={m} value={m}>
-              {monthLabel(m, settings.tenant.timezone)}
-            </option>
-          ))}
-        </select>
-      </div>
+      <h2>Present</h2>
 
       {current.kind === 'title' && (
         <div className="slide title">
           <div className="big">{settings.tenant.name}</div>
-          <div style={{ fontSize: 20 }}>{monthLabel(month, settings.tenant.timezone)} performance</div>
+          <div style={{ fontSize: 20 }}>{rangeLabel} performance</div>
         </div>
       )}
       {current.kind === 'kpi' && (

@@ -1,16 +1,19 @@
 'use client';
 
-// Performance tab: a static view of one selected month at a time, picked
-// from a dropdown, instead of every month stacked in a collapsible list.
-// Topline KPIs with direction aware deltas, the in month block and cohort
-// strip, the first versus latest touch toggle, spend by platform with lazy
-// campaign rows, the data quality line, source check icons, and the admin
-// only leads drawer.
+// Performance tab: a static view of the master date range (a single
+// month, or several summed together), instead of every month stacked in
+// a collapsible list. Topline KPIs with direction aware deltas, the in
+// range block and cohort strip, the first versus latest touch toggle,
+// spend by platform with lazy campaign rows, the data quality line,
+// source check icons, and the admin only leads drawer.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { channelColor, fmtMoney, fmtNum, monthLabel } from '@/lib/format';
+import { mergeMonthData } from '@/lib/mergeMonthData';
+import { monthsInRange, oldestAndNewest, shiftYear } from '@/lib/monthRange';
 import type { AdLineItem, Comparison, FunnelLabels, LeadRow, MonthData, RepMetricsRow, SourceInfo, TenantSettings } from '@/lib/types';
+import { useMonthRangeData } from '@/lib/useMonthRangeData';
 import { SourceCheck } from '../SourceCheck';
 
 const CREATIVE_TYPE_OPTIONS = ['Video', 'Carousel', 'Static', 'UGC', 'Other'];
@@ -59,6 +62,9 @@ interface Props {
   settings: TenantSettings;
   labels: FunnelLabels;
   months: string[];
+  // The master date range, owned by AppShell and shared with every tab.
+  rangeStart: string;
+  rangeEnd: string;
   sources: SourceInfo[];
   // Narrows every number on this tab to one ad platform (the profile
   // header's All/Meta/Google flip). null shows everything.
@@ -98,9 +104,8 @@ function sumChannels(data: MonthData | undefined, field: 'leads' | 'scheduled' |
   return data.channels.reduce((acc, ch) => acc + Number(ch[field] ?? 0), 0);
 }
 
-export function PerformanceTab({ settings, labels, months, sources, channelFilter, refreshSources }: Props) {
-  const [month, setMonth] = useState(months[0] ?? '');
-  // The comparison basis lives here, next to the month it applies to,
+export function PerformanceTab({ settings, labels, months, rangeStart, rangeEnd, sources, channelFilter, refreshSources }: Props) {
+  // The comparison basis lives here, next to the range it applies to,
   // rather than in the sidebar.
   const [comparison, setComparison] = useState<Comparison>('previous');
   const canAdmin = settings.role !== 'viewer';
@@ -116,49 +121,23 @@ export function PerformanceTab({ settings, labels, months, sources, channelFilte
     );
   }
 
-  const selected = months.includes(month) ? month : months[0];
-  const idx = months.indexOf(selected);
+  const selectedMonths = monthsInRange(months, rangeStart, rangeEnd);
 
-  const step = (dir: -1 | 1) => {
-    const next = months[idx + dir];
-    if (next) setMonth(next);
-  };
-
-  const compareMonth =
+  // "Previous" shifts the whole window back by its own length; "year"
+  // shifts every selected month back a year, range width unchanged.
+  const compareMonths =
     comparison === 'previous'
-      ? months[idx + 1] ?? null
+      ? (() => {
+          const oldestIdx = months.indexOf(selectedMonths[selectedMonths.length - 1]!);
+          return months.slice(oldestIdx + 1, oldestIdx + 1 + selectedMonths.length);
+        })()
       : comparison === 'year'
-        ? `${Number(selected.slice(0, 4)) - 1}${selected.slice(4)}`
-        : null;
+        ? selectedMonths.map((m) => shiftYear(m, -1))
+        : [];
 
   return (
     <div className="stack" style={{ gap: 20 }}>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <div className="row" style={{ gap: 8, width: 'auto' }}>
-          <button
-            className="small"
-            aria-label="Previous month"
-            onClick={() => step(1)}
-            disabled={idx + 1 >= months.length}
-          >
-            &larr;
-          </button>
-          <select
-            value={selected}
-            onChange={(e) => setMonth(e.target.value)}
-            aria-label="Month"
-            style={{ width: 'auto' }}
-          >
-            {months.map((m) => (
-              <option key={m} value={m}>
-                {monthLabel(m, settings.tenant.timezone)}
-              </option>
-            ))}
-          </select>
-          <button className="small" aria-label="Next month" onClick={() => step(-1)} disabled={idx <= 0}>
-            &rarr;
-          </button>
-        </div>
+      <div className="row" style={{ justifyContent: 'flex-end' }}>
         <label className="row" style={{ gap: 8, width: 'auto', fontSize: 13, color: 'var(--ink-soft)' }}>
           Compare
           <select
@@ -167,17 +146,17 @@ export function PerformanceTab({ settings, labels, months, sources, channelFilte
             aria-label="Comparison"
             style={{ width: 'auto' }}
           >
-            <option value="previous">vs previous month</option>
-            <option value="year">vs same month last year</option>
+            <option value="previous">vs previous period</option>
+            <option value="year">vs same period last year</option>
             <option value="target">vs target</option>
             <option value="none">no comparison</option>
           </select>
         </label>
       </div>
       <MonthSection
-        key={selected}
-        month={selected}
-        compareMonth={compareMonth}
+        key={selectedMonths.join(',')}
+        selectedMonths={selectedMonths}
+        compareMonths={compareMonths}
         comparison={comparison}
         settings={settings}
         labels={labels}
@@ -191,8 +170,8 @@ export function PerformanceTab({ settings, labels, months, sources, channelFilte
 }
 
 function MonthSection({
-  month,
-  compareMonth,
+  selectedMonths,
+  compareMonths,
   comparison,
   settings,
   labels,
@@ -201,8 +180,8 @@ function MonthSection({
   channelFilter,
   refreshSources,
 }: {
-  month: string;
-  compareMonth: string | null;
+  selectedMonths: string[];
+  compareMonths: string[];
   comparison: Comparison;
   settings: TenantSettings;
   labels: FunnelLabels;
@@ -212,9 +191,11 @@ function MonthSection({
   refreshSources: () => void;
 }) {
   const [basis, setBasis] = useState<'first' | 'latest'>('first');
-  const [data, setData] = useState<MonthData | null>(null);
-  const [compare, setCompare] = useState<MonthData | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { raw, setRaw, error } = useMonthRangeData(selectedMonths, basis);
+  const { raw: compareRaw } = useMonthRangeData(
+    comparison !== 'none' && comparison !== 'target' ? compareMonths : [],
+    basis
+  );
   const [showLeads, setShowLeads] = useState(false);
   const [leads, setLeads] = useState<LeadRow[] | null>(null);
   const [openCampaigns, setOpenCampaigns] = useState<Set<string>>(new Set());
@@ -223,6 +204,9 @@ function MonthSection({
   const [editingCampaign, setEditingCampaign] = useState<string | null>(null);
   const timezone = settings.tenant.timezone;
 
+  const data = useMemo(() => mergeMonthData(raw), [raw]);
+  const compare = useMemo(() => mergeMonthData(compareRaw), [compareRaw]);
+
   const updateCampaignType = async (channel: string, campaign: string, campaignType: string) => {
     setEditingCampaign(null);
     try {
@@ -230,15 +214,15 @@ function MonthSection({
         method: 'PATCH',
         json: { channel, campaign, campaignType },
       });
-      setData((prev) =>
-        prev
-          ? {
-              ...prev,
-              campaigns: prev.campaigns.map((r) =>
-                r.channel === channel && r.campaign === campaign ? { ...r, campaign_type: campaignType } : r
-              ),
-            }
-          : prev
+      // Campaign type is a global (channel, campaign) attribute, not
+      // per-month, so the edit applies across every month in the range.
+      setRaw((prev) =>
+        prev.map((d) => ({
+          ...d,
+          campaigns: d.campaigns.map((r) =>
+            r.channel === channel && r.campaign === campaign ? { ...r, campaign_type: campaignType } : r
+          ),
+        }))
       );
     } catch {
       // Leave the tag as it was; the user can retry.
@@ -258,41 +242,27 @@ function MonthSection({
           creativeType,
         },
       });
-      setData((prev) =>
-        prev
-          ? {
-              ...prev,
-              adLineItems: prev.adLineItems.map((r) =>
-                r.channel === item.channel && r.campaign === item.campaign && r.ad_name === item.ad_name
-                  ? { ...r, creative_type: creativeType, creative_type_source: 'manual' }
-                  : r
-              ),
-            }
-          : prev
+      // Creative type is per month, so only the month the merged row's
+      // period_month points at (the newest month that ad appears in) gets
+      // updated.
+      setRaw((prev) =>
+        prev.map((d) =>
+          d.month === item.period_month
+            ? {
+                ...d,
+                adLineItems: d.adLineItems.map((r) =>
+                  r.channel === item.channel && r.campaign === item.campaign && r.ad_name === item.ad_name
+                    ? { ...r, creative_type: creativeType, creative_type_source: 'manual' }
+                    : r
+                ),
+              }
+            : d
+        )
       );
     } catch {
       // Leave the tag as it was; the user can retry.
     }
   };
-
-  useEffect(() => {
-    let alive = true;
-    setError(null);
-    setData(null);
-    api<MonthData>(`/api/tenant/months/${month}?basis=${basis}`)
-      .then((d) => alive && setData(d))
-      .catch((e) => alive && setError(e instanceof Error ? e.message : 'load failed'));
-    if (compareMonth && comparison !== 'none' && comparison !== 'target') {
-      api<MonthData>(`/api/tenant/months/${compareMonth}?basis=${basis}`)
-        .then((d) => alive && setCompare(d))
-        .catch(() => alive && setCompare(null));
-    } else {
-      setCompare(null);
-    }
-    return () => {
-      alive = false;
-    };
-  }, [month, basis, compareMonth, comparison]);
 
   const targets = useMemo(() => {
     const map = new Map<string, number>();
@@ -326,8 +296,10 @@ function MonthSection({
     setShowLeads(true);
     if (!leads) {
       try {
-        const res = await api<{ leads: LeadRow[] }>(`/api/tenant/months/${month}/leads`);
-        setLeads(res.leads);
+        const results = await Promise.all(
+          selectedMonths.map((m) => api<{ leads: LeadRow[] }>(`/api/tenant/months/${m}/leads`))
+        );
+        setLeads(results.flatMap((r) => r.leads));
       } catch {
         setLeads([]);
       }
@@ -338,9 +310,13 @@ function MonthSection({
   const hasQualityIssue =
     quality && (quality.ambiguous_match_count > 0 || quality.unmatched_lead_count > 0 || quality.partial_only_count > 0);
 
+  const [oldestMonth, newestMonth] = oldestAndNewest(selectedMonths);
+  const rangeLabel =
+    selectedMonths.length === 1 ? monthLabel(oldestMonth, timezone) : `${monthLabel(oldestMonth, timezone)} – ${monthLabel(newestMonth, timezone)}`;
+
   return (
     <section className="card stack">
-      <h2>{monthLabel(month, timezone)}</h2>
+      <h2>{rangeLabel}</h2>
 
       {error && <p className="delta-down">{error}</p>}
       {!data && !error && (
@@ -395,7 +371,7 @@ function MonthSection({
           )}
 
           <div className="row" style={{ justifyContent: 'space-between' }}>
-            <h3>Channels (in month)</h3>
+            <h3>Channels (in period)</h3>
             <div className="row" style={{ gap: 4 }}>
               <button className={`small ${basis === 'first' ? 'primary' : ''}`} onClick={() => setBasis('first')}>
                 First touch
@@ -448,7 +424,7 @@ function MonthSection({
           </div>
 
           <h3>Lead cohort</h3>
-          <CohortStrip data={view} month={month} />
+          <CohortStrip data={view} month={newestMonth} />
 
           {(view.reps?.length ?? 0) > 0 && (
             <TeamLeaderboard reps={view.reps!} labels={labels} />
@@ -658,7 +634,7 @@ function MonthSection({
                 </div>
               );
             })}
-            {view.campaigns.length === 0 && <p className="muted">No spend imported for this month.</p>}
+            {view.campaigns.length === 0 && <p className="muted">No spend imported for this period.</p>}
           </div>
 
           {canAdmin && (
