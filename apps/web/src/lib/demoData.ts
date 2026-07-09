@@ -340,7 +340,10 @@ function buildCampaignChannel(
   });
 
   const adLineItems: AdLineItem[] = rows.map((r, i) => {
-    const costPerLead = r.spend / r.leads;
+    // Some real ad sets spend money with zero attributed leads that
+    // month (e.g. small testing budgets, or leads not yet synced) -
+    // guard against dividing by zero rather than assuming leads > 0.
+    const costPerLead = r.leads > 0 ? r.spend / r.leads : null;
     return {
       period_month: month,
       channel,
@@ -351,10 +354,10 @@ function buildCampaignChannel(
       creative_type_source: 'auto',
       spend: r.spend,
       leads_reported: r.leads,
-      cost_per_lead: Math.round(costPerLead * 100) / 100,
+      cost_per_lead: costPerLead !== null ? Math.round(costPerLead * 100) / 100 : null,
       completed: r.shows,
       purchases: r.bookings,
-      status: statusForCostPerLead(costPerLead),
+      status: costPerLead !== null ? statusForCostPerLead(costPerLead) : null,
     };
   });
 
@@ -378,8 +381,7 @@ function buildCampaignChannel(
   return { channelMetrics, campaigns, adLineItems };
 }
 
-function buildJuneMonthData(metaRows: CampaignRow[], googleRows: CampaignRow[]): MonthData {
-  const month = '2026-06';
+function buildHandAuthoredMonthData(month: string, metaRows: CampaignRow[], googleRows: CampaignRow[]): MonthData {
   const meta = buildCampaignChannel('meta', metaRows, 2.5, month);
   const google = buildCampaignChannel('google', googleRows, 3.9, month);
   const totalLeads = meta.channelMetrics.leads + google.channelMetrics.leads;
@@ -400,19 +402,51 @@ function buildJuneMonthData(metaRows: CampaignRow[], googleRows: CampaignRow[]):
   };
 }
 
-// Hand-authored per-client June 2026 breakdowns, keyed by client id. Any
-// client/month combination not in this map falls back to the generic
-// monthData() formula below.
-const JUNE_DATA_BY_CLIENT: Record<string, () => MonthData> = {
-  'be-clinical': () => buildJuneMonthData(BE_CLINICAL_JUNE_META, BE_CLINICAL_JUNE_GOOGLE),
-  'back-9-golf': () => buildJuneMonthData(BACK_9_GOLF_JUNE_META, BACK_9_GOLF_JUNE_GOOGLE),
-  'deep-clean-cleaners': () => buildJuneMonthData(DEEP_CLEAN_JUNE_META, DEEP_CLEAN_JUNE_GOOGLE),
+// Be Clinical's May 2026 Meta rows are real (spend, leads/"Results", which
+// ad sets were active), taken directly from a real Meta ad-set export -
+// not a fabricated structural template like the June data below. Meta's
+// export has no visibility into what happens after the lead (no
+// show/booking data lives in an ad platform, only in the CRM's lead-to-
+// appointment matching), so `shows`/`bookings` here are still estimated
+// at a flat 60% show rate / 55% show-to-booking rate. Rows with zero
+// spend and zero activity in the real export (fully dormant ad sets)
+// are omitted. Google side has no real export yet, so it's a fabricated
+// estimate (roughly 85% of June's Google numbers).
+const BE_CLINICAL_MAY_META: CampaignRow[] = [
+  { campaign: 'BBL', campaignType: 'Lead Generation', ad: 'BBL Reels - Daily', creativeType: 'Video', spend: 6419, leads: 66, shows: 40, bookings: 22 },
+  { campaign: 'Radiesse', campaignType: 'Lead Generation', ad: 'Radiesse - Daily Budget', creativeType: 'Video', spend: 1579, leads: 10, shows: 6, bookings: 3 },
+  { campaign: 'Radiesse', campaignType: 'Lead Generation', ad: 'Radiesse Pic Ad Sets', creativeType: 'Static', spend: 241, leads: 0, shows: 0, bookings: 0 },
+  { campaign: 'Rejuran', campaignType: 'Lead Generation', ad: 'Rejuran Reel - Daily Budget', creativeType: 'Video', spend: 2752, leads: 1, shows: 0, bookings: 0 },
+  { campaign: 'Rejuran', campaignType: 'Lead Generation', ad: 'Rejuran Reel - Schedule - v2', creativeType: 'Video', spend: 1881, leads: 0, shows: 0, bookings: 0 },
+  { campaign: 'Botox / Wrinkle Relaxers', campaignType: 'Lead Generation', ad: 'Botox Reel - Daily Budget', creativeType: 'Video', spend: 3356, leads: 0, shows: 0, bookings: 0 },
+];
+
+const BE_CLINICAL_MAY_GOOGLE: CampaignRow[] = [
+  { campaign: 'HALO', campaignType: 'Search', ad: 'HALO Landing Page', creativeType: null, spend: 2000, leads: 16, shows: 11, bookings: 7 },
+  { campaign: 'RF Microneedling (Potenza)', campaignType: 'Search', ad: 'RF Landing Page', creativeType: null, spend: 600, leads: 4, shows: 3, bookings: 2 },
+  { campaign: 'Hair Restoration PRP', campaignType: 'Search', ad: 'PRP Landing Page', creativeType: null, spend: 1950, leads: 14, shows: 9, bookings: 5 },
+  { campaign: 'Korean Mesotherapy / Rejuran', campaignType: 'Search', ad: 'KM Landing Page', creativeType: null, spend: 580, leads: 5, shows: 3, bookings: 2 },
+  { campaign: 'PDO', campaignType: 'Search', ad: 'PDO Landing Page', creativeType: null, spend: 1190, leads: 9, shows: 6, bookings: 3 },
+  { campaign: 'BBL', campaignType: 'Search', ad: 'BBL Landing Page', creativeType: null, spend: 1170, leads: 9, shows: 5, bookings: 3 },
+];
+
+// Hand-authored per-client month breakdowns, keyed by month then client
+// id. Any client/month combination not in this map falls back to the
+// generic monthData() formula below.
+const HAND_AUTHORED_DATA: Record<string, Record<string, () => MonthData>> = {
+  '2026-05': {
+    'be-clinical': () => buildHandAuthoredMonthData('2026-05', BE_CLINICAL_MAY_META, BE_CLINICAL_MAY_GOOGLE),
+  },
+  '2026-06': {
+    'be-clinical': () => buildHandAuthoredMonthData('2026-06', BE_CLINICAL_JUNE_META, BE_CLINICAL_JUNE_GOOGLE),
+    'back-9-golf': () => buildHandAuthoredMonthData('2026-06', BACK_9_GOLF_JUNE_META, BACK_9_GOLF_JUNE_GOOGLE),
+    'deep-clean-cleaners': () => buildHandAuthoredMonthData('2026-06', DEEP_CLEAN_JUNE_META, DEEP_CLEAN_JUNE_GOOGLE),
+  },
 };
 
 function getMonthDataForClient(client: DemoClient, month: string): MonthData {
-  if (month === '2026-06' && JUNE_DATA_BY_CLIENT[client.id]) {
-    return JUNE_DATA_BY_CLIENT[client.id]!();
-  }
+  const handAuthored = HAND_AUTHORED_DATA[month]?.[client.id];
+  if (handAuthored) return handAuthored();
   const scale = month === client.months[client.months.length - 1] ? 1 : 0.85;
   return monthData(month, client.meta, client.google, scale);
 }
