@@ -191,8 +191,8 @@ function monthData(month: string, meta: number, google: number, scale: number): 
       spend: meta,
     });
     campaigns.push(
-      { period_month: month, channel: 'meta', campaign: 'Meta - Spring Promo', campaign_type: 'Lead Generation', treatment: null, spend: Math.round(meta * 0.55), leads: Math.round(leadsMeta * 0.5), completed: Math.round(leadsMeta * 0.2), revenue: Math.round(meta * 1.3) },
-      { period_month: month, channel: 'meta', campaign: 'Meta - Retargeting', campaign_type: 'Retargeting', treatment: null, spend: Math.round(meta * 0.45), leads: Math.round(leadsMeta * 0.5), completed: Math.round(leadsMeta * 0.2), revenue: Math.round(meta * 1.2) }
+      { period_month: month, channel: 'meta', campaign: 'Meta - Spring Promo', campaign_type: 'Lead Generation', spend: Math.round(meta * 0.55), leads: Math.round(leadsMeta * 0.5), completed: Math.round(leadsMeta * 0.2), revenue: Math.round(meta * 1.3) },
+      { period_month: month, channel: 'meta', campaign: 'Meta - Retargeting', campaign_type: 'Retargeting', spend: Math.round(meta * 0.45), leads: Math.round(leadsMeta * 0.5), completed: Math.round(leadsMeta * 0.2), revenue: Math.round(meta * 1.2) }
     );
     adLineItems.push(
       { period_month: month, channel: 'meta', campaign: 'Meta - Spring Promo', ad_name: 'Before/After Carousel', ad_id: 'demo-ad-1', creative_type: 'carousel', creative_type_source: 'auto' as const, spend: Math.round(meta * 0.3), leads_reported: Math.round(leadsMeta * 0.28), cost_per_lead: Math.round((meta * 0.3) / Math.max(1, leadsMeta * 0.28)), completed: null, purchases: null, status: 'top' as const },
@@ -212,8 +212,8 @@ function monthData(month: string, meta: number, google: number, scale: number): 
       spend: google,
     });
     campaigns.push(
-      { period_month: month, channel: 'google', campaign: 'Google - Search Brand', campaign_type: 'Search', treatment: null, spend: Math.round(google * 0.4), leads: Math.round(leadsGoogle * 0.45), completed: Math.round(leadsGoogle * 0.22), revenue: Math.round(google * 1.6) },
-      { period_month: month, channel: 'google', campaign: 'Google - Near Me', campaign_type: null, treatment: null, spend: Math.round(google * 0.6), leads: Math.round(leadsGoogle * 0.55), completed: Math.round(leadsGoogle * 0.26), revenue: Math.round(google * 2.3) }
+      { period_month: month, channel: 'google', campaign: 'Google - Search Brand', campaign_type: 'Search', spend: Math.round(google * 0.4), leads: Math.round(leadsGoogle * 0.45), completed: Math.round(leadsGoogle * 0.22), revenue: Math.round(google * 1.6) },
+      { period_month: month, channel: 'google', campaign: 'Google - Near Me', campaign_type: null, spend: Math.round(google * 0.6), leads: Math.round(leadsGoogle * 0.55), completed: Math.round(leadsGoogle * 0.26), revenue: Math.round(google * 2.3) }
     );
     adLineItems.push({
       period_month: month, channel: 'google', campaign: 'Google - Near Me', ad_name: 'Near Me - RSA', ad_id: 'demo-ad-3', creative_type: 'text', creative_type_source: 'auto' as const, spend: Math.round(google * 0.5), leads_reported: Math.round(leadsGoogle * 0.5), cost_per_lead: Math.round((google * 0.5) / Math.max(1, leadsGoogle * 0.5)), completed: null, purchases: null, status: 'top' as const,
@@ -234,13 +234,13 @@ function monthData(month: string, meta: number, google: number, scale: number): 
   };
 }
 
-// Per-treatment / per-creative breakdown for Demo Med Spa's June 2026
+// Per-campaign / per-creative breakdown for Demo Med Spa's June 2026
 // month. Modeled on a real Meta ad-set export for structure only (ad set
-// names, which treatments they belong to, roughly which are active vs
+// names, which campaign they belong to, roughly which are active vs
 // paused) - every spend/lead/show/booking number below is fabricated,
 // not the client's actual figures.
-interface TreatmentRow {
-  treatment: string;
+interface CampaignRow {
+  campaign: string;
   campaignType: string;
   ad: string;
   creativeType: string | null;
@@ -250,32 +250,32 @@ interface TreatmentRow {
   bookings: number;
 }
 
-const BE_CLINICAL_JUNE_META: TreatmentRow[] = [
-  { treatment: 'BBL', campaignType: 'Lead Generation', ad: 'BBL Reels - Daily', creativeType: 'Video', spend: 6200, leads: 54, shows: 33, bookings: 19 },
-  { treatment: 'BBL', campaignType: 'Lead Generation', ad: 'BBL Image Ads', creativeType: 'Static', spend: 8150, leads: 62, shows: 37, bookings: 21 },
-  { treatment: 'BBL', campaignType: 'Lead Generation', ad: 'BBL Buy 3 Get the 4th Free', creativeType: 'Static', spend: 1240, leads: 11, shows: 6, bookings: 3 },
-  { treatment: 'PDO Threads', campaignType: 'Lead Generation', ad: 'PDO Thread 4x5 - v1', creativeType: 'Video', spend: 410, leads: 24, shows: 15, bookings: 9 },
-  { treatment: 'PDO Threads', campaignType: 'Lead Generation', ad: 'PDO Thread 9x16 - v1', creativeType: 'Video', spend: 395, leads: 19, shows: 12, bookings: 7 },
-  { treatment: 'PDO Threads', campaignType: 'Lead Generation', ad: '$250 Off PDO Threads Image Ad', creativeType: 'Static', spend: 890, leads: 21, shows: 13, bookings: 8 },
-  { treatment: 'Radiesse', campaignType: 'Lead Generation', ad: 'Radiesse - Daily Budget', creativeType: 'Video', spend: 640, leads: 9, shows: 5, bookings: 3 },
-  { treatment: 'Radiesse', campaignType: 'Lead Generation', ad: 'Radiesse Pic Ad Sets', creativeType: 'Static', spend: 310, leads: 4, shows: 2, bookings: 1 },
-  { treatment: 'Rejuran', campaignType: 'Lead Generation', ad: 'Rejuran Reel - Daily Budget', creativeType: 'Video', spend: 520, leads: 7, shows: 4, bookings: 2 },
-  { treatment: 'Rejuran', campaignType: 'Lead Generation', ad: 'Rejuran Reel - Schedule - v2', creativeType: 'Video', spend: 180, leads: 3, shows: 2, bookings: 1 },
-  { treatment: 'Botox / Wrinkle Relaxers', campaignType: 'Lead Generation', ad: 'Botox Reel - Daily Budget', creativeType: 'Video', spend: 2980, leads: 41, shows: 24, bookings: 14 },
-  { treatment: 'Botox / Wrinkle Relaxers', campaignType: 'Lead Generation', ad: 'Wrinkle Relaxers Image Ad Set', creativeType: 'Static', spend: 1180, leads: 17, shows: 10, bookings: 6 },
-  { treatment: 'General Skin', campaignType: 'Lead Generation', ad: 'General Skin Improvement 4x5 - v3', creativeType: 'Video', spend: 420, leads: 16, shows: 10, bookings: 6 },
-  { treatment: 'General Skin', campaignType: 'Lead Generation', ad: 'Microneedling Image Ad Set', creativeType: 'Static', spend: 980, leads: 14, shows: 8, bookings: 5 },
-  { treatment: 'Halo', campaignType: 'Lead Generation', ad: '$250 Off Halo Image Ad Set', creativeType: 'Static', spend: 460, leads: 12, shows: 7, bookings: 4 },
-  { treatment: 'Sculptra', campaignType: 'Lead Generation', ad: '20% Off Sculptra Ad Set', creativeType: 'Static', spend: 410, leads: 6, shows: 3, bookings: 2 },
+const BE_CLINICAL_JUNE_META: CampaignRow[] = [
+  { campaign: 'BBL', campaignType: 'Lead Generation', ad: 'BBL Reels - Daily', creativeType: 'Video', spend: 6200, leads: 54, shows: 33, bookings: 19 },
+  { campaign: 'BBL', campaignType: 'Lead Generation', ad: 'BBL Image Ads', creativeType: 'Static', spend: 8150, leads: 62, shows: 37, bookings: 21 },
+  { campaign: 'BBL', campaignType: 'Lead Generation', ad: 'BBL Buy 3 Get the 4th Free', creativeType: 'Static', spend: 1240, leads: 11, shows: 6, bookings: 3 },
+  { campaign: 'PDO Threads', campaignType: 'Lead Generation', ad: 'PDO Thread 4x5 - v1', creativeType: 'Video', spend: 410, leads: 24, shows: 15, bookings: 9 },
+  { campaign: 'PDO Threads', campaignType: 'Lead Generation', ad: 'PDO Thread 9x16 - v1', creativeType: 'Video', spend: 395, leads: 19, shows: 12, bookings: 7 },
+  { campaign: 'PDO Threads', campaignType: 'Lead Generation', ad: '$250 Off PDO Threads Image Ad', creativeType: 'Static', spend: 890, leads: 21, shows: 13, bookings: 8 },
+  { campaign: 'Radiesse', campaignType: 'Lead Generation', ad: 'Radiesse - Daily Budget', creativeType: 'Video', spend: 640, leads: 9, shows: 5, bookings: 3 },
+  { campaign: 'Radiesse', campaignType: 'Lead Generation', ad: 'Radiesse Pic Ad Sets', creativeType: 'Static', spend: 310, leads: 4, shows: 2, bookings: 1 },
+  { campaign: 'Rejuran', campaignType: 'Lead Generation', ad: 'Rejuran Reel - Daily Budget', creativeType: 'Video', spend: 520, leads: 7, shows: 4, bookings: 2 },
+  { campaign: 'Rejuran', campaignType: 'Lead Generation', ad: 'Rejuran Reel - Schedule - v2', creativeType: 'Video', spend: 180, leads: 3, shows: 2, bookings: 1 },
+  { campaign: 'Botox / Wrinkle Relaxers', campaignType: 'Lead Generation', ad: 'Botox Reel - Daily Budget', creativeType: 'Video', spend: 2980, leads: 41, shows: 24, bookings: 14 },
+  { campaign: 'Botox / Wrinkle Relaxers', campaignType: 'Lead Generation', ad: 'Wrinkle Relaxers Image Ad Set', creativeType: 'Static', spend: 1180, leads: 17, shows: 10, bookings: 6 },
+  { campaign: 'General Skin', campaignType: 'Lead Generation', ad: 'General Skin Improvement 4x5 - v3', creativeType: 'Video', spend: 420, leads: 16, shows: 10, bookings: 6 },
+  { campaign: 'General Skin', campaignType: 'Lead Generation', ad: 'Microneedling Image Ad Set', creativeType: 'Static', spend: 980, leads: 14, shows: 8, bookings: 5 },
+  { campaign: 'Halo', campaignType: 'Lead Generation', ad: '$250 Off Halo Image Ad Set', creativeType: 'Static', spend: 460, leads: 12, shows: 7, bookings: 4 },
+  { campaign: 'Sculptra', campaignType: 'Lead Generation', ad: '20% Off Sculptra Ad Set', creativeType: 'Static', spend: 410, leads: 6, shows: 3, bookings: 2 },
 ];
 
-const BE_CLINICAL_JUNE_GOOGLE: TreatmentRow[] = [
-  { treatment: 'HALO', campaignType: 'Search', ad: 'HALO Landing Page', creativeType: null, spend: 2350, leads: 19, shows: 13, bookings: 8 },
-  { treatment: 'RF Microneedling (Potenza)', campaignType: 'Search', ad: 'RF Landing Page', creativeType: null, spend: 700, leads: 5, shows: 3, bookings: 2 },
-  { treatment: 'Hair Restoration PRP', campaignType: 'Search', ad: 'PRP Landing Page', creativeType: null, spend: 2300, leads: 16, shows: 11, bookings: 6 },
-  { treatment: 'Korean Mesotherapy / Rejuran', campaignType: 'Search', ad: 'KM Landing Page', creativeType: null, spend: 680, leads: 6, shows: 4, bookings: 2 },
-  { treatment: 'PDO', campaignType: 'Search', ad: 'PDO Landing Page', creativeType: null, spend: 1400, leads: 11, shows: 7, bookings: 4 },
-  { treatment: 'BBL', campaignType: 'Search', ad: 'BBL Landing Page', creativeType: null, spend: 1380, leads: 10, shows: 6, bookings: 4 },
+const BE_CLINICAL_JUNE_GOOGLE: CampaignRow[] = [
+  { campaign: 'HALO', campaignType: 'Search', ad: 'HALO Landing Page', creativeType: null, spend: 2350, leads: 19, shows: 13, bookings: 8 },
+  { campaign: 'RF Microneedling (Potenza)', campaignType: 'Search', ad: 'RF Landing Page', creativeType: null, spend: 700, leads: 5, shows: 3, bookings: 2 },
+  { campaign: 'Hair Restoration PRP', campaignType: 'Search', ad: 'PRP Landing Page', creativeType: null, spend: 2300, leads: 16, shows: 11, bookings: 6 },
+  { campaign: 'Korean Mesotherapy / Rejuran', campaignType: 'Search', ad: 'KM Landing Page', creativeType: null, spend: 680, leads: 6, shows: 4, bookings: 2 },
+  { campaign: 'PDO', campaignType: 'Search', ad: 'PDO Landing Page', creativeType: null, spend: 1400, leads: 11, shows: 7, bookings: 4 },
+  { campaign: 'BBL', campaignType: 'Search', ad: 'BBL Landing Page', creativeType: null, spend: 1380, leads: 10, shows: 6, bookings: 4 },
 ];
 
 function statusForCostPerLead(costPerLead: number): 'top' | 'watch' | 'under' {
@@ -284,29 +284,28 @@ function statusForCostPerLead(costPerLead: number): 'top' | 'watch' | 'under' {
   return 'under';
 }
 
-function buildTreatmentChannel(
+function buildCampaignChannel(
   channel: 'meta' | 'google',
-  rows: TreatmentRow[],
+  rows: CampaignRow[],
   roas: number,
   month: string
 ): { channelMetrics: ChannelMetrics; campaigns: CampaignMetrics[]; adLineItems: AdLineItem[] } {
-  const byTreatment = new Map<string, TreatmentRow[]>();
+  const byCampaign = new Map<string, CampaignRow[]>();
   for (const r of rows) {
-    const list = byTreatment.get(r.treatment) ?? [];
+    const list = byCampaign.get(r.campaign) ?? [];
     list.push(r);
-    byTreatment.set(r.treatment, list);
+    byCampaign.set(r.campaign, list);
   }
 
-  const campaigns: CampaignMetrics[] = [...byTreatment.entries()].map(([treatment, rs]) => {
+  const campaigns: CampaignMetrics[] = [...byCampaign.entries()].map(([campaign, rs]) => {
     const spend = rs.reduce((a, r) => a + r.spend, 0);
     const leads = rs.reduce((a, r) => a + r.leads, 0);
     const completed = rs.reduce((a, r) => a + r.shows, 0);
     return {
       period_month: month,
       channel,
-      campaign: treatment,
+      campaign,
       campaign_type: rs[0]!.campaignType,
-      treatment,
       spend,
       leads,
       completed,
@@ -319,7 +318,7 @@ function buildTreatmentChannel(
     return {
       period_month: month,
       channel,
-      campaign: r.treatment,
+      campaign: r.campaign,
       ad_name: r.ad,
       ad_id: `demo-medspa-june-${channel}-${i + 1}`,
       creative_type: r.creativeType,
@@ -355,8 +354,8 @@ function buildTreatmentChannel(
 
 function getBeClinicalJuneData(): MonthData {
   const month = '2026-06';
-  const meta = buildTreatmentChannel('meta', BE_CLINICAL_JUNE_META, 2.5, month);
-  const google = buildTreatmentChannel('google', BE_CLINICAL_JUNE_GOOGLE, 3.9, month);
+  const meta = buildCampaignChannel('meta', BE_CLINICAL_JUNE_META, 2.5, month);
+  const google = buildCampaignChannel('google', BE_CLINICAL_JUNE_GOOGLE, 3.9, month);
   const totalLeads = meta.channelMetrics.leads + google.channelMetrics.leads;
   const totalRevenue = meta.channelMetrics.revenue + google.channelMetrics.revenue;
 

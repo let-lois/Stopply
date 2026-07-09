@@ -35,7 +35,6 @@ function mergeCampaigns(rows: CampaignMetrics[]): CampaignMetrics[] {
       cur.completed += r.completed;
       cur.revenue += r.revenue;
       if (!cur.campaign_type && r.campaign_type) cur.campaign_type = r.campaign_type;
-      if (!cur.treatment && r.treatment) cur.treatment = r.treatment;
     } else {
       map.set(key, { ...r });
     }
