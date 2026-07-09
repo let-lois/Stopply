@@ -25,3 +25,18 @@ export function isDemoMode(): boolean {
     return false;
   }
 }
+
+// The demo badge exists so that a *.pages.dev preview link, which gets
+// shared with other reviewers who can't tell fake data from real data at
+// a glance, is never mistaken for the live dashboard. On localhost there
+// is only ever one person looking, the person who just ran `next dev`
+// and already knows it is local, so the badge is just noise there. Same
+// isDemoMode() gate, narrowed to exclude "localhost".
+export function shouldShowDemoBadge(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.location.hostname.endsWith('.pages.dev');
+  } catch {
+    return false;
+  }
+}

@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api, fetchMe, setCsrf, type Me } from '@/lib/api';
-import { isDemoMode } from '@/lib/demoMode';
+import { isDemoMode, shouldShowDemoBadge } from '@/lib/demoMode';
 import { Login } from '@/components/Login';
 import { AppShell } from '@/components/AppShell';
 import { DemoBadge } from '@/components/DemoBadge';
@@ -48,7 +48,7 @@ export default function Page() {
     return (
       <ToastProvider>
         <Login onLoggedIn={refresh} />
-        {isDemoMode() && <DemoBadge />}
+        {shouldShowDemoBadge() && <DemoBadge />}
       </ToastProvider>
     );
   }
