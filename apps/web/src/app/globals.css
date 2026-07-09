@@ -243,6 +243,27 @@ textarea {
   border-bottom-color: var(--accent);
 }
 
+/* Agency working areas sit apart from the client-facing pages: pushed to
+   the right edge of the nav, behind a hairline and an Internal label. */
+.profile-nav-internal {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  padding-left: 12px;
+  border-left: 1px solid var(--hairline);
+}
+
+.profile-nav-internal-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  opacity: 0.7;
+  margin-right: 4px;
+}
+
 /* Anchored sections need to land below the sticky profile header. */
 .main-content.has-profile-head .page-section {
   scroll-margin-top: 108px;

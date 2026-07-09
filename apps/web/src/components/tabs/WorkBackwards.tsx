@@ -46,7 +46,7 @@ export function WorkBackwardsTab({
   return (
     <div className="stack" style={{ gap: 20 }}>
       <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h2>Work backwards</h2>
+        <h2>KPIs</h2>
         <select value={month} onChange={(e) => setMonth(e.target.value)} style={{ width: 'auto' }}>
           {months.map((m) => (
             <option key={m} value={m}>

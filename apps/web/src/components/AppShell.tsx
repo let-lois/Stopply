@@ -52,6 +52,10 @@ type TabKey = ConsoleKey | SectionKey;
 
 const CLIENT_SECTIONS: SectionKey[] = ['performance', 'work-backwards', 'planning', 'present', 'data-team'];
 
+// Sections the client never presents from: agency working areas. They
+// group to the right side of the profile nav under an Internal label.
+const INTERNAL_SECTIONS: SectionKey[] = ['present', 'data-team'];
+
 const isConsoleKey = (t: TabKey): t is ConsoleKey =>
   t === 'clients' || t === 'team' || t === 'audit' || t === 'secrets';
 
@@ -97,6 +101,10 @@ export function AppShell({
   // Which section of the one-page client dashboard is in view (scroll spy),
   // purely for highlighting the sidebar link.
   const [activeSection, setActiveSection] = useState<SectionKey>('performance');
+  // Which internal section is showing as its own view, or null for the
+  // client-facing one-page dashboard. Internal areas (Present, Data and
+  // Team) never share the page with what the client sees.
+  const [internalView, setInternalView] = useState<SectionKey | null>(null);
   // Profile-level platform flip: null shows everything, 'meta'/'google'
   // narrows the Performance section to that platform's numbers only.
   const [platformFilter, setPlatformFilter] = useState<'meta' | 'google' | null>(null);
@@ -105,15 +113,23 @@ export function AppShell({
   const [error, setError] = useState<string | null>(null);
   const [canSecrets, setCanSecrets] = useState(false);
 
-  // Scroll the one-page dashboard to a section. If a console view is
-  // currently showing, the section is not mounted yet, so the scroll waits
-  // for the next paint after switching back.
+  // Scroll the one-page dashboard to a client-facing section. If a console
+  // or internal view is currently showing, the section is not mounted yet,
+  // so the scroll waits for the next paint after switching back.
   const scrollToSection = useCallback((key: SectionKey) => {
     setConsoleView(null);
+    setInternalView(null);
     setActiveSection(key);
     requestAnimationFrame(() => {
       document.getElementById(`section-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
+  }, []);
+
+  // Open an internal section as its own view, replacing the client page.
+  const openInternal = useCallback((key: SectionKey) => {
+    setConsoleView(null);
+    setInternalView(key);
+    requestAnimationFrame(() => window.scrollTo({ top: 0 }));
   }, []);
 
   const loadSettings = useCallback(() => {
@@ -156,7 +172,7 @@ export function AppShell({
   // Scroll spy for the one-page dashboard: highlight the sidebar link of
   // whichever section currently crosses the upper part of the viewport.
   useEffect(() => {
-    if (consoleView !== null || !settings) return;
+    if (consoleView !== null || internalView !== null || !settings) return;
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -170,11 +186,12 @@ export function AppShell({
       { rootMargin: '-15% 0px -75% 0px' }
     );
     for (const key of CLIENT_SECTIONS) {
+      if (INTERNAL_SECTIONS.includes(key)) continue;
       const el = document.getElementById(`section-${key}`);
       if (el) observer.observe(el);
     }
     return () => observer.disconnect();
-  }, [consoleView, settings]);
+  }, [consoleView, internalView, settings]);
 
   // Apply the tenant theme as CSS variables on the app container.
   const themeStyle = useMemo(() => {
@@ -237,9 +254,9 @@ export function AppShell({
     team: 'Team',
     audit: 'Audit log',
     secrets: 'Keys & secrets',
-    performance: 'Performance',
-    'work-backwards': 'Work Backwards',
-    planning: 'Planning',
+    performance: 'Main Dashboard',
+    'work-backwards': 'KPIs',
+    planning: 'Goals',
     present: 'Present',
     'data-team': 'Data and Team',
   };
@@ -291,14 +308,17 @@ export function AppShell({
               onClick: () => setConsoleView(t),
             })),
             // Tenant users have no Clients list; their sections are the
-            // top-level nav.
+            // top-level nav. Internal sections open as their own view,
+            // client pages share the one-page dashboard.
             ...(!isAgencyUser
               ? sectionKeys.map((s) => ({
                   key: s,
                   label: tabLabel[s],
                   badge: s === 'data-team' ? staleCount : undefined,
-                  active: s === activeSection,
-                  onClick: () => scrollToSection(s),
+                  active: INTERNAL_SECTIONS.includes(s)
+                    ? internalView === s
+                    : internalView === null && s === activeSection,
+                  onClick: () => (INTERNAL_SECTIONS.includes(s) ? openInternal(s) : scrollToSection(s)),
                 }))
               : []),
           ]}
@@ -352,54 +372,85 @@ export function AppShell({
                       </button>
                     </div>
                   </div>
+                  {/* Client-facing pages on the left, agency working areas
+                      grouped to the right under an Internal label. The two
+                      groups are separate views: internal tabs replace the
+                      client page entirely, client tabs bring it back. */}
                   <nav className="profile-nav" aria-label="Client sections">
-                    {sectionKeys.map((s) => (
-                      <button
-                        key={s}
-                        className={s === activeSection ? 'active' : ''}
-                        onClick={() => scrollToSection(s)}
-                      >
-                        {tabLabel[s]}
-                        {s === 'data-team' && staleCount > 0 && <span className="badge">{staleCount}</span>}
-                      </button>
-                    ))}
+                    {sectionKeys
+                      .filter((s) => !INTERNAL_SECTIONS.includes(s))
+                      .map((s) => (
+                        <button
+                          key={s}
+                          className={internalView === null && s === activeSection ? 'active' : ''}
+                          onClick={() => scrollToSection(s)}
+                        >
+                          {tabLabel[s]}
+                        </button>
+                      ))}
+                    {sectionKeys.some((s) => INTERNAL_SECTIONS.includes(s)) && (
+                      <div className="profile-nav-internal">
+                        <span className="profile-nav-internal-label">Internal</span>
+                        {sectionKeys
+                          .filter((s) => INTERNAL_SECTIONS.includes(s))
+                          .map((s) => (
+                            <button
+                              key={s}
+                              className={internalView === s ? 'active' : ''}
+                              onClick={() => openInternal(s)}
+                            >
+                              {tabLabel[s]}
+                              {s === 'data-team' && staleCount > 0 && <span className="badge">{staleCount}</span>}
+                            </button>
+                          ))}
+                      </div>
+                    )}
                   </nav>
                 </div>
               )}
 
-              {showOnboarding && <OnboardingChecklist sources={sources} onOpenDataTeam={() => scrollToSection('data-team')} />}
+              {showOnboarding && internalView === null && (
+                <OnboardingChecklist sources={sources} onOpenDataTeam={() => openInternal('data-team')} />
+              )}
 
-              {sectionKeys.includes('performance') && (
-                <section id="section-performance" className="page-section stack" style={{ gap: 20 }}>
-                  <h2 className="section-title">Performance</h2>
-                  <PerformanceTab
-                    settings={settings}
-                    labels={labels}
-                    months={months}
-                    sources={sources}
-                    channelFilter={platformFilter}
-                    refreshSources={loadSources}
-                  />
-                </section>
+              {/* The client-facing one-page dashboard. Internal sections
+                  never render here; they replace it as their own view. */}
+              {internalView === null && (
+                <>
+                  {sectionKeys.includes('performance') && (
+                    <section id="section-performance" className="page-section stack" style={{ gap: 20 }}>
+                      <h2 className="section-title">Main Dashboard</h2>
+                      <PerformanceTab
+                        settings={settings}
+                        labels={labels}
+                        months={months}
+                        sources={sources}
+                        channelFilter={platformFilter}
+                        refreshSources={loadSources}
+                      />
+                    </section>
+                  )}
+                  {/* WorkBackwards, Planning, and Present render their own h2
+                      titles, so their sections add no heading of their own. */}
+                  {sectionKeys.includes('work-backwards') && (
+                    <section id="section-work-backwards" className="page-section stack" style={{ gap: 20 }}>
+                      <WorkBackwardsTab settings={settings} labels={labels} months={months} />
+                    </section>
+                  )}
+                  {sectionKeys.includes('planning') && (
+                    <section id="section-planning" className="page-section stack" style={{ gap: 20 }}>
+                      <PlanningTab settings={settings} labels={labels} months={months} />
+                    </section>
+                  )}
+                </>
               )}
-              {/* WorkBackwards, Planning, and Present render their own h2
-                  titles, so their sections add no heading of their own. */}
-              {sectionKeys.includes('work-backwards') && (
-                <section id="section-work-backwards" className="page-section stack" style={{ gap: 20 }}>
-                  <WorkBackwardsTab settings={settings} labels={labels} months={months} />
-                </section>
-              )}
-              {sectionKeys.includes('planning') && (
-                <section id="section-planning" className="page-section stack" style={{ gap: 20 }}>
-                  <PlanningTab settings={settings} labels={labels} months={months} />
-                </section>
-              )}
-              {sectionKeys.includes('present') && !isViewer && (
+
+              {internalView === 'present' && !isViewer && (
                 <section id="section-present" className="page-section stack" style={{ gap: 20 }}>
                   <PresentTab settings={settings} labels={labels} months={months} />
                 </section>
               )}
-              {sectionKeys.includes('data-team') && !isViewer && (
+              {internalView === 'data-team' && !isViewer && (
                 <section id="section-data-team" className="page-section stack" style={{ gap: 20 }}>
                   <h2 className="section-title">Data and Team</h2>
                   <DataTeamTab
@@ -417,7 +468,7 @@ export function AppShell({
           )}
         </main>
 
-        {settings && <ChatWidget settings={settings} currentTab={activeConsole ?? activeSection} />}
+        {settings && <ChatWidget settings={settings} currentTab={activeConsole ?? internalView ?? activeSection} />}
       </div>
     </div>
   );

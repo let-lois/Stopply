@@ -727,8 +727,13 @@ function TeamSection({ toast }: { toast: (s: string) => void }) {
 
 function ViewConfigEditor({ user, onClose, toast }: { user: TeamUser; onClose: () => void; toast: (s: string) => void }) {
   const existing = user.view_config_json ? JSON.parse(user.view_config_json) : { tabs: ['performance'], months: 'all', channels: 'all' };
-  // Present and Data and Team are never offered.
-  const grantable = ['performance', 'work-backwards', 'planning'];
+  // Present and Data and Team are never offered. Keys are storage names;
+  // labels match the client profile nav.
+  const grantable = [
+    { key: 'performance', label: 'Main Dashboard' },
+    { key: 'work-backwards', label: 'KPIs' },
+    { key: 'planning', label: 'Goals' },
+  ];
   const [tabs, setTabs] = useState<string[]>(existing.tabs ?? ['performance']);
   const [monthsText, setMonthsText] = useState(existing.months === 'all' ? '' : (existing.months ?? []).join(', '));
   const [channelsText, setChannelsText] = useState(existing.channels === 'all' ? '' : (existing.channels ?? []).join(', '));
@@ -749,14 +754,14 @@ function ViewConfigEditor({ user, onClose, toast }: { user: TeamUser; onClose: (
       <h3>View config for {user.name}</h3>
       <div className="row">
         {grantable.map((t) => (
-          <label key={t} className="row" style={{ gap: 4, width: 'auto' }}>
+          <label key={t.key} className="row" style={{ gap: 4, width: 'auto' }}>
             <input
               type="checkbox"
               style={{ minHeight: 20, width: 20 }}
-              checked={tabs.includes(t)}
-              onChange={(e) => setTabs((prev) => (e.target.checked ? [...prev, t] : prev.filter((x) => x !== t)))}
+              checked={tabs.includes(t.key)}
+              onChange={(e) => setTabs((prev) => (e.target.checked ? [...prev, t.key] : prev.filter((x) => x !== t.key)))}
             />
-            {t}
+            {t.label}
           </label>
         ))}
       </div>
