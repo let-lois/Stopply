@@ -1,10 +1,11 @@
 'use client';
 
-// Performance tab: months stacked newest first, collapsible. Topline KPIs
-// with direction aware deltas, the in month block and cohort strip, the
-// first versus latest touch toggle, spend by platform with lazy campaign
-// rows, the data quality line, source check icons, and the admin only
-// leads drawer.
+// Performance tab: a static view of one selected month at a time, picked
+// from a dropdown, instead of every month stacked in a collapsible list.
+// Topline KPIs with direction aware deltas, the in month block and cohort
+// strip, the first versus latest touch toggle, spend by platform with lazy
+// campaign rows, the data quality line, source check icons, and the admin
+// only leads drawer.
 
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
@@ -98,19 +99,11 @@ function sumChannels(data: MonthData | undefined, field: 'leads' | 'scheduled' |
 }
 
 export function PerformanceTab({ settings, labels, months, sources, channelFilter, refreshSources }: Props) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set(months.slice(0, 1)));
-  // The comparison basis lives here, next to the months it applies to,
+  const [month, setMonth] = useState(months[0] ?? '');
+  // The comparison basis lives here, next to the month it applies to,
   // rather than in the sidebar.
   const [comparison, setComparison] = useState<Comparison>('previous');
   const canAdmin = settings.role !== 'viewer';
-
-  const toggle = (m: string) =>
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(m)) next.delete(m);
-      else next.add(m);
-      return next;
-    });
 
   if (months.length === 0) {
     return (
@@ -123,9 +116,49 @@ export function PerformanceTab({ settings, labels, months, sources, channelFilte
     );
   }
 
+  const selected = months.includes(month) ? month : months[0];
+  const idx = months.indexOf(selected);
+
+  const step = (dir: -1 | 1) => {
+    const next = months[idx + dir];
+    if (next) setMonth(next);
+  };
+
+  const compareMonth =
+    comparison === 'previous'
+      ? months[idx + 1] ?? null
+      : comparison === 'year'
+        ? `${Number(selected.slice(0, 4)) - 1}${selected.slice(4)}`
+        : null;
+
   return (
     <div className="stack" style={{ gap: 20 }}>
-      <div className="row" style={{ justifyContent: 'flex-end' }}>
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <div className="row" style={{ gap: 8, width: 'auto' }}>
+          <button
+            className="small"
+            aria-label="Previous month"
+            onClick={() => step(1)}
+            disabled={idx + 1 >= months.length}
+          >
+            &larr;
+          </button>
+          <select
+            value={selected}
+            onChange={(e) => setMonth(e.target.value)}
+            aria-label="Month"
+            style={{ width: 'auto' }}
+          >
+            {months.map((m) => (
+              <option key={m} value={m}>
+                {monthLabel(m, settings.tenant.timezone)}
+              </option>
+            ))}
+          </select>
+          <button className="small" aria-label="Next month" onClick={() => step(-1)} disabled={idx <= 0}>
+            &rarr;
+          </button>
+        </div>
         <label className="row" style={{ gap: 8, width: 'auto', fontSize: 13, color: 'var(--ink-soft)' }}>
           Compare
           <select
@@ -141,28 +174,18 @@ export function PerformanceTab({ settings, labels, months, sources, channelFilte
           </select>
         </label>
       </div>
-      {months.map((month, idx) => (
-        <MonthSection
-          key={month}
-          month={month}
-          compareMonth={
-            comparison === 'previous'
-              ? months[idx + 1] ?? null
-              : comparison === 'year'
-                ? `${Number(month.slice(0, 4)) - 1}${month.slice(4)}`
-                : null
-          }
-          comparison={comparison}
-          open={expanded.has(month)}
-          onToggle={() => toggle(month)}
-          settings={settings}
-          labels={labels}
-          sources={sources}
-          canAdmin={canAdmin}
-          channelFilter={channelFilter ?? null}
-          refreshSources={refreshSources}
-        />
-      ))}
+      <MonthSection
+        key={selected}
+        month={selected}
+        compareMonth={compareMonth}
+        comparison={comparison}
+        settings={settings}
+        labels={labels}
+        sources={sources}
+        canAdmin={canAdmin}
+        channelFilter={channelFilter ?? null}
+        refreshSources={refreshSources}
+      />
     </div>
   );
 }
@@ -171,8 +194,6 @@ function MonthSection({
   month,
   compareMonth,
   comparison,
-  open,
-  onToggle,
   settings,
   labels,
   sources,
@@ -183,8 +204,6 @@ function MonthSection({
   month: string;
   compareMonth: string | null;
   comparison: Comparison;
-  open: boolean;
-  onToggle: () => void;
   settings: TenantSettings;
   labels: FunnelLabels;
   sources: SourceInfo[];
@@ -257,9 +276,9 @@ function MonthSection({
   };
 
   useEffect(() => {
-    if (!open) return;
     let alive = true;
     setError(null);
+    setData(null);
     api<MonthData>(`/api/tenant/months/${month}?basis=${basis}`)
       .then((d) => alive && setData(d))
       .catch((e) => alive && setError(e instanceof Error ? e.message : 'load failed'));
@@ -273,7 +292,7 @@ function MonthSection({
     return () => {
       alive = false;
     };
-  }, [open, month, basis, compareMonth, comparison]);
+  }, [month, basis, compareMonth, comparison]);
 
   const targets = useMemo(() => {
     const map = new Map<string, number>();
@@ -321,19 +340,10 @@ function MonthSection({
 
   return (
     <section className="card stack">
-      <button
-        onClick={onToggle}
-        style={{ border: 'none', background: 'transparent', textAlign: 'left', padding: 0 }}
-        aria-expanded={open}
-      >
-        <div className="row" style={{ justifyContent: 'space-between' }}>
-          <h2>{monthLabel(month, timezone)}</h2>
-          <span className="muted">{open ? '−' : '+'}</span>
-        </div>
-      </button>
+      <h2>{monthLabel(month, timezone)}</h2>
 
-      {open && error && <p className="delta-down">{error}</p>}
-      {open && !data && !error && (
+      {error && <p className="delta-down">{error}</p>}
+      {!data && !error && (
         <div className="kpi-grid">
           {[0, 1, 2, 3, 4].map((i) => (
             <div key={i} className="kpi">
@@ -344,7 +354,7 @@ function MonthSection({
         </div>
       )}
 
-      {open && view && (
+      {view && (
         <>
           <div className="kpi-grid">
             {(
