@@ -21,11 +21,11 @@ interface DemoClient {
 
 const DEMO_CLIENTS: DemoClient[] = [
   {
-    id: 'demo-tenant-medspa',
-    slug: 'demo-med-spa',
-    name: 'Demo Med Spa',
+    id: 'be-clinical',
+    slug: 'be-clinical',
+    name: 'Be Clinical',
     plan: 'pro',
-    timezone: 'America/Phoenix',
+    timezone: 'America/Los_Angeles',
     platforms: ['meta', 'google'],
     monthlyBudget: 28500,
     platformBudgets: { meta: 19000, google: 9500 },
@@ -34,30 +34,30 @@ const DEMO_CLIENTS: DemoClient[] = [
     google: 4200,
   },
   {
-    id: 'demo-tenant-dental',
-    slug: 'demo-dental-group',
-    name: 'Demo Dental Group',
+    id: 'back-9-golf',
+    slug: 'back-9-golf',
+    name: 'Back 9 Golf',
     plan: 'starter',
-    timezone: 'America/Denver',
-    platforms: ['google'],
-    monthlyBudget: 5200,
-    platformBudgets: { google: 5200 },
+    timezone: 'America/Phoenix',
+    platforms: ['meta', 'google'],
+    monthlyBudget: 6000,
+    platformBudgets: { meta: 3500, google: 2500 },
     months: ['2026-06'],
-    meta: 0,
-    google: 5200,
+    meta: 3500,
+    google: 2500,
   },
   {
-    id: 'demo-tenant-detailing',
-    slug: 'demo-auto-detailing',
-    name: 'Demo Auto Detailing',
+    id: 'deep-clean-cleaners',
+    slug: 'deep-clean-cleaners',
+    name: 'Deep Clean Cleaners',
     plan: 'whitelabel',
     timezone: 'America/Phoenix',
-    platforms: ['meta'],
-    monthlyBudget: 8800,
-    platformBudgets: { meta: 8800 },
+    platforms: ['meta', 'google'],
+    monthlyBudget: 4500,
+    platformBudgets: { meta: 1500, google: 3000 },
     months: ['2026-06'],
-    meta: 8400,
-    google: 0,
+    meta: 1500,
+    google: 3000,
   },
 ];
 
@@ -234,11 +234,12 @@ function monthData(month: string, meta: number, google: number, scale: number): 
   };
 }
 
-// Per-campaign / per-creative breakdown for Demo Med Spa's June 2026
-// month. Modeled on a real Meta ad-set export for structure only (ad set
-// names, which campaign they belong to, roughly which are active vs
-// paused) - every spend/lead/show/booking number below is fabricated,
-// not the client's actual figures.
+// Per-campaign / per-creative breakdown for each client's June 2026
+// month. Be Clinical's is modeled on a real Meta ad-set export for
+// structure only (ad set names, which campaign they belong to, roughly
+// which are active vs paused); Back 9 Golf and Deep Clean Cleaners are
+// fully fabricated but industry-plausible. Every spend/lead/show/booking
+// number below is fabricated, not any client's actual figures.
 interface CampaignRow {
   campaign: string;
   campaignType: string;
@@ -276,6 +277,31 @@ const BE_CLINICAL_JUNE_GOOGLE: CampaignRow[] = [
   { campaign: 'Korean Mesotherapy / Rejuran', campaignType: 'Search', ad: 'KM Landing Page', creativeType: null, spend: 680, leads: 6, shows: 4, bookings: 2 },
   { campaign: 'PDO', campaignType: 'Search', ad: 'PDO Landing Page', creativeType: null, spend: 1400, leads: 11, shows: 7, bookings: 4 },
   { campaign: 'BBL', campaignType: 'Search', ad: 'BBL Landing Page', creativeType: null, spend: 1380, leads: 10, shows: 6, bookings: 4 },
+];
+
+const BACK_9_GOLF_JUNE_META: CampaignRow[] = [
+  { campaign: 'Membership Drive', campaignType: 'Lead Generation', ad: 'Founding Member Promo Video', creativeType: 'Video', spend: 900, leads: 14, shows: 9, bookings: 5 },
+  { campaign: 'Membership Drive', campaignType: 'Lead Generation', ad: 'Membership Carousel', creativeType: 'Carousel', spend: 650, leads: 10, shows: 6, bookings: 3 },
+  { campaign: 'Golf Simulator Bays', campaignType: 'Lead Generation', ad: 'Simulator Bay Reel', creativeType: 'Video', spend: 780, leads: 16, shows: 11, bookings: 7 },
+  { campaign: 'Junior Golf Camp', campaignType: 'Lead Generation', ad: 'Summer Camp Flyer Image', creativeType: 'Static', spend: 520, leads: 12, shows: 8, bookings: 5 },
+  { campaign: 'Corporate & Group Events', campaignType: 'Lead Generation', ad: 'Corporate Outing Image', creativeType: 'Static', spend: 650, leads: 8, shows: 5, bookings: 3 },
+];
+
+const BACK_9_GOLF_JUNE_GOOGLE: CampaignRow[] = [
+  { campaign: 'Tee Times', campaignType: 'Search', ad: 'Tee Times Landing Page', creativeType: null, spend: 1200, leads: 22, shows: 15, bookings: 9 },
+  { campaign: 'Golf Lessons', campaignType: 'Search', ad: 'Lessons Landing Page', creativeType: null, spend: 900, leads: 11, shows: 7, bookings: 4 },
+  { campaign: 'Pro Shop', campaignType: 'Search', ad: 'Pro Shop Landing Page', creativeType: null, spend: 400, leads: 6, shows: 4, bookings: 2 },
+];
+
+const DEEP_CLEAN_JUNE_META: CampaignRow[] = [
+  { campaign: 'Move-In / Move-Out Special', campaignType: 'Lead Generation', ad: 'Move Out Special Image', creativeType: 'Static', spend: 620, leads: 15, shows: 10, bookings: 6 },
+  { campaign: 'Recurring Maid Service', campaignType: 'Lead Generation', ad: 'Weekly Cleaning Reel', creativeType: 'Video', spend: 880, leads: 19, shows: 13, bookings: 8 },
+];
+
+const DEEP_CLEAN_JUNE_GOOGLE: CampaignRow[] = [
+  { campaign: 'House Cleaning', campaignType: 'Search', ad: 'House Cleaning Landing Page', creativeType: null, spend: 1400, leads: 26, shows: 18, bookings: 11 },
+  { campaign: 'Office Cleaning', campaignType: 'Search', ad: 'Office Cleaning Landing Page', creativeType: null, spend: 900, leads: 13, shows: 9, bookings: 5 },
+  { campaign: 'Deep Clean / Post-Construction', campaignType: 'Search', ad: 'Deep Clean Landing Page', creativeType: null, spend: 700, leads: 9, shows: 6, bookings: 3 },
 ];
 
 function statusForCostPerLead(costPerLead: number): 'top' | 'watch' | 'under' {
@@ -320,7 +346,7 @@ function buildCampaignChannel(
       channel,
       campaign: r.campaign,
       ad_name: r.ad,
-      ad_id: `demo-medspa-june-${channel}-${i + 1}`,
+      ad_id: `demo-${month}-${channel}-${i + 1}`,
       creative_type: r.creativeType,
       creative_type_source: 'auto',
       spend: r.spend,
@@ -352,10 +378,10 @@ function buildCampaignChannel(
   return { channelMetrics, campaigns, adLineItems };
 }
 
-function getBeClinicalJuneData(): MonthData {
+function buildJuneMonthData(metaRows: CampaignRow[], googleRows: CampaignRow[]): MonthData {
   const month = '2026-06';
-  const meta = buildCampaignChannel('meta', BE_CLINICAL_JUNE_META, 2.5, month);
-  const google = buildCampaignChannel('google', BE_CLINICAL_JUNE_GOOGLE, 3.9, month);
+  const meta = buildCampaignChannel('meta', metaRows, 2.5, month);
+  const google = buildCampaignChannel('google', googleRows, 3.9, month);
   const totalLeads = meta.channelMetrics.leads + google.channelMetrics.leads;
   const totalRevenue = meta.channelMetrics.revenue + google.channelMetrics.revenue;
 
@@ -374,13 +400,25 @@ function getBeClinicalJuneData(): MonthData {
   };
 }
 
-export function getDemoMonthData(month: string): MonthData {
-  const client = getActiveDemoClient();
-  if (client.id === 'demo-tenant-medspa' && month === '2026-06') {
-    return getBeClinicalJuneData();
+// Hand-authored per-client June 2026 breakdowns, keyed by client id. Any
+// client/month combination not in this map falls back to the generic
+// monthData() formula below.
+const JUNE_DATA_BY_CLIENT: Record<string, () => MonthData> = {
+  'be-clinical': () => buildJuneMonthData(BE_CLINICAL_JUNE_META, BE_CLINICAL_JUNE_GOOGLE),
+  'back-9-golf': () => buildJuneMonthData(BACK_9_GOLF_JUNE_META, BACK_9_GOLF_JUNE_GOOGLE),
+  'deep-clean-cleaners': () => buildJuneMonthData(DEEP_CLEAN_JUNE_META, DEEP_CLEAN_JUNE_GOOGLE),
+};
+
+function getMonthDataForClient(client: DemoClient, month: string): MonthData {
+  if (month === '2026-06' && JUNE_DATA_BY_CLIENT[client.id]) {
+    return JUNE_DATA_BY_CLIENT[client.id]!();
   }
   const scale = month === client.months[client.months.length - 1] ? 1 : 0.85;
   return monthData(month, client.meta, client.google, scale);
+}
+
+export function getDemoMonthData(month: string): MonthData {
+  return getMonthDataForClient(getActiveDemoClient(), month);
 }
 
 export function getDemoMonthsResponse() {
@@ -426,7 +464,7 @@ export function getDemoAgencyUsers() {
 export function getDemoAgencyOverview() {
   const month = DEFAULT_CLIENT.months[DEFAULT_CLIENT.months.length - 1];
   const tenants = DEMO_CLIENTS.map((client) => {
-    const data = monthData(month, client.meta, client.google, 1);
+    const data = getMonthDataForClient(client, client.months[client.months.length - 1]);
     const leads = data.channels.reduce((sum, c) => sum + c.leads, 0);
     const scheduled = data.channels.reduce((sum, c) => sum + c.scheduled, 0);
     const completed = data.channels.reduce((sum, c) => sum + c.completed, 0);
