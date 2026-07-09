@@ -252,6 +252,33 @@ export function getDemoTeamUsers() {
   ];
 }
 
+// Agency team roster for GET /api/agency/users, the agency-level Team
+// section (distinct from getDemoTeamUsers, which is the per-tenant roster).
+export function getDemoAgencyUsers() {
+  return [
+    {
+      id: 'demo-agency-user',
+      email: 'agency@demoagency.example',
+      name: 'Demo Agency Admin',
+      role: 'agency_admin' as const,
+      assigned_tenants_json: null,
+      permissions_json: JSON.stringify({ manageSecrets: true }),
+      active: 1,
+      created_at: '2026-01-15T09:00:00Z',
+    },
+    {
+      id: 'demo-agency-staff',
+      email: 'staff@demoagency.example',
+      name: 'Demo Agency Staff',
+      role: 'agency_staff' as const,
+      assigned_tenants_json: JSON.stringify([DEMO_CLIENTS[0].id, DEMO_CLIENTS[1].id]),
+      permissions_json: JSON.stringify({ manageSecrets: false }),
+      active: 1,
+      created_at: '2026-03-02T09:00:00Z',
+    },
+  ];
+}
+
 // Roster row shape for GET /api/agency/overview, the "Clients" tab.
 export function getDemoAgencyOverview() {
   const month = DEFAULT_CLIENT.months[DEFAULT_CLIENT.months.length - 1];
