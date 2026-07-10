@@ -54,6 +54,8 @@ function mergeAdLineItems(byMonthDesc: AdLineItem[][]): AdLineItem[] {
       if (cur) {
         cur.spend += r.spend;
         cur.leads_reported = (cur.leads_reported ?? 0) + (r.leads_reported ?? 0);
+        cur.completed = (cur.completed ?? 0) + (r.completed ?? 0);
+        cur.purchases = (cur.purchases ?? 0) + (r.purchases ?? 0);
       } else {
         map.set(key, { ...r });
       }

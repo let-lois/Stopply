@@ -9,7 +9,7 @@
 
 import { useMemo, useState } from 'react';
 import { api } from '@/lib/api';
-import { channelColor, fmtMoney, fmtNum, monthLabel } from '@/lib/format';
+import { channelColor, fmtMoney, fmtNum, fmtPct, monthLabel } from '@/lib/format';
 import { mergeMonthData } from '@/lib/mergeMonthData';
 import { monthsInRange, oldestAndNewest, shiftYear } from '@/lib/monthRange';
 import type { AdLineItem, Comparison, FunnelLabels, LeadRow, MonthData, RepMetricsRow, SourceInfo, TenantSettings } from '@/lib/types';
@@ -479,6 +479,7 @@ function MonthSection({
                         const ads = view.adLineItems
                           .filter((a) => a.channel === channel && a.campaign === r.campaign)
                           .filter((a) => !creativeFilter || a.creative_type === creativeFilter);
+                        const bookings = ads.reduce((a, x) => a + (x.purchases ?? 0), 0);
                         const campaignKey = `${channel}|${r.campaign}`;
                         return (
                           <div key={r.campaign} className="campaign-block stack" style={{ gap: 10 }}>
@@ -540,6 +541,18 @@ function MonthSection({
                                 <span className="muted">Cost / {labels.lead.toLowerCase().replace(/s$/, '')}</span>
                                 <span className="num">{r.leads > 0 ? fmtMoney(r.spend / r.leads) : '-'}</span>
                               </span>
+                              {bookings > 0 && (
+                                <>
+                                  <span>
+                                    <span className="muted">Conversion rate</span>
+                                    <span className="num">{r.leads > 0 ? fmtPct(bookings / r.leads) : '-'}</span>
+                                  </span>
+                                  <span>
+                                    <span className="muted">Cost / booking</span>
+                                    <span className="num">{fmtMoney(r.spend / bookings)}</span>
+                                  </span>
+                                </>
+                              )}
                             </div>
 
                             {ads.length > 0 && (
@@ -551,7 +564,10 @@ function MonthSection({
                                       <th>Spend</th>
                                       <th>% of campaign</th>
                                       <th>Leads</th>
+                                      <th>Shows</th>
+                                      <th>Conversion rate</th>
                                       <th>Cost / lead</th>
+                                      <th>Cost / booking</th>
                                       <th>Status</th>
                                     </tr>
                                   </thead>
@@ -602,8 +618,17 @@ function MonthSection({
                                             {r.spend > 0 ? ((a.spend / r.spend) * 100).toFixed(0) + '%' : '—'}
                                           </td>
                                           <td className="num">{a.leads_reported ?? '—'}</td>
+                                          <td className="num">{a.completed ?? '—'}</td>
+                                          <td className="num">
+                                            {a.leads_reported && a.purchases !== null
+                                              ? fmtPct(a.purchases / a.leads_reported)
+                                              : '—'}
+                                          </td>
                                           <td className="num">
                                             {a.cost_per_lead !== null ? fmtMoney(a.cost_per_lead) : '—'}
+                                          </td>
+                                          <td className="num">
+                                            {a.purchases ? fmtMoney(a.spend / a.purchases) : '—'}
                                           </td>
                                           <td>
                                             {a.status && (
