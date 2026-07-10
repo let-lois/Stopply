@@ -66,6 +66,10 @@ export interface AdLineItem {
   spend: number;
   leads_reported: number | null;
   cost_per_lead: number | null;
+  // Funnel stages past the lead, at ad level (mirrors ChannelMetrics'
+  // completed/purchases). Null where a tenant only reports leads per ad.
+  completed: number | null;
+  purchases: number | null;
   status: 'top' | 'watch' | 'under' | null;
 }
 

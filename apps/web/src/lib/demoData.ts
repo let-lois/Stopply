@@ -3,7 +3,7 @@
 // client data, not copied from any actual tenant.
 
 import type { Me } from './api';
-import type { MonthData, SourceInfo, TenantSettings } from './types';
+import type { AdLineItem, CampaignMetrics, ChannelMetrics, MonthData, SourceInfo, TenantSettings } from './types';
 
 interface DemoClient {
   id: string;
@@ -21,11 +21,11 @@ interface DemoClient {
 
 const DEMO_CLIENTS: DemoClient[] = [
   {
-    id: 'demo-tenant-medspa',
-    slug: 'demo-med-spa',
-    name: 'Demo Med Spa',
+    id: 'be-clinical',
+    slug: 'be-clinical',
+    name: 'Be Clinical',
     plan: 'pro',
-    timezone: 'America/Phoenix',
+    timezone: 'America/Los_Angeles',
     platforms: ['meta', 'google'],
     monthlyBudget: 28500,
     platformBudgets: { meta: 19000, google: 9500 },
@@ -34,30 +34,30 @@ const DEMO_CLIENTS: DemoClient[] = [
     google: 4200,
   },
   {
-    id: 'demo-tenant-dental',
-    slug: 'demo-dental-group',
-    name: 'Demo Dental Group',
+    id: 'back-9-golf',
+    slug: 'back-9-golf',
+    name: 'Back 9 Golf',
     plan: 'starter',
-    timezone: 'America/Denver',
-    platforms: ['google'],
-    monthlyBudget: 5200,
-    platformBudgets: { google: 5200 },
+    timezone: 'America/Phoenix',
+    platforms: ['meta', 'google'],
+    monthlyBudget: 6000,
+    platformBudgets: { meta: 3500, google: 2500 },
     months: ['2026-06'],
-    meta: 0,
-    google: 5200,
+    meta: 3500,
+    google: 2500,
   },
   {
-    id: 'demo-tenant-detailing',
-    slug: 'demo-auto-detailing',
-    name: 'Demo Auto Detailing',
+    id: 'deep-clean-cleaners',
+    slug: 'deep-clean-cleaners',
+    name: 'Deep Clean Cleaners',
     plan: 'whitelabel',
     timezone: 'America/Phoenix',
-    platforms: ['meta'],
-    monthlyBudget: 8800,
-    platformBudgets: { meta: 8800 },
+    platforms: ['meta', 'google'],
+    monthlyBudget: 4500,
+    platformBudgets: { meta: 1500, google: 3000 },
     months: ['2026-06'],
-    meta: 8400,
-    google: 0,
+    meta: 1500,
+    google: 3000,
   },
 ];
 
@@ -195,8 +195,8 @@ function monthData(month: string, meta: number, google: number, scale: number): 
       { period_month: month, channel: 'meta', campaign: 'Meta - Retargeting', campaign_type: 'Retargeting', spend: Math.round(meta * 0.45), leads: Math.round(leadsMeta * 0.5), completed: Math.round(leadsMeta * 0.2), revenue: Math.round(meta * 1.2) }
     );
     adLineItems.push(
-      { period_month: month, channel: 'meta', campaign: 'Meta - Spring Promo', ad_name: 'Before/After Carousel', ad_id: 'demo-ad-1', creative_type: 'carousel', creative_type_source: 'auto' as const, spend: Math.round(meta * 0.3), leads_reported: Math.round(leadsMeta * 0.28), cost_per_lead: Math.round((meta * 0.3) / Math.max(1, leadsMeta * 0.28)), status: 'top' as const },
-      { period_month: month, channel: 'meta', campaign: 'Meta - Retargeting', ad_name: 'Testimonial Video', ad_id: 'demo-ad-2', creative_type: 'video', creative_type_source: 'auto' as const, spend: Math.round(meta * 0.25), leads_reported: Math.round(leadsMeta * 0.22), cost_per_lead: Math.round((meta * 0.25) / Math.max(1, leadsMeta * 0.22)), status: 'watch' as const }
+      { period_month: month, channel: 'meta', campaign: 'Meta - Spring Promo', ad_name: 'Before/After Carousel', ad_id: 'demo-ad-1', creative_type: 'carousel', creative_type_source: 'auto' as const, spend: Math.round(meta * 0.3), leads_reported: Math.round(leadsMeta * 0.28), cost_per_lead: Math.round((meta * 0.3) / Math.max(1, leadsMeta * 0.28)), completed: null, purchases: null, status: 'top' as const },
+      { period_month: month, channel: 'meta', campaign: 'Meta - Retargeting', ad_name: 'Testimonial Video', ad_id: 'demo-ad-2', creative_type: 'video', creative_type_source: 'auto' as const, spend: Math.round(meta * 0.25), leads_reported: Math.round(leadsMeta * 0.22), cost_per_lead: Math.round((meta * 0.25) / Math.max(1, leadsMeta * 0.22)), completed: null, purchases: null, status: 'watch' as const }
     );
   }
   if (google > 0) {
@@ -216,7 +216,7 @@ function monthData(month: string, meta: number, google: number, scale: number): 
       { period_month: month, channel: 'google', campaign: 'Google - Near Me', campaign_type: null, spend: Math.round(google * 0.6), leads: Math.round(leadsGoogle * 0.55), completed: Math.round(leadsGoogle * 0.26), revenue: Math.round(google * 2.3) }
     );
     adLineItems.push({
-      period_month: month, channel: 'google', campaign: 'Google - Near Me', ad_name: 'Near Me - RSA', ad_id: 'demo-ad-3', creative_type: 'text', creative_type_source: 'auto' as const, spend: Math.round(google * 0.5), leads_reported: Math.round(leadsGoogle * 0.5), cost_per_lead: Math.round((google * 0.5) / Math.max(1, leadsGoogle * 0.5)), status: 'top' as const,
+      period_month: month, channel: 'google', campaign: 'Google - Near Me', ad_name: 'Near Me - RSA', ad_id: 'demo-ad-3', creative_type: 'text', creative_type_source: 'auto' as const, spend: Math.round(google * 0.5), leads_reported: Math.round(leadsGoogle * 0.5), cost_per_lead: Math.round((google * 0.5) / Math.max(1, leadsGoogle * 0.5)), completed: null, purchases: null, status: 'top' as const,
     });
   }
   return {
@@ -234,10 +234,225 @@ function monthData(month: string, meta: number, google: number, scale: number): 
   };
 }
 
-export function getDemoMonthData(month: string): MonthData {
-  const client = getActiveDemoClient();
+// Per-campaign / per-creative breakdown for each client's June 2026
+// month. Be Clinical's is modeled on a real Meta ad-set export for
+// structure only (ad set names, which campaign they belong to, roughly
+// which are active vs paused); Back 9 Golf and Deep Clean Cleaners are
+// fully fabricated but industry-plausible. Every spend/lead/show/booking
+// number below is fabricated, not any client's actual figures.
+interface CampaignRow {
+  campaign: string;
+  campaignType: string;
+  ad: string;
+  creativeType: string | null;
+  spend: number;
+  leads: number;
+  shows: number;
+  bookings: number;
+}
+
+const BE_CLINICAL_JUNE_META: CampaignRow[] = [
+  { campaign: 'BBL', campaignType: 'Lead Generation', ad: 'BBL Reels - Daily', creativeType: 'Video', spend: 6200, leads: 54, shows: 33, bookings: 19 },
+  { campaign: 'BBL', campaignType: 'Lead Generation', ad: 'BBL Image Ads', creativeType: 'Static', spend: 8150, leads: 62, shows: 37, bookings: 21 },
+  { campaign: 'BBL', campaignType: 'Lead Generation', ad: 'BBL Buy 3 Get the 4th Free', creativeType: 'Static', spend: 1240, leads: 11, shows: 6, bookings: 3 },
+  { campaign: 'PDO Threads', campaignType: 'Lead Generation', ad: 'PDO Thread 4x5 - v1', creativeType: 'Video', spend: 410, leads: 24, shows: 15, bookings: 9 },
+  { campaign: 'PDO Threads', campaignType: 'Lead Generation', ad: 'PDO Thread 9x16 - v1', creativeType: 'Video', spend: 395, leads: 19, shows: 12, bookings: 7 },
+  { campaign: 'PDO Threads', campaignType: 'Lead Generation', ad: '$250 Off PDO Threads Image Ad', creativeType: 'Static', spend: 890, leads: 21, shows: 13, bookings: 8 },
+  { campaign: 'Radiesse', campaignType: 'Lead Generation', ad: 'Radiesse - Daily Budget', creativeType: 'Video', spend: 640, leads: 9, shows: 5, bookings: 3 },
+  { campaign: 'Radiesse', campaignType: 'Lead Generation', ad: 'Radiesse Pic Ad Sets', creativeType: 'Static', spend: 310, leads: 4, shows: 2, bookings: 1 },
+  { campaign: 'Rejuran', campaignType: 'Lead Generation', ad: 'Rejuran Reel - Daily Budget', creativeType: 'Video', spend: 520, leads: 7, shows: 4, bookings: 2 },
+  { campaign: 'Rejuran', campaignType: 'Lead Generation', ad: 'Rejuran Reel - Schedule - v2', creativeType: 'Video', spend: 180, leads: 3, shows: 2, bookings: 1 },
+  { campaign: 'Botox / Wrinkle Relaxers', campaignType: 'Lead Generation', ad: 'Botox Reel - Daily Budget', creativeType: 'Video', spend: 2980, leads: 41, shows: 24, bookings: 14 },
+  { campaign: 'Botox / Wrinkle Relaxers', campaignType: 'Lead Generation', ad: 'Wrinkle Relaxers Image Ad Set', creativeType: 'Static', spend: 1180, leads: 17, shows: 10, bookings: 6 },
+  { campaign: 'General Skin', campaignType: 'Lead Generation', ad: 'General Skin Improvement 4x5 - v3', creativeType: 'Video', spend: 420, leads: 16, shows: 10, bookings: 6 },
+  { campaign: 'General Skin', campaignType: 'Lead Generation', ad: 'Microneedling Image Ad Set', creativeType: 'Static', spend: 980, leads: 14, shows: 8, bookings: 5 },
+  { campaign: 'Halo', campaignType: 'Lead Generation', ad: '$250 Off Halo Image Ad Set', creativeType: 'Static', spend: 460, leads: 12, shows: 7, bookings: 4 },
+  { campaign: 'Sculptra', campaignType: 'Lead Generation', ad: '20% Off Sculptra Ad Set', creativeType: 'Static', spend: 410, leads: 6, shows: 3, bookings: 2 },
+];
+
+const BE_CLINICAL_JUNE_GOOGLE: CampaignRow[] = [
+  { campaign: 'HALO', campaignType: 'Search', ad: 'HALO Landing Page', creativeType: null, spend: 2350, leads: 19, shows: 13, bookings: 8 },
+  { campaign: 'RF Microneedling (Potenza)', campaignType: 'Search', ad: 'RF Landing Page', creativeType: null, spend: 700, leads: 5, shows: 3, bookings: 2 },
+  { campaign: 'Hair Restoration PRP', campaignType: 'Search', ad: 'PRP Landing Page', creativeType: null, spend: 2300, leads: 16, shows: 11, bookings: 6 },
+  { campaign: 'Korean Mesotherapy / Rejuran', campaignType: 'Search', ad: 'KM Landing Page', creativeType: null, spend: 680, leads: 6, shows: 4, bookings: 2 },
+  { campaign: 'PDO', campaignType: 'Search', ad: 'PDO Landing Page', creativeType: null, spend: 1400, leads: 11, shows: 7, bookings: 4 },
+  { campaign: 'BBL', campaignType: 'Search', ad: 'BBL Landing Page', creativeType: null, spend: 1380, leads: 10, shows: 6, bookings: 4 },
+];
+
+const BACK_9_GOLF_JUNE_META: CampaignRow[] = [
+  { campaign: 'Membership Drive', campaignType: 'Lead Generation', ad: 'Founding Member Promo Video', creativeType: 'Video', spend: 900, leads: 14, shows: 9, bookings: 5 },
+  { campaign: 'Membership Drive', campaignType: 'Lead Generation', ad: 'Membership Carousel', creativeType: 'Carousel', spend: 650, leads: 10, shows: 6, bookings: 3 },
+  { campaign: 'Golf Simulator Bays', campaignType: 'Lead Generation', ad: 'Simulator Bay Reel', creativeType: 'Video', spend: 780, leads: 16, shows: 11, bookings: 7 },
+  { campaign: 'Junior Golf Camp', campaignType: 'Lead Generation', ad: 'Summer Camp Flyer Image', creativeType: 'Static', spend: 520, leads: 12, shows: 8, bookings: 5 },
+  { campaign: 'Corporate & Group Events', campaignType: 'Lead Generation', ad: 'Corporate Outing Image', creativeType: 'Static', spend: 650, leads: 8, shows: 5, bookings: 3 },
+];
+
+const BACK_9_GOLF_JUNE_GOOGLE: CampaignRow[] = [
+  { campaign: 'Tee Times', campaignType: 'Search', ad: 'Tee Times Landing Page', creativeType: null, spend: 1200, leads: 22, shows: 15, bookings: 9 },
+  { campaign: 'Golf Lessons', campaignType: 'Search', ad: 'Lessons Landing Page', creativeType: null, spend: 900, leads: 11, shows: 7, bookings: 4 },
+  { campaign: 'Pro Shop', campaignType: 'Search', ad: 'Pro Shop Landing Page', creativeType: null, spend: 400, leads: 6, shows: 4, bookings: 2 },
+];
+
+const DEEP_CLEAN_JUNE_META: CampaignRow[] = [
+  { campaign: 'Move-In / Move-Out Special', campaignType: 'Lead Generation', ad: 'Move Out Special Image', creativeType: 'Static', spend: 620, leads: 15, shows: 10, bookings: 6 },
+  { campaign: 'Recurring Maid Service', campaignType: 'Lead Generation', ad: 'Weekly Cleaning Reel', creativeType: 'Video', spend: 880, leads: 19, shows: 13, bookings: 8 },
+];
+
+const DEEP_CLEAN_JUNE_GOOGLE: CampaignRow[] = [
+  { campaign: 'House Cleaning', campaignType: 'Search', ad: 'House Cleaning Landing Page', creativeType: null, spend: 1400, leads: 26, shows: 18, bookings: 11 },
+  { campaign: 'Office Cleaning', campaignType: 'Search', ad: 'Office Cleaning Landing Page', creativeType: null, spend: 900, leads: 13, shows: 9, bookings: 5 },
+  { campaign: 'Deep Clean / Post-Construction', campaignType: 'Search', ad: 'Deep Clean Landing Page', creativeType: null, spend: 700, leads: 9, shows: 6, bookings: 3 },
+];
+
+function statusForCostPerLead(costPerLead: number): 'top' | 'watch' | 'under' {
+  if (costPerLead < 70) return 'top';
+  if (costPerLead <= 120) return 'watch';
+  return 'under';
+}
+
+function buildCampaignChannel(
+  channel: 'meta' | 'google',
+  rows: CampaignRow[],
+  roas: number,
+  month: string
+): { channelMetrics: ChannelMetrics; campaigns: CampaignMetrics[]; adLineItems: AdLineItem[] } {
+  const byCampaign = new Map<string, CampaignRow[]>();
+  for (const r of rows) {
+    const list = byCampaign.get(r.campaign) ?? [];
+    list.push(r);
+    byCampaign.set(r.campaign, list);
+  }
+
+  const campaigns: CampaignMetrics[] = [...byCampaign.entries()].map(([campaign, rs]) => {
+    const spend = rs.reduce((a, r) => a + r.spend, 0);
+    const leads = rs.reduce((a, r) => a + r.leads, 0);
+    const completed = rs.reduce((a, r) => a + r.shows, 0);
+    return {
+      period_month: month,
+      channel,
+      campaign,
+      campaign_type: rs[0]!.campaignType,
+      spend,
+      leads,
+      completed,
+      revenue: Math.round(spend * roas),
+    };
+  });
+
+  const adLineItems: AdLineItem[] = rows.map((r, i) => {
+    // Some real ad sets spend money with zero attributed leads that
+    // month (e.g. small testing budgets, or leads not yet synced) -
+    // guard against dividing by zero rather than assuming leads > 0.
+    const costPerLead = r.leads > 0 ? r.spend / r.leads : null;
+    return {
+      period_month: month,
+      channel,
+      campaign: r.campaign,
+      ad_name: r.ad,
+      ad_id: `demo-${month}-${channel}-${i + 1}`,
+      creative_type: r.creativeType,
+      creative_type_source: 'auto',
+      spend: r.spend,
+      leads_reported: r.leads,
+      cost_per_lead: costPerLead !== null ? Math.round(costPerLead * 100) / 100 : null,
+      completed: r.shows,
+      purchases: r.bookings,
+      status: costPerLead !== null ? statusForCostPerLead(costPerLead) : null,
+    };
+  });
+
+  const leads = rows.reduce((a, r) => a + r.leads, 0);
+  const completed = rows.reduce((a, r) => a + r.shows, 0);
+  const purchases = rows.reduce((a, r) => a + r.bookings, 0);
+  const spend = rows.reduce((a, r) => a + r.spend, 0);
+
+  const channelMetrics: ChannelMetrics = {
+    period_month: month,
+    channel,
+    attribution_basis: 'first',
+    leads,
+    scheduled: Math.round(completed / 0.82),
+    completed,
+    purchases,
+    revenue: Math.round(spend * roas),
+    spend,
+  };
+
+  return { channelMetrics, campaigns, adLineItems };
+}
+
+function buildHandAuthoredMonthData(month: string, metaRows: CampaignRow[], googleRows: CampaignRow[]): MonthData {
+  const meta = buildCampaignChannel('meta', metaRows, 2.5, month);
+  const google = buildCampaignChannel('google', googleRows, 3.9, month);
+  const totalLeads = meta.channelMetrics.leads + google.channelMetrics.leads;
+  const totalRevenue = meta.channelMetrics.revenue + google.channelMetrics.revenue;
+
+  return {
+    month,
+    basis: 'first',
+    channels: [meta.channelMetrics, google.channelMetrics],
+    campaigns: [...meta.campaigns, ...google.campaigns],
+    adLineItems: [...meta.adLineItems, ...google.adLineItems],
+    cohort: [],
+    quality: null,
+    targets: [
+      { period_month: month, metric: 'leads', value: Math.round(totalLeads * 1.15) },
+      { period_month: month, metric: 'revenue', value: Math.round(totalRevenue * 1.1) },
+    ],
+  };
+}
+
+// Be Clinical's May 2026 Meta rows are real (spend, leads/"Results", which
+// ad sets were active), taken directly from a real Meta ad-set export -
+// not a fabricated structural template like the June data below. Meta's
+// export has no visibility into what happens after the lead (no
+// show/booking data lives in an ad platform, only in the CRM's lead-to-
+// appointment matching), so `shows`/`bookings` here are still estimated
+// at a flat 60% show rate / 55% show-to-booking rate. Rows with zero
+// spend and zero activity in the real export (fully dormant ad sets)
+// are omitted. Google side has no real export yet, so it's a fabricated
+// estimate (roughly 85% of June's Google numbers).
+const BE_CLINICAL_MAY_META: CampaignRow[] = [
+  { campaign: 'BBL', campaignType: 'Lead Generation', ad: 'BBL Reels - Daily', creativeType: 'Video', spend: 6419, leads: 66, shows: 40, bookings: 22 },
+  { campaign: 'Radiesse', campaignType: 'Lead Generation', ad: 'Radiesse - Daily Budget', creativeType: 'Video', spend: 1579, leads: 10, shows: 6, bookings: 3 },
+  { campaign: 'Radiesse', campaignType: 'Lead Generation', ad: 'Radiesse Pic Ad Sets', creativeType: 'Static', spend: 241, leads: 0, shows: 0, bookings: 0 },
+  { campaign: 'Rejuran', campaignType: 'Lead Generation', ad: 'Rejuran Reel - Daily Budget', creativeType: 'Video', spend: 2752, leads: 1, shows: 0, bookings: 0 },
+  { campaign: 'Rejuran', campaignType: 'Lead Generation', ad: 'Rejuran Reel - Schedule - v2', creativeType: 'Video', spend: 1881, leads: 0, shows: 0, bookings: 0 },
+  { campaign: 'Botox / Wrinkle Relaxers', campaignType: 'Lead Generation', ad: 'Botox Reel - Daily Budget', creativeType: 'Video', spend: 3356, leads: 0, shows: 0, bookings: 0 },
+];
+
+const BE_CLINICAL_MAY_GOOGLE: CampaignRow[] = [
+  { campaign: 'HALO', campaignType: 'Search', ad: 'HALO Landing Page', creativeType: null, spend: 2000, leads: 16, shows: 11, bookings: 7 },
+  { campaign: 'RF Microneedling (Potenza)', campaignType: 'Search', ad: 'RF Landing Page', creativeType: null, spend: 600, leads: 4, shows: 3, bookings: 2 },
+  { campaign: 'Hair Restoration PRP', campaignType: 'Search', ad: 'PRP Landing Page', creativeType: null, spend: 1950, leads: 14, shows: 9, bookings: 5 },
+  { campaign: 'Korean Mesotherapy / Rejuran', campaignType: 'Search', ad: 'KM Landing Page', creativeType: null, spend: 580, leads: 5, shows: 3, bookings: 2 },
+  { campaign: 'PDO', campaignType: 'Search', ad: 'PDO Landing Page', creativeType: null, spend: 1190, leads: 9, shows: 6, bookings: 3 },
+  { campaign: 'BBL', campaignType: 'Search', ad: 'BBL Landing Page', creativeType: null, spend: 1170, leads: 9, shows: 5, bookings: 3 },
+];
+
+// Hand-authored per-client month breakdowns, keyed by month then client
+// id. Any client/month combination not in this map falls back to the
+// generic monthData() formula below.
+const HAND_AUTHORED_DATA: Record<string, Record<string, () => MonthData>> = {
+  '2026-05': {
+    'be-clinical': () => buildHandAuthoredMonthData('2026-05', BE_CLINICAL_MAY_META, BE_CLINICAL_MAY_GOOGLE),
+  },
+  '2026-06': {
+    'be-clinical': () => buildHandAuthoredMonthData('2026-06', BE_CLINICAL_JUNE_META, BE_CLINICAL_JUNE_GOOGLE),
+    'back-9-golf': () => buildHandAuthoredMonthData('2026-06', BACK_9_GOLF_JUNE_META, BACK_9_GOLF_JUNE_GOOGLE),
+    'deep-clean-cleaners': () => buildHandAuthoredMonthData('2026-06', DEEP_CLEAN_JUNE_META, DEEP_CLEAN_JUNE_GOOGLE),
+  },
+};
+
+function getMonthDataForClient(client: DemoClient, month: string): MonthData {
+  const handAuthored = HAND_AUTHORED_DATA[month]?.[client.id];
+  if (handAuthored) return handAuthored();
   const scale = month === client.months[client.months.length - 1] ? 1 : 0.85;
   return monthData(month, client.meta, client.google, scale);
+}
+
+export function getDemoMonthData(month: string): MonthData {
+  return getMonthDataForClient(getActiveDemoClient(), month);
 }
 
 export function getDemoMonthsResponse() {
@@ -283,7 +498,7 @@ export function getDemoAgencyUsers() {
 export function getDemoAgencyOverview() {
   const month = DEFAULT_CLIENT.months[DEFAULT_CLIENT.months.length - 1];
   const tenants = DEMO_CLIENTS.map((client) => {
-    const data = monthData(month, client.meta, client.google, 1);
+    const data = getMonthDataForClient(client, client.months[client.months.length - 1]);
     const leads = data.channels.reduce((sum, c) => sum + c.leads, 0);
     const scheduled = data.channels.reduce((sum, c) => sum + c.scheduled, 0);
     const completed = data.channels.reduce((sum, c) => sum + c.completed, 0);
