@@ -305,7 +305,7 @@ export function AppShell({
                   clients via the Clients tab in the nav below, not a
                   dropdown here, one continuous nav instead of a separate
                   switcher context. */}
-              <StopplyLogo height={44} />
+              <StopplyLogo height={64} />
               {/* Rendered in normal flow here (not a fixed corner overlay)
                   so it can never overlap in-page controls like the Clients
                   tab's "New client" button. */}
