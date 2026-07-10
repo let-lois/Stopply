@@ -9,6 +9,9 @@
 
 import { useMemo, useState } from 'react';
 import { api } from '@/lib/api';
+import { DemoCampaignEditor } from '../DemoCampaignEditor';
+import { getActiveDemoClient } from '@/lib/demoData';
+import { isDemoMode } from '@/lib/demoMode';
 import { channelColor, fmtMoney, fmtNum, fmtPct, monthLabel } from '@/lib/format';
 import { mergeMonthData } from '@/lib/mergeMonthData';
 import { monthsInRange, oldestAndNewest, shiftYear } from '@/lib/monthRange';
@@ -183,10 +186,21 @@ function MonthSection({
   const [creativeFilter, setCreativeFilter] = useState<string | null>(null);
   const [editingAd, setEditingAd] = useState<string | null>(null);
   const [editingCampaign, setEditingCampaign] = useState<string | null>(null);
+  const [managingCampaigns, setManagingCampaigns] = useState(false);
   const timezone = settings.tenant.timezone;
 
   const data = useMemo(() => mergeMonthData(raw), [raw]);
   const compare = useMemo(() => mergeMonthData(compareRaw), [compareRaw]);
+
+  // Demo-only: campaign edits made through DemoCampaignEditor land in
+  // localStorage, not the API, so refetching each selected month is what
+  // picks them up (same fetch useMonthRangeData does on mount).
+  const reloadMonths = async () => {
+    const results = await Promise.all(
+      selectedMonths.map((m) => api<MonthData>(`/api/tenant/months/${m}?basis=${basis}`))
+    );
+    setRaw(results);
+  };
 
   const updateCampaignType = async (channel: string, campaign: string, campaignType: string) => {
     setEditingCampaign(null);
@@ -411,7 +425,24 @@ function MonthSection({
             <TeamLeaderboard reps={view.reps!} labels={labels} />
           )}
 
-          <h3>Campaigns and ads</h3>
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ margin: 0 }}>Campaigns and ads</h3>
+            {isDemoMode() && (
+              <button className="small" onClick={() => setManagingCampaigns((v) => !v)}>
+                {managingCampaigns ? 'Close editor' : 'Manage campaigns'}
+              </button>
+            )}
+          </div>
+
+          {managingCampaigns && (
+            <DemoCampaignEditor
+              clientId={getActiveDemoClient().id}
+              month={newestMonth}
+              onChange={reloadMonths}
+              onClose={() => setManagingCampaigns(false)}
+            />
+          )}
+
           {view.adLineItems.length > 0 && (
             <div className="type-filters">
               <button className={creativeFilter === null ? 'active' : ''} onClick={() => setCreativeFilter(null)}>
