@@ -17,6 +17,7 @@ interface DemoClient {
   months: string[];
   meta: number; // monthly meta spend baseline, used to derive month data
   google: number; // monthly google spend baseline
+  logoUrl: string | null; // static public asset path; null falls back to wordmark/generic mark
 }
 
 const DEMO_CLIENTS: DemoClient[] = [
@@ -32,6 +33,7 @@ const DEMO_CLIENTS: DemoClient[] = [
     months: ['2026-05', '2026-06'],
     meta: 7100,
     google: 4200,
+    logoUrl: '/demo-logos/be-clinical.svg',
   },
   {
     id: 'back-9-golf',
@@ -45,6 +47,7 @@ const DEMO_CLIENTS: DemoClient[] = [
     months: ['2026-06'],
     meta: 3500,
     google: 2500,
+    logoUrl: null,
   },
   {
     id: 'deep-clean-cleaners',
@@ -58,6 +61,7 @@ const DEMO_CLIENTS: DemoClient[] = [
     months: ['2026-06'],
     meta: 1500,
     google: 3000,
+    logoUrl: null,
   },
 ];
 
@@ -77,6 +81,10 @@ export function setActiveDemoClient(id: string): DemoClient | null {
 
 export function getActiveDemoClient(): DemoClient {
   return DEMO_CLIENTS.find((c) => c.id === activeClientId) ?? DEFAULT_CLIENT;
+}
+
+export function getActiveDemoClientLogoUrl(): string | null {
+  return getActiveDemoClient().logoUrl;
 }
 
 export const DEMO_ME: Me = {

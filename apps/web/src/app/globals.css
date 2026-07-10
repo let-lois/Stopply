@@ -43,9 +43,9 @@
 }
 
 :root[data-theme='dark'] {
-  --paper: #1a1815;
+  --paper: #17140f;
   --sidebar-bg: #2c2822;
-  --card: #262420;
+  --card: #322d25;
   --ink: #ede8df;
   --ink-soft: #a19b8d;
   --hairline: #3d372c;
@@ -269,6 +269,47 @@ textarea {
   color: var(--ink-soft);
   opacity: 0.7;
   margin-right: 4px;
+}
+
+/* Master date range + comparison basis, in the sticky profile header.
+   Ghost controls (no visible box at rest) instead of full bordered
+   selects, so this reads as lightweight navigation, not a form. */
+.date-controls {
+  padding: 6px 0 10px;
+  flex-wrap: wrap;
+}
+
+.date-controls select,
+.date-controls button.small {
+  border: none;
+  background: transparent;
+  min-height: 0;
+  width: auto;
+  color: var(--ink);
+  border-radius: 6px;
+}
+
+.date-controls select {
+  padding: 4px 4px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.date-controls button.small {
+  padding: 4px 6px;
+  color: var(--ink-soft);
+}
+
+.date-controls select:hover,
+.date-controls select:focus,
+.date-controls button.small:hover:not(:disabled) {
+  background: var(--accent-soft);
+  outline: none;
+}
+
+.date-controls button.small:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 /* Anchored sections need to land below the sticky profile header. */

@@ -8,7 +8,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { isDemoMode, shouldShowDemoBadge } from '@/lib/demoMode';
-import type { SourceInfo, TenantSettings } from '@/lib/types';
+import { getActiveDemoClientLogoUrl } from '@/lib/demoData';
+import type { Comparison, SourceInfo, TenantSettings } from '@/lib/types';
 import { DEFAULT_LABELS } from '@/lib/types';
 import { PerformanceTab } from './tabs/Performance';
 import { WorkBackwardsTab } from './tabs/WorkBackwards';
@@ -111,11 +112,12 @@ export function AppShell({
   // client-facing one-page dashboard. Internal areas (Present, Data and
   // Team) never share the page with what the client sees.
   const [internalView, setInternalView] = useState<SectionKey | null>(null);
-  // Profile-level platform flip: null shows everything, 'meta'/'google'
-  // narrows the Performance section to that platform's numbers only.
-  const [platformFilter, setPlatformFilter] = useState<'meta' | 'google' | null>(null);
+  // Period-over-period comparison basis for the Main Dashboard, set once
+  // in the sticky header and shared with PerformanceTab below.
+  const [comparison, setComparison] = useState<Comparison>('previous');
   const [menuOpen, setMenuOpen] = useState(false);
   const [hasLogo, setHasLogo] = useState(false);
+  const [logoSrc, setLogoSrc] = useState('/api/tenant/logo');
   const [error, setError] = useState<string | null>(null);
   const [canSecrets, setCanSecrets] = useState(false);
 
@@ -163,9 +165,17 @@ export function AppShell({
         }
       })
       .catch(() => undefined);
-    // Demo mode never touches the network, there is no real logo to check for.
+    // Demo mode never touches the network. Demo clients that have a demo
+    // logo asset configured (see demoData.ts) show it via a static path
+    // instead of the real per-tenant logo endpoint.
     if (isDemoMode()) {
-      setHasLogo(false);
+      const demoLogo = getActiveDemoClientLogoUrl();
+      if (demoLogo) {
+        setLogoSrc(demoLogo);
+        setHasLogo(true);
+      } else {
+        setHasLogo(false);
+      }
     } else {
       fetch('/api/tenant/logo', { method: 'HEAD' }).then((r) => setHasLogo(r.ok)).catch(() => undefined);
     }
@@ -293,7 +303,7 @@ export function AppShell({
                   continuous nav instead of a separate switcher context. */}
               {settings && hasLogo ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src="/api/tenant/logo" alt={settings.tenant.name} style={{ height: 32, maxWidth: 140, objectFit: 'contain' }} />
+                <img src={logoSrc} alt={settings.tenant.name} style={{ height: 32, maxWidth: 140, objectFit: 'contain' }} />
               ) : settings?.tenant.theme?.wordmark ? (
                 <strong style={{ fontFamily: 'var(--font-display)', fontSize: 18 }}>
                   {settings.tenant.theme.wordmark}
@@ -341,7 +351,7 @@ export function AppShell({
 
         <main
           className={`main-content shell stack ${isAgencyUser && activeConsole === null && settings ? 'has-profile-head' : ''}`.trim()}
-          style={{ gap: 20 }}
+          style={{ gap: 12 }}
         >
           {activeConsole === 'clients' && (
             // Switching a client re-renders AppShell fresh via the key prop
@@ -357,89 +367,94 @@ export function AppShell({
             // The client's profile: every section on one continuous page,
             // in sidebar order, each anchored for the scroll links above.
             <>
-              {isAgencyUser && (
-                // Profile header: keeps the open client's identity, its
-                // section nav, and the platform flip pinned while scrolling
-                // the long page. The sections belong to this profile, so
-                // their nav lives here rather than in the agency sidebar.
-                <div className="client-profile-head">
-                  <div className="row" style={{ gap: 12, flexWrap: 'wrap', width: '100%' }}>
-                    <button className="small" onClick={() => onExitTenant?.()}>
-                      &larr; All clients
-                    </button>
-                    <span className="profile-name">{settings.tenant.name}</span>
-                    <span className="muted" style={{ fontSize: 12 }}>{settings.tenant.plan}</span>
-                    <div className="type-filters" style={{ marginLeft: 'auto' }}>
-                      <button className={platformFilter === null ? 'active' : ''} onClick={() => setPlatformFilter(null)}>
-                        All platforms
-                      </button>
-                      <button className={platformFilter === 'meta' ? 'active' : ''} onClick={() => setPlatformFilter('meta')}>
-                        Meta
-                      </button>
-                      <button
-                        className={platformFilter === 'google' ? 'active' : ''}
-                        onClick={() => setPlatformFilter('google')}
-                      >
-                        Google
-                      </button>
+              {/* Sticky header: the open client's identity and section nav
+                  for agency users, plus the master date range and
+                  comparison basis for everyone, pinned while scrolling the
+                  long page. The sections belong to this profile, so their
+                  nav lives here rather than in the agency sidebar. */}
+              <div className="client-profile-head">
+                {isAgencyUser && (
+                  <>
+                    <div className="row" style={{ gap: 10, flexWrap: 'wrap', width: '100%' }}>
+                      {hasLogo && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={logoSrc} alt="" style={{ height: 26, maxWidth: 120, objectFit: 'contain' }} />
+                      )}
+                      <span className="profile-name">{settings.tenant.name}</span>
                     </div>
+                    {/* Client-facing pages on the left, agency working areas
+                        grouped to the right under an Internal label. The two
+                        groups are separate views: internal tabs replace the
+                        client page entirely, client tabs bring it back. */}
+                    <nav className="profile-nav" aria-label="Client sections">
+                      {sectionKeys
+                        .filter((s) => !INTERNAL_SECTIONS.includes(s))
+                        .map((s) => (
+                          <button
+                            key={s}
+                            className={internalView === null && s === activeSection ? 'active' : ''}
+                            onClick={() => scrollToSection(s)}
+                          >
+                            {tabLabel[s]}
+                          </button>
+                        ))}
+                      {sectionKeys.some((s) => INTERNAL_SECTIONS.includes(s)) && (
+                        <div className="profile-nav-internal">
+                          <span className="profile-nav-internal-label">Internal</span>
+                          {sectionKeys
+                            .filter((s) => INTERNAL_SECTIONS.includes(s))
+                            .map((s) => (
+                              <button
+                                key={s}
+                                className={internalView === s ? 'active' : ''}
+                                onClick={() => openInternal(s)}
+                              >
+                                {tabLabel[s]}
+                                {s === 'data-team' && staleCount > 0 && <span className="badge">{staleCount}</span>}
+                              </button>
+                            ))}
+                        </div>
+                      )}
+                    </nav>
+                  </>
+                )}
+
+                {/* One master date range plus the comparison basis, shared
+                    by every section below (and by Present, its own view)
+                    instead of a picker per section. Data and Team is not
+                    period scoped, so it gets none of this. */}
+                {internalView !== 'data-team' && months.length > 0 && (
+                  <div className="row date-controls" style={{ justifyContent: 'space-between' }}>
+                    <MasterDateBar
+                      months={months}
+                      timezone={settings.tenant.timezone}
+                      start={rangeStart || months[0]!}
+                      end={rangeEnd || months[0]!}
+                      onChange={(s, e) => {
+                        setRangeStart(s);
+                        setRangeEnd(e);
+                      }}
+                    />
+                    <label className="row" style={{ gap: 8, width: 'auto' }}>
+                      <span className="muted" style={{ fontSize: 13 }}>Compare</span>
+                      <select
+                        value={comparison}
+                        onChange={(e) => setComparison(e.target.value as Comparison)}
+                        aria-label="Comparison"
+                        style={{ width: 'auto' }}
+                      >
+                        <option value="previous">vs previous period</option>
+                        <option value="year">vs same period last year</option>
+                        <option value="target">vs target</option>
+                        <option value="none">no comparison</option>
+                      </select>
+                    </label>
                   </div>
-                  {/* Client-facing pages on the left, agency working areas
-                      grouped to the right under an Internal label. The two
-                      groups are separate views: internal tabs replace the
-                      client page entirely, client tabs bring it back. */}
-                  <nav className="profile-nav" aria-label="Client sections">
-                    {sectionKeys
-                      .filter((s) => !INTERNAL_SECTIONS.includes(s))
-                      .map((s) => (
-                        <button
-                          key={s}
-                          className={internalView === null && s === activeSection ? 'active' : ''}
-                          onClick={() => scrollToSection(s)}
-                        >
-                          {tabLabel[s]}
-                        </button>
-                      ))}
-                    {sectionKeys.some((s) => INTERNAL_SECTIONS.includes(s)) && (
-                      <div className="profile-nav-internal">
-                        <span className="profile-nav-internal-label">Internal</span>
-                        {sectionKeys
-                          .filter((s) => INTERNAL_SECTIONS.includes(s))
-                          .map((s) => (
-                            <button
-                              key={s}
-                              className={internalView === s ? 'active' : ''}
-                              onClick={() => openInternal(s)}
-                            >
-                              {tabLabel[s]}
-                              {s === 'data-team' && staleCount > 0 && <span className="badge">{staleCount}</span>}
-                            </button>
-                          ))}
-                      </div>
-                    )}
-                  </nav>
-                </div>
-              )}
+                )}
+              </div>
 
               {showOnboarding && internalView === null && (
                 <OnboardingChecklist sources={sources} onOpenDataTeam={() => openInternal('data-team')} />
-              )}
-
-              {/* One master date range, shared by every section below
-                  (and by Present, its own view) instead of a picker per
-                  section. Data and Team is not period scoped, so it gets
-                  none of this. */}
-              {internalView !== 'data-team' && months.length > 0 && (
-                <MasterDateBar
-                  months={months}
-                  timezone={settings.tenant.timezone}
-                  start={rangeStart || months[0]!}
-                  end={rangeEnd || months[0]!}
-                  onChange={(s, e) => {
-                    setRangeStart(s);
-                    setRangeEnd(e);
-                  }}
-                />
               )}
 
               {/* The client-facing one-page dashboard. Internal sections
@@ -447,7 +462,7 @@ export function AppShell({
               {internalView === null && (
                 <>
                   {sectionKeys.includes('performance') && (
-                    <section id="section-performance" className="page-section stack" style={{ gap: 20 }}>
+                    <section id="section-performance" className="page-section stack" style={{ gap: 10 }}>
                       <h2 className="section-title">Main Dashboard</h2>
                       <PerformanceTab
                         settings={settings}
@@ -456,7 +471,7 @@ export function AppShell({
                         rangeStart={rangeStart || months[0] || ''}
                         rangeEnd={rangeEnd || months[0] || ''}
                         sources={sources}
-                        channelFilter={platformFilter}
+                        comparison={comparison}
                         refreshSources={loadSources}
                       />
                     </section>
