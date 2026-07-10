@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { isDemoMode, shouldShowDemoBadge } from '@/lib/demoMode';
+import { getActiveDemoClientLogoUrl } from '@/lib/demoData';
 import type { Comparison, SourceInfo, TenantSettings } from '@/lib/types';
 import { DEFAULT_LABELS } from '@/lib/types';
 import { PerformanceTab } from './tabs/Performance';
@@ -164,11 +165,19 @@ export function AppShell({
         }
       })
       .catch(() => undefined);
-    // Demo mode never touches the network, there is no real logo to check
-    // for. Demo clients never show a client logo, by design, always the
-    // Stopply mark instead - see the sticky header below.
+    // Demo mode never touches the network. Demo clients that have a demo
+    // logo asset configured (see demoData.ts) show it in the client
+    // profile header via a static path instead of the real per-tenant
+    // logo endpoint. This only ever feeds the profile header, never the
+    // left agency sidebar, which always shows Stopply's own mark.
     if (isDemoMode()) {
-      setHasLogo(false);
+      const demoLogo = getActiveDemoClientLogoUrl();
+      if (demoLogo) {
+        setLogoSrc(demoLogo);
+        setHasLogo(true);
+      } else {
+        setHasLogo(false);
+      }
     } else {
       fetch('/api/tenant/logo', { method: 'HEAD' }).then((r) => setHasLogo(r.ok)).catch(() => undefined);
     }
@@ -289,21 +298,14 @@ export function AppShell({
         <Sidebar
           brand={
             <>
-              {/* Top of sidebar: the client's own logo when in a client's
-                  context, falling back to the Stopply mark on the agency
-                  console. Agency users switch between clients via the
-                  Clients tab in the nav below, not a dropdown here, one
-                  continuous nav instead of a separate switcher context. */}
-              {settings && hasLogo ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={logoSrc} alt={settings.tenant.name} style={{ height: 32, maxWidth: 140, objectFit: 'contain' }} />
-              ) : settings?.tenant.theme?.wordmark ? (
-                <strong style={{ fontFamily: 'var(--font-display)', fontSize: 18 }}>
-                  {settings.tenant.theme.wordmark}
-                </strong>
-              ) : (
-                <StopplyLogo />
-              )}
+              {/* Top of sidebar: always Stopply's own mark, this is the
+                  agency's tool, not the client's. A client's own logo (when
+                  they have one) shows in the client profile header instead,
+                  right next to their name. Agency users switch between
+                  clients via the Clients tab in the nav below, not a
+                  dropdown here, one continuous nav instead of a separate
+                  switcher context. */}
+              <StopplyLogo />
               {/* Rendered in normal flow here (not a fixed corner overlay)
                   so it can never overlap in-page controls like the Clients
                   tab's "New client" button. */}
@@ -369,10 +371,11 @@ export function AppShell({
                 {isAgencyUser && (
                   <>
                     <div className="row" style={{ gap: 10, flexWrap: 'wrap', width: '100%' }}>
-                      {/* Always Stopply's own mark here, never a client's -
-                          this is the agency's own working view of the
-                          client, not something the client sees themselves. */}
-                      <StopplyLogo height={22} />
+                      {/* This client's own logo, when they have one. */}
+                      {hasLogo && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={logoSrc} alt="" style={{ height: 26, maxWidth: 120, objectFit: 'contain' }} />
+                      )}
                       <span className="profile-name">{settings.tenant.name}</span>
                     </div>
                     {/* Client-facing pages on the left, agency working areas
