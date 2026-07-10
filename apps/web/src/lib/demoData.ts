@@ -198,12 +198,15 @@ function monthData(month: string, meta: number, google: number, scale: number): 
       scheduled: Math.round(leadsMeta * 0.58),
       completed: Math.round(leadsMeta * 0.4),
       purchases: Math.round(leadsMeta * 0.3),
-      revenue: Math.round(meta * 2.5),
+      // No POS/booking integration (e.g. Boulevard) exists yet to say
+      // what a completed appointment is actually worth, so revenue is
+      // always 0 here rather than a made-up multiplier of ad spend.
+      revenue: 0,
       spend: meta,
     });
     campaigns.push(
-      { period_month: month, channel: 'meta', campaign: 'Meta - Spring Promo', campaign_type: 'Lead Generation', spend: Math.round(meta * 0.55), leads: Math.round(leadsMeta * 0.5), completed: Math.round(leadsMeta * 0.2), revenue: Math.round(meta * 1.3) },
-      { period_month: month, channel: 'meta', campaign: 'Meta - Retargeting', campaign_type: 'Retargeting', spend: Math.round(meta * 0.45), leads: Math.round(leadsMeta * 0.5), completed: Math.round(leadsMeta * 0.2), revenue: Math.round(meta * 1.2) }
+      { period_month: month, channel: 'meta', campaign: 'Meta - Spring Promo', campaign_type: 'Lead Generation', spend: Math.round(meta * 0.55), leads: Math.round(leadsMeta * 0.5), completed: Math.round(leadsMeta * 0.2), revenue: 0 },
+      { period_month: month, channel: 'meta', campaign: 'Meta - Retargeting', campaign_type: 'Retargeting', spend: Math.round(meta * 0.45), leads: Math.round(leadsMeta * 0.5), completed: Math.round(leadsMeta * 0.2), revenue: 0 }
     );
     adLineItems.push(
       { period_month: month, channel: 'meta', campaign: 'Meta - Spring Promo', ad_name: 'Before/After Carousel', ad_id: 'demo-ad-1', creative_type: 'carousel', creative_type_source: 'auto' as const, spend: Math.round(meta * 0.3), leads_reported: Math.round(leadsMeta * 0.28), cost_per_lead: Math.round((meta * 0.3) / Math.max(1, leadsMeta * 0.28)), completed: null, purchases: null, status: 'top' as const },
@@ -219,12 +222,12 @@ function monthData(month: string, meta: number, google: number, scale: number): 
       scheduled: Math.round(leadsGoogle * 0.6),
       completed: Math.round(leadsGoogle * 0.48),
       purchases: Math.round(leadsGoogle * 0.36),
-      revenue: Math.round(google * 3.9),
+      revenue: 0,
       spend: google,
     });
     campaigns.push(
-      { period_month: month, channel: 'google', campaign: 'Google - Search Brand', campaign_type: 'Search', spend: Math.round(google * 0.4), leads: Math.round(leadsGoogle * 0.45), completed: Math.round(leadsGoogle * 0.22), revenue: Math.round(google * 1.6) },
-      { period_month: month, channel: 'google', campaign: 'Google - Near Me', campaign_type: null, spend: Math.round(google * 0.6), leads: Math.round(leadsGoogle * 0.55), completed: Math.round(leadsGoogle * 0.26), revenue: Math.round(google * 2.3) }
+      { period_month: month, channel: 'google', campaign: 'Google - Search Brand', campaign_type: 'Search', spend: Math.round(google * 0.4), leads: Math.round(leadsGoogle * 0.45), completed: Math.round(leadsGoogle * 0.22), revenue: 0 },
+      { period_month: month, channel: 'google', campaign: 'Google - Near Me', campaign_type: null, spend: Math.round(google * 0.6), leads: Math.round(leadsGoogle * 0.55), completed: Math.round(leadsGoogle * 0.26), revenue: 0 }
     );
     adLineItems.push({
       period_month: month, channel: 'google', campaign: 'Google - Near Me', ad_name: 'Near Me - RSA', ad_id: 'demo-ad-3', creative_type: 'text', creative_type_source: 'auto' as const, spend: Math.round(google * 0.5), leads_reported: Math.round(leadsGoogle * 0.5), cost_per_lead: Math.round((google * 0.5) / Math.max(1, leadsGoogle * 0.5)), completed: null, purchases: null, status: 'top' as const,
@@ -240,7 +243,7 @@ function monthData(month: string, meta: number, google: number, scale: number): 
     quality: null,
     targets: [
       { period_month: month, metric: 'leads', value: Math.round((leadsMeta + leadsGoogle) * 1.15) || 20 },
-      { period_month: month, metric: 'revenue', value: Math.round((meta * 2.5 + google * 3.9) * 1.1) || 5000 },
+      { period_month: month, metric: 'revenue', value: 0 },
     ],
   };
 }
@@ -324,7 +327,6 @@ function statusForCostPerLead(costPerLead: number): 'top' | 'watch' | 'under' {
 function buildCampaignChannel(
   channel: 'meta' | 'google',
   rows: CampaignRow[],
-  roas: number,
   month: string
 ): { channelMetrics: ChannelMetrics; campaigns: CampaignMetrics[]; adLineItems: AdLineItem[] } {
   const byCampaign = new Map<string, CampaignRow[]>();
@@ -346,7 +348,10 @@ function buildCampaignChannel(
       spend,
       leads,
       completed,
-      revenue: Math.round(spend * roas),
+      // No POS/booking integration (e.g. Boulevard) exists yet to say
+      // what a completed appointment is actually worth, so revenue is
+      // always 0 here rather than a made-up multiplier of ad spend.
+      revenue: 0,
     };
   });
 
@@ -385,7 +390,7 @@ function buildCampaignChannel(
     scheduled: Math.round(completed / 0.82),
     completed,
     purchases,
-    revenue: Math.round(spend * roas),
+    revenue: 0,
     spend,
   };
 
@@ -393,10 +398,9 @@ function buildCampaignChannel(
 }
 
 function buildHandAuthoredMonthData(month: string, metaRows: CampaignRow[], googleRows: CampaignRow[]): MonthData {
-  const meta = buildCampaignChannel('meta', metaRows, 2.5, month);
-  const google = buildCampaignChannel('google', googleRows, 3.9, month);
+  const meta = buildCampaignChannel('meta', metaRows, month);
+  const google = buildCampaignChannel('google', googleRows, month);
   const totalLeads = meta.channelMetrics.leads + google.channelMetrics.leads;
-  const totalRevenue = meta.channelMetrics.revenue + google.channelMetrics.revenue;
 
   return {
     month,
@@ -408,7 +412,7 @@ function buildHandAuthoredMonthData(month: string, metaRows: CampaignRow[], goog
     quality: null,
     targets: [
       { period_month: month, metric: 'leads', value: Math.round(totalLeads * 1.15) },
-      { period_month: month, metric: 'revenue', value: Math.round(totalRevenue * 1.1) },
+      { period_month: month, metric: 'revenue', value: 0 },
     ],
   };
 }
