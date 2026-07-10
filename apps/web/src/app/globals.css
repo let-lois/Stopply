@@ -191,7 +191,7 @@ textarea {
   /* Clears the fixed sidebar; the shell's auto margins then center the
      content column within the remaining space instead of pinning it
      against the sidebar. Collapses to 0 in the mobile drawer layout. */
-  padding-left: 320px;
+  padding-left: 240px;
 }
 
 .main-content {
@@ -335,7 +335,7 @@ textarea {
 }
 
 .sidebar {
-  width: 320px;
+  width: 240px;
   display: flex;
   flex-direction: column;
   gap: 4px;
