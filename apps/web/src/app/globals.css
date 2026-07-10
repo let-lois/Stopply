@@ -11,51 +11,58 @@
    applies to the agency console and default themed tenants; white
    labeled tenants keep their own inline theme vars, which always win. */
 
+/* "Warm Ledger" theme: warm ivory ground instead of stark white, cards
+   separated by soft elevation (shadow) rather than a hairline border so
+   surfaces don't all read as one flat plane, and #fe5371 as the one
+   brand accent (distinct from the functional positive/negative/amber
+   and channel colors, which keep their own meaning). */
 :root {
-  --paper: #ffffff;
-  --sidebar-bg: #f5f4ef;
+  --paper: #faf8f3;
+  --sidebar-bg: #f1eee3;
   --card: #ffffff;
-  --ink: #1b1b18;
-  --ink-soft: #6b6a65;
-  --hairline: #e5e3dd;
-  --accent: #1f7ae0;
-  --accent-soft: #e8f1fc;
+  --ink: #211d16;
+  --ink-soft: #7a7566;
+  --hairline: #e9e4d6;
+  --accent: #fe5371;
+  --accent-soft: #fde6ea;
   --positive: #1f9d6b;
-  --negative: #d56a4f;
+  --negative: #c7502f;
   --amber: #c7902f;
   --verified-green: #1f9d6b;
   --gray-check: #c3ccd8;
-  --red-check: #d56a4f;
+  --red-check: #c7502f;
   --ch-google: #1f7ae0;
   --ch-meta: #6f5ad6;
   --ch-website: #8b97a8;
-  --brand-grad-from: #1f7ae0;
-  --brand-grad-to: #4ba3e8;
+  --brand-grad-from: #fe5371;
+  --brand-grad-to: #ff8098;
+  --shadow-card: 0 1px 2px rgba(60, 48, 20, 0.06), 0 8px 20px -10px rgba(60, 48, 20, 0.16);
   --font-display: 'Fraunces', serif;
   --font-body: 'Spline Sans', sans-serif;
   --font-mono: 'Spline Sans Mono', monospace;
 }
 
 :root[data-theme='dark'] {
-  --paper: #1a1918;
-  --sidebar-bg: #30302e;
-  --card: #262624;
-  --ink: #ede9e2;
-  --ink-soft: #9a9891;
-  --hairline: #3a3936;
-  --accent: #4da3ff;
-  --accent-soft: #15273c;
+  --paper: #1a1815;
+  --sidebar-bg: #2c2822;
+  --card: #262420;
+  --ink: #ede8df;
+  --ink-soft: #a19b8d;
+  --hairline: #3d372c;
+  --accent: #ff6b86;
+  --accent-soft: #3a2128;
   --positive: #3fc08a;
-  --negative: #e6886e;
+  --negative: #e07357;
   --amber: #d9a441;
   --verified-green: #3fc08a;
   --gray-check: #44505f;
-  --red-check: #e6886e;
+  --red-check: #e07357;
   --ch-google: #4da3ff;
   --ch-meta: #9385ec;
   --ch-website: #7e8b9c;
-  --brand-grad-from: #4da3ff;
-  --brand-grad-to: #6fb6ff;
+  --brand-grad-from: #ff6b86;
+  --brand-grad-to: #ff97ab;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.24), 0 8px 20px -10px rgba(0, 0, 0, 0.4);
 }
 
 :root { color-scheme: light; }
@@ -141,9 +148,9 @@ textarea {
 
 .card {
   background: var(--card);
-  border: 1px solid var(--hairline);
   border-radius: 12px;
   padding: 20px;
+  box-shadow: var(--shadow-card);
 }
 
 .muted {
@@ -369,10 +376,15 @@ textarea {
 
 .kpi {
   background: var(--card);
-  border: 1px solid var(--hairline);
   border-radius: 12px;
+  border-top: 3px solid var(--hairline);
   padding: 14px 16px;
+  box-shadow: var(--shadow-card);
 }
+
+.kpi-spend { border-top-color: var(--ink); }
+.kpi-leads { border-top-color: var(--accent); }
+.kpi-revenue { border-top-color: var(--positive); }
 
 .kpi .label {
   font-size: 12px;
@@ -401,6 +413,9 @@ table.data {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
+  background: var(--card);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
 }
 
 table.data th {
@@ -410,13 +425,27 @@ table.data th {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  padding: 8px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--hairline);
 }
 
 table.data td {
-  padding: 8px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--hairline);
+}
+
+table.data tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--paper) 55%, var(--card));
+}
+
+/* A table already inside an elevated surface (.card, .campaign-block)
+   would otherwise double up on shadow/background - fall back to a
+   plain, unboxed table there instead. */
+.card table.data,
+.campaign-block table.data {
+  box-shadow: none;
+  background: transparent;
+  border-radius: 0;
 }
 
 /* Ad line item drill-down under Spend by platform: creative type filter
@@ -473,11 +502,15 @@ table.data td {
 
 /* One card per campaign in the Campaigns and ads breakdown. */
 .campaign-block {
-  border: 1px solid var(--hairline);
+  border-left: 4px solid var(--hairline);
   border-radius: 12px;
   padding: 14px 16px;
   background: var(--card);
+  box-shadow: var(--shadow-card);
 }
+
+.campaign-block.chan-meta { border-left-color: var(--ch-meta); }
+.campaign-block.chan-google { border-left-color: var(--ch-google); }
 
 .campaign-stats {
   display: flex;

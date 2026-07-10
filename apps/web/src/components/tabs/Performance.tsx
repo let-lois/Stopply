@@ -344,7 +344,7 @@ function MonthSection({
             ).map((kpi) => {
               const value = sumChannels(view, kpi.key);
               return (
-                <div className="kpi" key={kpi.key}>
+                <div className={`kpi kpi-${kpi.key}`} key={kpi.key}>
                   <div className="label">
                     {kpi.label}
                     {sourceFor(kpi.key === 'spend' ? 'Meta' : 'GHL') && (
@@ -482,7 +482,7 @@ function MonthSection({
                         const bookings = ads.reduce((a, x) => a + (x.purchases ?? 0), 0);
                         const campaignKey = `${channel}|${r.campaign}`;
                         return (
-                          <div key={r.campaign} className="campaign-block stack" style={{ gap: 10 }}>
+                          <div key={r.campaign} className={`campaign-block chan-${channel.toLowerCase()} stack`} style={{ gap: 10 }}>
                             <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
                               <span style={{ fontWeight: 700, fontSize: 15 }}>{r.campaign}</span>
                               {editingCampaign === campaignKey ? (
