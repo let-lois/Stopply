@@ -182,7 +182,11 @@ function MonthSection({
   );
   const [showLeads, setShowLeads] = useState(false);
   const [leads, setLeads] = useState<LeadRow[] | null>(null);
-  const [openCampaigns, setOpenCampaigns] = useState<Set<string>>(new Set());
+  const [openChannels, setOpenChannels] = useState<Set<string>>(new Set());
+  // Which individual campaigns are expanded to their full stat strip +
+  // ad-level table. Keyed `${channel}|${campaign}` so opening one
+  // campaign in a channel does not open every other campaign in it too.
+  const [openCampaignRows, setOpenCampaignRows] = useState<Set<string>>(new Set());
   const [creativeFilter, setCreativeFilter] = useState<string | null>(null);
   const [editingAd, setEditingAd] = useState<string | null>(null);
   const [editingCampaign, setEditingCampaign] = useState<string | null>(null);
@@ -411,7 +415,7 @@ function MonthSection({
                     <td className="num">{fmtNum(ch.purchases)}</td>
                     <td className="num">{fmtMoney(ch.revenue)}</td>
                     <td className="num">{fmtMoney(ch.spend)}</td>
-                    <td className="num">{ch.spend > 0 ? (ch.revenue / ch.spend).toFixed(1) + 'x' : '-'}</td>
+                    <td className="num">{ch.spend > 0 && ch.revenue > 0 ? (ch.revenue / ch.spend).toFixed(1) + 'x' : '-'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -461,14 +465,14 @@ function MonthSection({
             {[...new Set(view.campaigns.map((c) => c.channel))].map((channel) => {
               const rows = view.campaigns.filter((c) => c.channel === channel);
               const total = rows.reduce((a, r) => a + r.spend, 0);
-              const isOpen = openCampaigns.has(channel);
+              const isOpen = openChannels.has(channel);
               return (
                 <div key={channel} className="stack" style={{ gap: 8 }}>
                   <button
                     className="row small"
                     style={{ justifyContent: 'space-between', width: '100%' }}
                     onClick={() =>
-                      setOpenCampaigns((prev) => {
+                      setOpenChannels((prev) => {
                         const next = new Set(prev);
                         if (next.has(channel)) next.delete(channel);
                         else next.add(channel);
@@ -493,175 +497,196 @@ function MonthSection({
                           .filter((a) => !creativeFilter || a.creative_type === creativeFilter);
                         const bookings = ads.reduce((a, x) => a + (x.purchases ?? 0), 0);
                         const campaignKey = `${channel}|${r.campaign}`;
+                        const isCampaignOpen = openCampaignRows.has(campaignKey);
                         return (
                           <div key={r.campaign} className={`campaign-block chan-${channel.toLowerCase()} stack`} style={{ gap: 10 }}>
-                            <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
-                              <span style={{ fontWeight: 700, fontSize: 15 }}>{r.campaign}</span>
-                              {editingCampaign === campaignKey ? (
-                                <select
-                                  autoFocus
-                                  defaultValue={r.campaign_type ?? ''}
-                                  onBlur={() => setEditingCampaign(null)}
-                                  onChange={(e) => updateCampaignType(channel, r.campaign, e.target.value)}
-                                  style={{ width: 'auto', minHeight: 30 }}
-                                >
-                                  <option value="" disabled>
-                                    Pick a campaign type
-                                  </option>
-                                  {campaignTypeOptions(channel).map((t) => (
-                                    <option key={t} value={t}>
-                                      {t}
+                            <div className="row" style={{ gap: 10, flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                              <div className="row" style={{ gap: 10, width: 'auto', flexWrap: 'wrap' }}>
+                                <span style={{ fontWeight: 700, fontSize: 15 }}>{r.campaign}</span>
+                                {editingCampaign === campaignKey ? (
+                                  <select
+                                    autoFocus
+                                    defaultValue={r.campaign_type ?? ''}
+                                    onBlur={() => setEditingCampaign(null)}
+                                    onChange={(e) => updateCampaignType(channel, r.campaign, e.target.value)}
+                                    style={{ width: 'auto', minHeight: 30 }}
+                                  >
+                                    <option value="" disabled>
+                                      Pick a campaign type
                                     </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <span
-                                  className={`creative-tag ${r.campaign_type ? 'manual' : ''}`}
-                                  onClick={() => canAdmin && setEditingCampaign(campaignKey)}
-                                  role="button"
-                                  tabIndex={0}
-                                >
-                                  {r.campaign_type ?? 'Set campaign type'} <span className="edit">&#9998;</span>
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="campaign-stats">
-                              <span>
-                                <span className="muted">Spend</span>
-                                <span className="num">{fmtMoney(r.spend)}</span>
-                              </span>
-                              <span>
-                                <span className="muted">{labels.lead}</span>
-                                <span className="num">{fmtNum(r.leads)}</span>
-                              </span>
-                              <span>
-                                <span className="muted">{labels.completed}</span>
-                                <span className="num">{fmtNum(r.completed)}</span>
-                              </span>
-                              <span>
-                                <span className="muted">Revenue</span>
-                                <span className="num">{fmtMoney(r.revenue)}</span>
-                              </span>
-                              <span>
-                                <span className="muted">ROAS</span>
-                                <span className="num" style={{ fontWeight: 700 }}>
-                                  {r.spend > 0 ? (r.revenue / r.spend).toFixed(1) + 'x' : '-'}
-                                </span>
-                              </span>
-                              <span>
-                                <span className="muted">Cost / {labels.lead.toLowerCase().replace(/s$/, '')}</span>
-                                <span className="num">{r.leads > 0 ? fmtMoney(r.spend / r.leads) : '-'}</span>
-                              </span>
-                              {bookings > 0 && (
-                                <>
-                                  <span>
-                                    <span className="muted">Conversion rate</span>
-                                    <span className="num">{r.leads > 0 ? fmtPct(bookings / r.leads) : '-'}</span>
+                                    {campaignTypeOptions(channel).map((t) => (
+                                      <option key={t} value={t}>
+                                        {t}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <span
+                                    className={`creative-tag ${r.campaign_type ? 'manual' : ''}`}
+                                    onClick={() => canAdmin && setEditingCampaign(campaignKey)}
+                                    role="button"
+                                    tabIndex={0}
+                                  >
+                                    {r.campaign_type ?? 'Set campaign type'} <span className="edit">&#9998;</span>
                                   </span>
-                                  <span>
-                                    <span className="muted">Cost / booking</span>
-                                    <span className="num">{fmtMoney(r.spend / bookings)}</span>
-                                  </span>
-                                </>
-                              )}
-                            </div>
-
-                            {ads.length > 0 && (
-                              <div style={{ overflowX: 'auto' }}>
-                                <table className="data">
-                                  <thead>
-                                    <tr>
-                                      <th>Ad / creative</th>
-                                      <th>Spend</th>
-                                      <th>% of campaign</th>
-                                      <th>Leads</th>
-                                      <th>Shows</th>
-                                      <th>Conversion rate</th>
-                                      <th>Cost / lead</th>
-                                      <th>Cost / booking</th>
-                                      <th>Status</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {ads.map((a) => {
-                                      const adKey = `${a.channel}|${a.campaign}|${a.ad_name}`;
-                                      return (
-                                        <tr key={adKey}>
-                                          <td>
-                                            <span className="row" style={{ gap: 10, flexWrap: 'nowrap' }}>
-                                              <span className="creative-tile" aria-hidden="true">
-                                                {creativeGlyph(a.creative_type)}
-                                              </span>
-                                              <span style={{ minWidth: 0 }}>
-                                                <span style={{ fontWeight: 600, display: 'block' }}>{a.ad_name}</span>
-                                                {editingAd === adKey ? (
-                                                  <select
-                                                    autoFocus
-                                                    defaultValue={a.creative_type ?? ''}
-                                                    onBlur={() => setEditingAd(null)}
-                                                    onChange={(e) => updateCreativeType(a, e.target.value)}
-                                                    style={{ width: 'auto', minHeight: 30 }}
-                                                  >
-                                                    <option value="" disabled>
-                                                      Pick a type
-                                                    </option>
-                                                    {CREATIVE_TYPE_OPTIONS.map((t) => (
-                                                      <option key={t} value={t}>
-                                                        {t}
-                                                      </option>
-                                                    ))}
-                                                  </select>
-                                                ) : (
-                                                  <span
-                                                    className={`creative-tag ${a.creative_type_source === 'manual' ? 'manual' : ''}`}
-                                                    onClick={() => setEditingAd(adKey)}
-                                                    role="button"
-                                                    tabIndex={0}
-                                                  >
-                                                    {a.creative_type ?? 'Untagged'} <span className="edit">&#9998;</span>
-                                                  </span>
-                                                )}
-                                              </span>
-                                            </span>
-                                          </td>
-                                          <td className="num">{fmtMoney(a.spend)}</td>
-                                          <td className="num">
-                                            {r.spend > 0 ? ((a.spend / r.spend) * 100).toFixed(0) + '%' : '—'}
-                                          </td>
-                                          <td className="num">{a.leads_reported ?? '—'}</td>
-                                          <td className="num">{a.completed ?? '—'}</td>
-                                          <td className="num">
-                                            {a.leads_reported && a.purchases !== null
-                                              ? fmtPct(a.purchases / a.leads_reported)
-                                              : '—'}
-                                          </td>
-                                          <td className="num">
-                                            {a.cost_per_lead !== null ? fmtMoney(a.cost_per_lead) : '—'}
-                                          </td>
-                                          <td className="num">
-                                            {a.purchases ? fmtMoney(a.spend / a.purchases) : '—'}
-                                          </td>
-                                          <td>
-                                            {a.status && (
-                                              <span className={`status-pill ${a.status}`}>
-                                                <span className="dot" />
-                                                {statusLabel(a.status)}
-                                              </span>
-                                            )}
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
+                                )}
                               </div>
-                            )}
-                            {ads.length === 0 && (
-                              <p className="muted" style={{ fontSize: 12 }}>
-                                No ad level rows for this campaign yet. Upload the by-ad CSV export from Data and
-                                Team to break it down per ad.
-                              </p>
+                              <button
+                                className="row small"
+                                style={{ width: 'auto', gap: 16 }}
+                                onClick={() =>
+                                  setOpenCampaignRows((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(campaignKey)) next.delete(campaignKey);
+                                    else next.add(campaignKey);
+                                    return next;
+                                  })
+                                }
+                              >
+                                <span>
+                                  <span className="muted">Spend</span> <span className="num">{fmtMoney(r.spend)}</span>
+                                </span>
+                                <span>
+                                  <span className="muted">{labels.lead}</span> <span className="num">{fmtNum(r.leads)}</span>
+                                </span>
+                                <span>
+                                  <span className="muted">Cost / {labels.lead.toLowerCase().replace(/s$/, '')}</span>{' '}
+                                  <span className="num">{r.leads > 0 ? fmtMoney(r.spend / r.leads) : '-'}</span>
+                                </span>
+                                <span aria-hidden="true">{isCampaignOpen ? '▲' : '▼'}</span>
+                              </button>
+                            </div>
+
+                            {isCampaignOpen && (
+                              <div className="stack" style={{ gap: 10 }}>
+                                <div className="campaign-stats">
+                                  <span>
+                                    <span className="muted">Spend</span>
+                                    <span className="num">{fmtMoney(r.spend)}</span>
+                                  </span>
+                                  <span>
+                                    <span className="muted">{labels.lead}</span>
+                                    <span className="num">{fmtNum(r.leads)}</span>
+                                  </span>
+                                  <span>
+                                    <span className="muted">{labels.completed}</span>
+                                    <span className="num">{fmtNum(r.completed)}</span>
+                                  </span>
+                                  <span>
+                                    <span className="muted">Cost / {labels.lead.toLowerCase().replace(/s$/, '')}</span>
+                                    <span className="num">{r.leads > 0 ? fmtMoney(r.spend / r.leads) : '-'}</span>
+                                  </span>
+                                  {bookings > 0 && (
+                                    <>
+                                      <span>
+                                        <span className="muted">Conversion rate</span>
+                                        <span className="num">{r.leads > 0 ? fmtPct(bookings / r.leads) : '-'}</span>
+                                      </span>
+                                      <span>
+                                        <span className="muted">Cost / booking</span>
+                                        <span className="num">{fmtMoney(r.spend / bookings)}</span>
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+
+                                {ads.length > 0 && (
+                                <div style={{ overflowX: 'auto' }}>
+                                  <table className="data">
+                                    <thead>
+                                      <tr>
+                                        <th>Ad / creative</th>
+                                        <th>Spend</th>
+                                        <th>% of campaign</th>
+                                        <th>Leads</th>
+                                        <th>Shows</th>
+                                        <th>Conversion rate</th>
+                                        <th>Cost / lead</th>
+                                        <th>Cost / booking</th>
+                                        <th>Status</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {ads.map((a) => {
+                                        const adKey = `${a.channel}|${a.campaign}|${a.ad_name}`;
+                                        return (
+                                          <tr key={adKey}>
+                                            <td>
+                                              <span className="row" style={{ gap: 10, flexWrap: 'nowrap' }}>
+                                                <span className="creative-tile" aria-hidden="true">
+                                                  {creativeGlyph(a.creative_type)}
+                                                </span>
+                                                <span style={{ minWidth: 0 }}>
+                                                  <span style={{ fontWeight: 600, display: 'block' }}>{a.ad_name}</span>
+                                                  {editingAd === adKey ? (
+                                                    <select
+                                                      autoFocus
+                                                      defaultValue={a.creative_type ?? ''}
+                                                      onBlur={() => setEditingAd(null)}
+                                                      onChange={(e) => updateCreativeType(a, e.target.value)}
+                                                      style={{ width: 'auto', minHeight: 30 }}
+                                                    >
+                                                      <option value="" disabled>
+                                                        Pick a type
+                                                      </option>
+                                                      {CREATIVE_TYPE_OPTIONS.map((t) => (
+                                                        <option key={t} value={t}>
+                                                          {t}
+                                                        </option>
+                                                      ))}
+                                                    </select>
+                                                  ) : (
+                                                    <span
+                                                      className={`creative-tag ${a.creative_type_source === 'manual' ? 'manual' : ''}`}
+                                                      onClick={() => setEditingAd(adKey)}
+                                                      role="button"
+                                                      tabIndex={0}
+                                                    >
+                                                      {a.creative_type ?? 'Untagged'} <span className="edit">&#9998;</span>
+                                                    </span>
+                                                  )}
+                                                </span>
+                                              </span>
+                                            </td>
+                                            <td className="num">{fmtMoney(a.spend)}</td>
+                                            <td className="num">
+                                              {r.spend > 0 ? ((a.spend / r.spend) * 100).toFixed(0) + '%' : '—'}
+                                            </td>
+                                            <td className="num">{a.leads_reported ?? '—'}</td>
+                                            <td className="num">{a.completed ?? '—'}</td>
+                                            <td className="num">
+                                              {a.leads_reported && a.purchases !== null
+                                                ? fmtPct(a.purchases / a.leads_reported)
+                                                : '—'}
+                                            </td>
+                                            <td className="num">
+                                              {a.cost_per_lead !== null ? fmtMoney(a.cost_per_lead) : '—'}
+                                            </td>
+                                            <td className="num">
+                                              {a.purchases ? fmtMoney(a.spend / a.purchases) : '—'}
+                                            </td>
+                                            <td>
+                                              {a.status && (
+                                                <span className={`status-pill ${a.status}`}>
+                                                  <span className="dot" />
+                                                  {statusLabel(a.status)}
+                                                </span>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                                )}
+                                {ads.length === 0 && (
+                                  <p className="muted" style={{ fontSize: 12 }}>
+                                    No ad level rows for this campaign yet. Upload the by-ad CSV export from Data and
+                                    Team to break it down per ad.
+                                  </p>
+                                )}
+                              </div>
                             )}
                           </div>
                         );

@@ -52,7 +52,10 @@ type ConsoleKey = 'clients' | 'team' | 'audit' | 'secrets';
 type SectionKey = 'performance' | 'work-backwards' | 'planning' | 'present' | 'data-team';
 type TabKey = ConsoleKey | SectionKey;
 
-const CLIENT_SECTIONS: SectionKey[] = ['performance', 'work-backwards', 'planning', 'present', 'data-team'];
+// KPIs and Goals are hidden from the nav for now (too much noise on top
+// of the Main Dashboard); their sections and route keys still exist so
+// they are one line to bring back.
+const CLIENT_SECTIONS: SectionKey[] = ['performance', 'present', 'data-team'];
 
 // Sections the client never presents from: agency working areas. They
 // group to the right side of the profile nav under an Internal label.
