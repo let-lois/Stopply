@@ -13,9 +13,13 @@
 
 /* "Warm Ledger" theme: warm ivory ground instead of stark white, cards
    separated by soft elevation (shadow) rather than a hairline border so
-   surfaces don't all read as one flat plane, and #fe5371 as the one
-   brand accent (distinct from the functional positive/negative/amber
-   and channel colors, which keep their own meaning). */
+   surfaces don't all read as one flat plane. The interactive accent is a
+   neutral deep navy-slate, not the brand pink - an all-pink UI read as
+   too soft/consumer-beauty for a BI tool. The pink brand mark still
+   carries the brand identity via the logo; --brand-pop keeps it
+   available for the rare deliberate highlight. Distinct from the
+   functional positive/negative/amber and channel colors, which keep
+   their own meaning. */
 :root {
   --paper: #faf8f3;
   --sidebar-bg: #f1eee3;
@@ -23,8 +27,9 @@
   --ink: #211d16;
   --ink-soft: #7a7566;
   --hairline: #e9e4d6;
-  --accent: #fe5371;
-  --accent-soft: #fde6ea;
+  --accent: #263449;
+  --accent-soft: #e3e7ec;
+  --brand-pop: #fe5371;
   --positive: #1f9d6b;
   --negative: #c7502f;
   --amber: #c7902f;
@@ -34,8 +39,8 @@
   --ch-google: #1f7ae0;
   --ch-meta: #6f5ad6;
   --ch-website: #8b97a8;
-  --brand-grad-from: #fe5371;
-  --brand-grad-to: #ff8098;
+  --brand-grad-from: #263449;
+  --brand-grad-to: #47607f;
   --shadow-card: 0 1px 2px rgba(60, 48, 20, 0.06), 0 8px 20px -10px rgba(60, 48, 20, 0.16);
   --font-display: 'Fraunces', serif;
   --font-body: 'Spline Sans', sans-serif;
@@ -49,8 +54,9 @@
   --ink: #ede8df;
   --ink-soft: #a19b8d;
   --hairline: #3d372c;
-  --accent: #ff6b86;
-  --accent-soft: #3a2128;
+  --accent: #93aac7;
+  --accent-soft: #2a3543;
+  --brand-pop: #ff6b86;
   --positive: #3fc08a;
   --negative: #e07357;
   --amber: #d9a441;
@@ -60,8 +66,8 @@
   --ch-google: #4da3ff;
   --ch-meta: #9385ec;
   --ch-website: #7e8b9c;
-  --brand-grad-from: #ff6b86;
-  --brand-grad-to: #ff97ab;
+  --brand-grad-from: #93aac7;
+  --brand-grad-to: #bccddf;
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.24), 0 8px 20px -10px rgba(0, 0, 0, 0.4);
 }
 

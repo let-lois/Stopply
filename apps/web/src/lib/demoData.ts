@@ -251,7 +251,7 @@ function monthData(month: string, meta: number, google: number, scale: number): 
 // which are active vs paused); Back 9 Golf and Deep Clean Cleaners are
 // fully fabricated but industry-plausible. Every spend/lead/show/booking
 // number below is fabricated, not any client's actual figures.
-interface CampaignRow {
+export interface CampaignRow {
   campaign: string;
   campaignType: string;
   ad: string;
@@ -442,22 +442,82 @@ const BE_CLINICAL_MAY_GOOGLE: CampaignRow[] = [
 ];
 
 // Hand-authored per-client month breakdowns, keyed by month then client
-// id. Any client/month combination not in this map falls back to the
-// generic monthData() formula below.
-const HAND_AUTHORED_DATA: Record<string, Record<string, () => MonthData>> = {
+// id then channel. These are the *defaults* - a starting point. The
+// user can add/edit/remove campaigns and creatives from the "Manage
+// campaigns" editor on the Main Dashboard; those edits are saved to
+// localStorage (see getEditableCampaignRows below) and take over from
+// the defaults for that specific client/month/channel. Any client/month
+// combination not in this map, with no saved edits either, falls back
+// to the generic monthData() formula below.
+const DEFAULT_CAMPAIGN_ROWS: Record<string, Record<string, { meta: CampaignRow[]; google: CampaignRow[] }>> = {
   '2026-05': {
-    'be-clinical': () => buildHandAuthoredMonthData('2026-05', BE_CLINICAL_MAY_META, BE_CLINICAL_MAY_GOOGLE),
+    'be-clinical': { meta: BE_CLINICAL_MAY_META, google: BE_CLINICAL_MAY_GOOGLE },
   },
   '2026-06': {
-    'be-clinical': () => buildHandAuthoredMonthData('2026-06', BE_CLINICAL_JUNE_META, BE_CLINICAL_JUNE_GOOGLE),
-    'back-9-golf': () => buildHandAuthoredMonthData('2026-06', BACK_9_GOLF_JUNE_META, BACK_9_GOLF_JUNE_GOOGLE),
-    'deep-clean-cleaners': () => buildHandAuthoredMonthData('2026-06', DEEP_CLEAN_JUNE_META, DEEP_CLEAN_JUNE_GOOGLE),
+    'be-clinical': { meta: BE_CLINICAL_JUNE_META, google: BE_CLINICAL_JUNE_GOOGLE },
+    'back-9-golf': { meta: BACK_9_GOLF_JUNE_META, google: BACK_9_GOLF_JUNE_GOOGLE },
+    'deep-clean-cleaners': { meta: DEEP_CLEAN_JUNE_META, google: DEEP_CLEAN_JUNE_GOOGLE },
   },
 };
 
+// Edits live in localStorage, never touch the codebase, and are scoped
+// to this one browser - "practical... but not so much freedom I could
+// destroy everything." Keyed per client/month/channel so editing one
+// client's June Meta campaigns never affects another client or channel.
+function campaignOverrideKey(clientId: string, month: string, channel: 'meta' | 'google'): string {
+  return `demo-campaigns:${clientId}:${month}:${channel}`;
+}
+
+function readCampaignOverride(clientId: string, month: string, channel: 'meta' | 'google'): CampaignRow[] | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(campaignOverrideKey(clientId, month, channel));
+    return raw ? (JSON.parse(raw) as CampaignRow[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function hasCampaignOverride(clientId: string, month: string, channel: 'meta' | 'google'): boolean {
+  return readCampaignOverride(clientId, month, channel) !== null;
+}
+
+// The rows actually in effect right now: saved edits if any exist, else
+// the hand-authored defaults, else an empty list (a blank slate the
+// editor can build up from scratch via "Add campaign").
+export function getEditableCampaignRows(clientId: string, month: string, channel: 'meta' | 'google'): CampaignRow[] {
+  const override = readCampaignOverride(clientId, month, channel);
+  if (override) return override;
+  return DEFAULT_CAMPAIGN_ROWS[month]?.[clientId]?.[channel] ?? [];
+}
+
+export function saveEditableCampaignRows(
+  clientId: string,
+  month: string,
+  channel: 'meta' | 'google',
+  rows: CampaignRow[]
+): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(campaignOverrideKey(clientId, month, channel), JSON.stringify(rows));
+  } catch {
+    /* ignore, e.g. storage disabled or full */
+  }
+}
+
+export function resetEditableCampaignRows(clientId: string, month: string, channel: 'meta' | 'google'): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(campaignOverrideKey(clientId, month, channel));
+}
+
 function getMonthDataForClient(client: DemoClient, month: string): MonthData {
-  const handAuthored = HAND_AUTHORED_DATA[month]?.[client.id];
-  if (handAuthored) return handAuthored();
+  const hasDefaults = !!DEFAULT_CAMPAIGN_ROWS[month]?.[client.id];
+  const hasEdits = hasCampaignOverride(client.id, month, 'meta') || hasCampaignOverride(client.id, month, 'google');
+  if (hasDefaults || hasEdits) {
+    const metaRows = getEditableCampaignRows(client.id, month, 'meta');
+    const googleRows = getEditableCampaignRows(client.id, month, 'google');
+    return buildHandAuthoredMonthData(month, metaRows, googleRows);
+  }
   const scale = month === client.months[client.months.length - 1] ? 1 : 0.85;
   return monthData(month, client.meta, client.google, scale);
 }
