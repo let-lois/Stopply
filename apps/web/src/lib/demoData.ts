@@ -183,66 +183,50 @@ export function getDemoSources(): SourceInfo[] {
   return sources;
 }
 
-function monthData(month: string, meta: number, google: number, scale: number): MonthData {
-  const leadsMeta = meta > 0 ? Math.round(47 * scale) : 0;
-  const leadsGoogle = google > 0 ? Math.round(33 * scale) : 0;
-  const channels = [];
-  const campaigns = [];
-  const adLineItems = [];
+// Fallback for a client/month with no entry in DEFAULT_CAMPAIGN_ROWS
+// and no saved edits either. Not reachable today - every current demo
+// client/month has hand-authored rows - it only guards a future client
+// added without them. Spend is the one real input (a client's
+// configured budget); everything else has no underlying data to sum,
+// so it is 0 rather than a plausible-looking invented number.
+function monthData(month: string, meta: number, google: number): MonthData {
+  const channels: ChannelMetrics[] = [];
   if (meta > 0) {
     channels.push({
       period_month: month,
       channel: 'meta',
       attribution_basis: 'first' as const,
-      leads: leadsMeta,
-      scheduled: Math.round(leadsMeta * 0.58),
-      completed: Math.round(leadsMeta * 0.4),
-      purchases: Math.round(leadsMeta * 0.3),
-      // No POS/booking integration (e.g. Boulevard) exists yet to say
-      // what a completed appointment is actually worth, so revenue is
-      // always 0 here rather than a made-up multiplier of ad spend.
+      leads: 0,
+      scheduled: 0,
+      completed: 0,
+      purchases: 0,
       revenue: 0,
       spend: meta,
     });
-    campaigns.push(
-      { period_month: month, channel: 'meta', campaign: 'Meta - Spring Promo', campaign_type: 'Lead Generation', spend: Math.round(meta * 0.55), leads: Math.round(leadsMeta * 0.5), completed: Math.round(leadsMeta * 0.2), revenue: 0 },
-      { period_month: month, channel: 'meta', campaign: 'Meta - Retargeting', campaign_type: 'Retargeting', spend: Math.round(meta * 0.45), leads: Math.round(leadsMeta * 0.5), completed: Math.round(leadsMeta * 0.2), revenue: 0 }
-    );
-    adLineItems.push(
-      { period_month: month, channel: 'meta', campaign: 'Meta - Spring Promo', ad_name: 'Before/After Carousel', ad_id: 'demo-ad-1', creative_type: 'carousel', creative_type_source: 'auto' as const, spend: Math.round(meta * 0.3), leads_reported: Math.round(leadsMeta * 0.28), cost_per_lead: Math.round((meta * 0.3) / Math.max(1, leadsMeta * 0.28)), completed: null, purchases: null, status: 'top' as const },
-      { period_month: month, channel: 'meta', campaign: 'Meta - Retargeting', ad_name: 'Testimonial Video', ad_id: 'demo-ad-2', creative_type: 'video', creative_type_source: 'auto' as const, spend: Math.round(meta * 0.25), leads_reported: Math.round(leadsMeta * 0.22), cost_per_lead: Math.round((meta * 0.25) / Math.max(1, leadsMeta * 0.22)), completed: null, purchases: null, status: 'watch' as const }
-    );
   }
   if (google > 0) {
     channels.push({
       period_month: month,
       channel: 'google',
       attribution_basis: 'first' as const,
-      leads: leadsGoogle,
-      scheduled: Math.round(leadsGoogle * 0.6),
-      completed: Math.round(leadsGoogle * 0.48),
-      purchases: Math.round(leadsGoogle * 0.36),
+      leads: 0,
+      scheduled: 0,
+      completed: 0,
+      purchases: 0,
       revenue: 0,
       spend: google,
-    });
-    campaigns.push(
-      { period_month: month, channel: 'google', campaign: 'Google - Search Brand', campaign_type: 'Search', spend: Math.round(google * 0.4), leads: Math.round(leadsGoogle * 0.45), completed: Math.round(leadsGoogle * 0.22), revenue: 0 },
-      { period_month: month, channel: 'google', campaign: 'Google - Near Me', campaign_type: null, spend: Math.round(google * 0.6), leads: Math.round(leadsGoogle * 0.55), completed: Math.round(leadsGoogle * 0.26), revenue: 0 }
-    );
-    adLineItems.push({
-      period_month: month, channel: 'google', campaign: 'Google - Near Me', ad_name: 'Near Me - RSA', ad_id: 'demo-ad-3', creative_type: 'text', creative_type_source: 'auto' as const, spend: Math.round(google * 0.5), leads_reported: Math.round(leadsGoogle * 0.5), cost_per_lead: Math.round((google * 0.5) / Math.max(1, leadsGoogle * 0.5)), completed: null, purchases: null, status: 'top' as const,
     });
   }
   return {
     month,
     basis: 'first',
     channels,
-    campaigns,
-    adLineItems,
+    campaigns: [],
+    adLineItems: [],
     cohort: [],
     quality: null,
     targets: [
-      { period_month: month, metric: 'leads', value: Math.round((leadsMeta + leadsGoogle) * 1.15) || 20 },
+      { period_month: month, metric: 'leads', value: 0 },
       { period_month: month, metric: 'revenue', value: 0 },
     ],
   };
@@ -387,7 +371,11 @@ function buildCampaignChannel(
     channel,
     attribution_basis: 'first',
     leads,
-    scheduled: Math.round(completed / 0.82),
+    // "Scheduled" (booked on the calendar, before the "shows"/completed
+    // count below) has no matching field in CampaignRow - there's
+    // nothing to sum, and no real source for it yet, so this is 0
+    // rather than a made-up ratio off `completed`.
+    scheduled: 0,
     completed,
     purchases,
     revenue: 0,
@@ -522,8 +510,7 @@ function getMonthDataForClient(client: DemoClient, month: string): MonthData {
     const googleRows = getEditableCampaignRows(client.id, month, 'google');
     return buildHandAuthoredMonthData(month, metaRows, googleRows);
   }
-  const scale = month === client.months[client.months.length - 1] ? 1 : 0.85;
-  return monthData(month, client.meta, client.google, scale);
+  return monthData(month, client.meta, client.google);
 }
 
 export function getDemoMonthData(month: string): MonthData {
