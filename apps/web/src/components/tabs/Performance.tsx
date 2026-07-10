@@ -66,9 +66,11 @@ interface Props {
   rangeStart: string;
   rangeEnd: string;
   sources: SourceInfo[];
-  // Narrows every number on this tab to one ad platform (the profile
-  // header's All/Meta/Google flip). null shows everything.
+  // Narrows every number on this tab to one ad platform. null shows
+  // everything; nothing currently sets this to a non-null value.
   channelFilter?: 'meta' | 'google' | null;
+  // Comparison basis, owned by AppShell's sticky header and shared here.
+  comparison: Comparison;
   refreshSources: () => void;
 }
 
@@ -104,10 +106,7 @@ function sumChannels(data: MonthData | undefined, field: 'leads' | 'scheduled' |
   return data.channels.reduce((acc, ch) => acc + Number(ch[field] ?? 0), 0);
 }
 
-export function PerformanceTab({ settings, labels, months, rangeStart, rangeEnd, sources, channelFilter, refreshSources }: Props) {
-  // The comparison basis lives here, next to the range it applies to,
-  // rather than in the sidebar.
-  const [comparison, setComparison] = useState<Comparison>('previous');
+export function PerformanceTab({ settings, labels, months, rangeStart, rangeEnd, sources, channelFilter, comparison, refreshSources }: Props) {
   const canAdmin = settings.role !== 'viewer';
 
   if (months.length === 0) {
@@ -136,36 +135,18 @@ export function PerformanceTab({ settings, labels, months, rangeStart, rangeEnd,
         : [];
 
   return (
-    <div className="stack" style={{ gap: 20 }}>
-      <div className="row" style={{ justifyContent: 'flex-end' }}>
-        <label className="row" style={{ gap: 8, width: 'auto', fontSize: 13, color: 'var(--ink-soft)' }}>
-          Compare
-          <select
-            value={comparison}
-            onChange={(e) => setComparison(e.target.value as Comparison)}
-            aria-label="Comparison"
-            style={{ width: 'auto' }}
-          >
-            <option value="previous">vs previous period</option>
-            <option value="year">vs same period last year</option>
-            <option value="target">vs target</option>
-            <option value="none">no comparison</option>
-          </select>
-        </label>
-      </div>
-      <MonthSection
-        key={selectedMonths.join(',')}
-        selectedMonths={selectedMonths}
-        compareMonths={compareMonths}
-        comparison={comparison}
-        settings={settings}
-        labels={labels}
-        sources={sources}
-        canAdmin={canAdmin}
-        channelFilter={channelFilter ?? null}
-        refreshSources={refreshSources}
-      />
-    </div>
+    <MonthSection
+      key={selectedMonths.join(',')}
+      selectedMonths={selectedMonths}
+      compareMonths={compareMonths}
+      comparison={comparison}
+      settings={settings}
+      labels={labels}
+      sources={sources}
+      canAdmin={canAdmin}
+      channelFilter={channelFilter ?? null}
+      refreshSources={refreshSources}
+    />
   );
 }
 
