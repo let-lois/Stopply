@@ -731,7 +731,11 @@ function ViewConfigEditor({ user, onClose, toast }: { user: TeamUser; onClose: (
   // hidden from the nav entirely right now, see CLIENT_SECTIONS in
   // AppShell.tsx. Keys are storage names; labels match the client
   // profile nav.
-  const grantable = [{ key: 'performance', label: 'Main Dashboard' }];
+  const grantable = [
+    { key: 'performance', label: 'Main Dashboard' },
+    { key: 'meta', label: 'Meta' },
+    { key: 'google', label: 'Google' },
+  ];
   const [tabs, setTabs] = useState<string[]>(existing.tabs ?? ['performance']);
   const [monthsText, setMonthsText] = useState(existing.months === 'all' ? '' : (existing.months ?? []).join(', '));
   const [channelsText, setChannelsText] = useState(existing.channels === 'all' ? '' : (existing.channels ?? []).join(', '));
