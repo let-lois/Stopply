@@ -734,7 +734,7 @@ function ViewConfigEditor({ user, onClose, toast }: { user: TeamUser; onClose: (
   const grantable = [
     { key: 'performance', label: 'Main Dashboard' },
     { key: 'meta', label: 'Meta' },
-    { key: 'google', label: 'Google' },
+    { key: 'google', label: 'Google Ads' },
   ];
   const [tabs, setTabs] = useState<string[]>(existing.tabs ?? ['performance']);
   const [monthsText, setMonthsText] = useState(existing.months === 'all' ? '' : (existing.months ?? []).join(', '));

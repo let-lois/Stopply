@@ -44,6 +44,21 @@ const TOKEN_TO_VAR: Record<string, string> = {
   channelWebsite: '--ch-website',
 };
 
+// Brand marks for the Meta and Google Ads tabs/headings, so the two
+// platforms read apart from each other at a glance instead of just by
+// label text.
+const CHANNEL_LOGO: Record<'meta' | 'google', string> = {
+  meta: '/channel-logos/meta.webp',
+  google: '/channel-logos/google-ads.webp',
+};
+
+function ChannelLogo({ channel, size = 16 }: { channel: 'meta' | 'google'; size?: number }) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={CHANNEL_LOGO[channel]} alt="" height={size} style={{ height: size, width: 'auto' }} />
+  );
+}
+
 // Agency console views swap the whole main area (they are about the
 // agency, not any one client). Client sections do NOT swap anything:
 // a client's dashboard is one continuous page and the sidebar entries
@@ -287,7 +302,7 @@ export function AppShell({
     secrets: 'Keys & secrets',
     performance: 'Main Dashboard',
     meta: 'Meta',
-    google: 'Google',
+    google: 'Google Ads',
     'work-backwards': 'KPIs',
     planning: 'Goals',
     present: 'Present',
@@ -400,6 +415,7 @@ export function AppShell({
                             className={internalView === null && s === activeSection ? 'active' : ''}
                             onClick={() => scrollToSection(s)}
                           >
+                            {(s === 'meta' || s === 'google') && <ChannelLogo channel={s} size={14} />}
                             {tabLabel[s]}
                           </button>
                         ))}
@@ -488,7 +504,10 @@ export function AppShell({
                       instead of sharing space with the other's. */}
                   {sectionKeys.includes('meta') && (
                     <section id="section-meta" className="page-section stack" style={{ gap: 10 }}>
-                      <h2 className="section-title">Meta</h2>
+                      <h2 className="section-title row" style={{ gap: 10, width: 'auto' }}>
+                        <ChannelLogo channel="meta" size={22} />
+                        Meta
+                      </h2>
                       <PerformanceTab
                         settings={settings}
                         labels={labels}
@@ -504,7 +523,10 @@ export function AppShell({
                   )}
                   {sectionKeys.includes('google') && (
                     <section id="section-google" className="page-section stack" style={{ gap: 10 }}>
-                      <h2 className="section-title">Google</h2>
+                      <h2 className="section-title row" style={{ gap: 10, width: 'auto' }}>
+                        <ChannelLogo channel="google" size={22} />
+                        Google Ads
+                      </h2>
                       <PerformanceTab
                         settings={settings}
                         labels={labels}
