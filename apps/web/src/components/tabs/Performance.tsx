@@ -19,8 +19,6 @@ import type { AdLineItem, Comparison, FunnelLabels, LeadRow, MonthData, RepMetri
 import { useMonthRangeData } from '@/lib/useMonthRangeData';
 import { SourceCheck } from '../SourceCheck';
 
-const CREATIVE_TYPE_OPTIONS = ['Video', 'Carousel', 'Static', 'UGC', 'Other'];
-
 // Campaign objectives differ per platform, so the tag picker offers the
 // right vocabulary for each channel.
 const CAMPAIGN_TYPE_OPTIONS: Record<string, string[]> = {
@@ -39,19 +37,6 @@ function campaignTypeOptions(channel: string): string[] {
       'Other',
     ]
   );
-}
-
-// Glyph for the creative tile next to each ad title. There are no actual
-// creative assets in CSV exports (thumbnails need the ad platform APIs),
-// so the tile identifies the format at a glance instead.
-function creativeGlyph(t: string | null): string {
-  const k = (t ?? '').toLowerCase();
-  if (k.includes('video')) return '▶';
-  if (k.includes('carousel')) return '⧉';
-  if (k.includes('ugc')) return '☺';
-  if (k.includes('text') || k.includes('search') || k.includes('rsa')) return 'Aa';
-  if (k.includes('static') || k.includes('image')) return '▣';
-  return '◇';
 }
 
 function statusLabel(status: AdLineItem['status']): string {
@@ -190,13 +175,10 @@ function MonthSection({
   );
   const [showLeads, setShowLeads] = useState(false);
   const [leads, setLeads] = useState<LeadRow[] | null>(null);
-  const [openChannels, setOpenChannels] = useState<Set<string>>(new Set());
-  // Which individual campaigns are expanded to their full stat strip +
-  // ad-level table. Keyed `${channel}|${campaign}` so opening one
-  // campaign in a channel does not open every other campaign in it too.
+  // Which individual campaigns are expanded to their ad-level table.
+  // Keyed by campaign name (this view is already narrowed to one
+  // channel, so campaign name alone is unique within it).
   const [openCampaignRows, setOpenCampaignRows] = useState<Set<string>>(new Set());
-  const [creativeFilter, setCreativeFilter] = useState<string | null>(null);
-  const [editingAd, setEditingAd] = useState<string | null>(null);
   const [editingCampaign, setEditingCampaign] = useState<string | null>(null);
   const [managingCampaigns, setManagingCampaigns] = useState(false);
   const timezone = settings.tenant.timezone;
@@ -230,41 +212,6 @@ function MonthSection({
             r.channel === channel && r.campaign === campaign ? { ...r, campaign_type: campaignType } : r
           ),
         }))
-      );
-    } catch {
-      // Leave the tag as it was; the user can retry.
-    }
-  };
-
-  const updateCreativeType = async (item: AdLineItem, creativeType: string) => {
-    setEditingAd(null);
-    try {
-      await api('/api/tenant/ad-line-items/creative-type', {
-        method: 'PATCH',
-        json: {
-          periodMonth: item.period_month,
-          channel: item.channel,
-          campaign: item.campaign,
-          adName: item.ad_name,
-          creativeType,
-        },
-      });
-      // Creative type is per month, so only the month the merged row's
-      // period_month points at (the newest month that ad appears in) gets
-      // updated.
-      setRaw((prev) =>
-        prev.map((d) =>
-          d.month === item.period_month
-            ? {
-                ...d,
-                adLineItems: d.adLineItems.map((r) =>
-                  r.channel === item.channel && r.campaign === item.campaign && r.ad_name === item.ad_name
-                    ? { ...r, creative_type: creativeType, creative_type_source: 'manual' }
-                    : r
-                ),
-              }
-            : d
-        )
       );
     } catch {
       // Leave the tag as it was; the user can retry.
@@ -460,259 +407,178 @@ function MonthSection({
             />
           )}
 
-          {view.adLineItems.length > 0 && (
-            <div className="type-filters">
-              <button className={creativeFilter === null ? 'active' : ''} onClick={() => setCreativeFilter(null)}>
-                All ads
-              </button>
-              {[...new Set(view.adLineItems.map((a) => a.creative_type).filter((t): t is string => !!t))].map(
-                (t) => (
-                  <button key={t} className={creativeFilter === t ? 'active' : ''} onClick={() => setCreativeFilter(t)}>
-                    {t}
-                  </button>
-                )
-              )}
-            </div>
-          )}
-          <div className="stack">
-            {[...new Set(view.campaigns.map((c) => c.channel))].map((channel) => {
-              const rows = view.campaigns.filter((c) => c.channel === channel);
-              const total = rows.reduce((a, r) => a + r.spend, 0);
-              const isOpen = openChannels.has(channel);
+          <div className="stack" style={{ gap: 16 }}>
+            {view.campaigns.map((r) => {
+              const ads = view.adLineItems.filter((a) => a.campaign === r.campaign);
+              const bookings = ads.reduce((a, x) => a + (x.purchases ?? 0), 0);
+              // A campaign's own status is the most concerning status among
+              // its ads (never invented from scratch - just rolled up from
+              // the same per-ad status already computed for the ad-level
+              // table below).
+              const adStatuses = ads.map((a) => a.status).filter((s): s is NonNullable<AdLineItem['status']> => !!s);
+              const campaignStatus = adStatuses.includes('under')
+                ? 'under'
+                : adStatuses.includes('watch')
+                  ? 'watch'
+                  : adStatuses.includes('top')
+                    ? 'top'
+                    : null;
+              const campaignKey = r.campaign;
+              const isCampaignOpen = openCampaignRows.has(campaignKey);
               return (
-                <div key={channel} className="stack" style={{ gap: 8 }}>
-                  <button
-                    className="row small"
-                    style={{ justifyContent: 'space-between', width: '100%' }}
-                    onClick={() =>
-                      setOpenChannels((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(channel)) next.delete(channel);
-                        else next.add(channel);
-                        return next;
-                      })
-                    }
-                  >
-                    <span>
-                      <span style={{ color: channelColor(channel), marginRight: 6 }}>{'●'}</span>
-                      {channel}
-                      <span className="muted" style={{ marginLeft: 8, fontWeight: 400 }}>
-                        {rows.length} campaign{rows.length === 1 ? '' : 's'}
+                <div
+                  key={r.campaign}
+                  className={`campaign-block${campaignStatus ? ` status-${campaignStatus}` : ''} stack`}
+                  style={{ gap: 12 }}
+                >
+                  <div className="row" style={{ gap: 12, flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div className="stack" style={{ gap: 3, width: 'auto' }}>
+                      <span className="campaign-name">{r.campaign}</span>
+                      <span className="muted" style={{ fontSize: 12.5 }}>
+                        {editingCampaign === campaignKey ? (
+                          <select
+                            autoFocus
+                            defaultValue={r.campaign_type ?? ''}
+                            onBlur={() => setEditingCampaign(null)}
+                            onChange={(e) => updateCampaignType(r.channel, r.campaign, e.target.value)}
+                            style={{ width: 'auto', minHeight: 26, fontSize: 12.5 }}
+                          >
+                            <option value="" disabled>
+                              Pick a campaign type
+                            </option>
+                            {campaignTypeOptions(r.channel).map((t) => (
+                              <option key={t} value={t}>
+                                {t}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span
+                            onClick={() => canAdmin && setEditingCampaign(campaignKey)}
+                            role={canAdmin ? 'button' : undefined}
+                            tabIndex={canAdmin ? 0 : undefined}
+                            style={canAdmin ? { cursor: 'pointer', textDecoration: 'underline dotted' } : undefined}
+                          >
+                            {r.campaign_type ?? 'Set campaign type'}
+                          </span>
+                        )}
+                        {campaignStatus && (
+                          <>
+                            {' '}
+                            &middot; <span className={`status-word status-word-${campaignStatus}`}>{statusLabel(campaignStatus)}</span>
+                          </>
+                        )}
                       </span>
+                    </div>
+                    <button
+                      className="campaign-toggle"
+                      onClick={() =>
+                        setOpenCampaignRows((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(campaignKey)) next.delete(campaignKey);
+                          else next.add(campaignKey);
+                          return next;
+                        })
+                      }
+                    >
+                      {isCampaignOpen ? 'Hide ads' : `${ads.length} ad${ads.length === 1 ? '' : 's'}`}
+                      <span aria-hidden="true">{isCampaignOpen ? '▾' : '▸'}</span>
+                    </button>
+                  </div>
+
+                  <div className="campaign-stats">
+                    <span>
+                      <span className="muted">Spend</span>
+                      <span className="num">{fmtMoney(r.spend)}</span>
                     </span>
-                    <span className="num">{fmtMoney(total)}</span>
-                  </button>
-                  {isOpen && (
-                    <div className="stack" style={{ gap: 12 }}>
-                      {rows.map((r) => {
-                        const ads = view.adLineItems
-                          .filter((a) => a.channel === channel && a.campaign === r.campaign)
-                          .filter((a) => !creativeFilter || a.creative_type === creativeFilter);
-                        const bookings = ads.reduce((a, x) => a + (x.purchases ?? 0), 0);
-                        // A campaign's own status is the most concerning status
-                        // among its ads (never invented from scratch - just
-                        // rolled up from the same per-ad status already
-                        // computed for the ad-level table below).
-                        const adStatuses = ads.map((a) => a.status).filter((s): s is NonNullable<AdLineItem['status']> => !!s);
-                        const campaignStatus = adStatuses.includes('under')
-                          ? 'under'
-                          : adStatuses.includes('watch')
-                            ? 'watch'
-                            : adStatuses.includes('top')
-                              ? 'top'
-                              : null;
-                        const campaignKey = `${channel}|${r.campaign}`;
-                        const isCampaignOpen = openCampaignRows.has(campaignKey);
-                        return (
-                          <div key={r.campaign} className={`campaign-block chan-${channel.toLowerCase()} stack`} style={{ gap: 10 }}>
-                            <div className="row" style={{ gap: 10, flexWrap: 'wrap', justifyContent: 'space-between' }}>
-                              <div className="row" style={{ gap: 10, width: 'auto', flexWrap: 'wrap' }}>
-                                <span style={{ fontWeight: 700, fontSize: 15 }}>{r.campaign}</span>
-                                {editingCampaign === campaignKey ? (
-                                  <select
-                                    autoFocus
-                                    defaultValue={r.campaign_type ?? ''}
-                                    onBlur={() => setEditingCampaign(null)}
-                                    onChange={(e) => updateCampaignType(channel, r.campaign, e.target.value)}
-                                    style={{ width: 'auto', minHeight: 30 }}
-                                  >
-                                    <option value="" disabled>
-                                      Pick a campaign type
-                                    </option>
-                                    {campaignTypeOptions(channel).map((t) => (
-                                      <option key={t} value={t}>
-                                        {t}
-                                      </option>
-                                    ))}
-                                  </select>
-                                ) : (
-                                  <span
-                                    className={`creative-tag ${r.campaign_type ? 'manual' : ''}`}
-                                    onClick={() => canAdmin && setEditingCampaign(campaignKey)}
-                                    role="button"
-                                    tabIndex={0}
-                                  >
-                                    {r.campaign_type ?? 'Set campaign type'} <span className="edit">&#9998;</span>
-                                  </span>
-                                )}
-                                {campaignStatus && (
-                                  <span className={`status-pill ${campaignStatus}`}>
-                                    <span className="dot" />
-                                    {statusLabel(campaignStatus)}
-                                  </span>
-                                )}
-                              </div>
-                              <button
-                                className="row small"
-                                style={{ width: 'auto', gap: 6, color: 'var(--ink-soft)' }}
-                                onClick={() =>
-                                  setOpenCampaignRows((prev) => {
-                                    const next = new Set(prev);
-                                    if (next.has(campaignKey)) next.delete(campaignKey);
-                                    else next.add(campaignKey);
-                                    return next;
-                                  })
-                                }
-                              >
-                                {ads.length} ad{ads.length === 1 ? '' : 's'}
-                                <span aria-hidden="true">{isCampaignOpen ? '▾' : '▸'}</span>
-                              </button>
-                            </div>
+                    <span>
+                      <span className="muted">{labels.lead}</span>
+                      <span className="num">{fmtNum(r.leads)}</span>
+                    </span>
+                    <span>
+                      <span className="muted">Bookings</span>
+                      <span className="num">{fmtNum(bookings)}</span>
+                    </span>
+                    <span>
+                      <span className="muted">{labels.completed}</span>
+                      <span className="num">{fmtNum(r.completed)}</span>
+                    </span>
+                    <span>
+                      <span className="muted">Cost / {labels.lead.toLowerCase().replace(/s$/, '')}</span>
+                      <span className="num">{r.leads > 0 ? fmtMoney(r.spend / r.leads) : '-'}</span>
+                    </span>
+                    <span>
+                      <span className="muted">Conversion rate</span>
+                      <span className="num">{r.leads > 0 ? fmtPct(bookings / r.leads) : '-'}</span>
+                    </span>
+                    <span>
+                      <span className="muted">Cost / booking</span>
+                      <span className="num">{bookings > 0 ? fmtMoney(r.spend / bookings) : '-'}</span>
+                    </span>
+                  </div>
 
-                            <div className="campaign-stats">
-                              <span>
-                                <span className="muted">Spend</span>
-                                <span className="num">{fmtMoney(r.spend)}</span>
-                              </span>
-                              <span>
-                                <span className="muted">{labels.lead}</span>
-                                <span className="num">{fmtNum(r.leads)}</span>
-                              </span>
-                              <span>
-                                <span className="muted">Bookings</span>
-                                <span className="num">{fmtNum(bookings)}</span>
-                              </span>
-                              <span>
-                                <span className="muted">{labels.completed}</span>
-                                <span className="num">{fmtNum(r.completed)}</span>
-                              </span>
-                              <span>
-                                <span className="muted">Cost / {labels.lead.toLowerCase().replace(/s$/, '')}</span>
-                                <span className="num">{r.leads > 0 ? fmtMoney(r.spend / r.leads) : '-'}</span>
-                              </span>
-                              <span>
-                                <span className="muted">Conversion rate</span>
-                                <span className="num">{r.leads > 0 ? fmtPct(bookings / r.leads) : '-'}</span>
-                              </span>
-                              <span>
-                                <span className="muted">Cost / booking</span>
-                                <span className="num">{bookings > 0 ? fmtMoney(r.spend / bookings) : '-'}</span>
-                              </span>
-                            </div>
-
-                            {isCampaignOpen && (
-                              <div className="stack" style={{ gap: 10 }}>
-                                {ads.length > 0 && (
-                                <div style={{ overflowX: 'auto' }}>
-                                  <table className="data">
-                                    <thead>
-                                      <tr>
-                                        <th>Ad / creative</th>
-                                        <th>Spend</th>
-                                        <th>% of campaign</th>
-                                        <th>Leads</th>
-                                        <th>Shows</th>
-                                        <th>Conversion rate</th>
-                                        <th>Cost / lead</th>
-                                        <th>Cost / booking</th>
-                                        <th>Status</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {ads.map((a) => {
-                                        const adKey = `${a.channel}|${a.campaign}|${a.ad_name}`;
-                                        return (
-                                          <tr key={adKey}>
-                                            <td>
-                                              <span className="row" style={{ gap: 10, flexWrap: 'nowrap' }}>
-                                                <span className="creative-tile" aria-hidden="true">
-                                                  {creativeGlyph(a.creative_type)}
-                                                </span>
-                                                <span style={{ minWidth: 0 }}>
-                                                  <span style={{ fontWeight: 600, display: 'block' }}>{a.ad_name}</span>
-                                                  {editingAd === adKey ? (
-                                                    <select
-                                                      autoFocus
-                                                      defaultValue={a.creative_type ?? ''}
-                                                      onBlur={() => setEditingAd(null)}
-                                                      onChange={(e) => updateCreativeType(a, e.target.value)}
-                                                      style={{ width: 'auto', minHeight: 30 }}
-                                                    >
-                                                      <option value="" disabled>
-                                                        Pick a type
-                                                      </option>
-                                                      {CREATIVE_TYPE_OPTIONS.map((t) => (
-                                                        <option key={t} value={t}>
-                                                          {t}
-                                                        </option>
-                                                      ))}
-                                                    </select>
-                                                  ) : (
-                                                    <span
-                                                      className={`creative-tag ${a.creative_type_source === 'manual' ? 'manual' : ''}`}
-                                                      onClick={() => setEditingAd(adKey)}
-                                                      role="button"
-                                                      tabIndex={0}
-                                                    >
-                                                      {a.creative_type ?? 'Untagged'} <span className="edit">&#9998;</span>
-                                                    </span>
-                                                  )}
-                                                </span>
-                                              </span>
-                                            </td>
-                                            <td className="num">{fmtMoney(a.spend)}</td>
-                                            <td className="num">
-                                              {r.spend > 0 ? ((a.spend / r.spend) * 100).toFixed(0) + '%' : '—'}
-                                            </td>
-                                            <td className="num">{a.leads_reported ?? '—'}</td>
-                                            <td className="num">{a.completed ?? '—'}</td>
-                                            <td className="num">
-                                              {a.leads_reported && a.purchases !== null
-                                                ? fmtPct(a.purchases / a.leads_reported)
-                                                : '—'}
-                                            </td>
-                                            <td className="num">
-                                              {a.cost_per_lead !== null ? fmtMoney(a.cost_per_lead) : '—'}
-                                            </td>
-                                            <td className="num">
-                                              {a.purchases ? fmtMoney(a.spend / a.purchases) : '—'}
-                                            </td>
-                                            <td>
-                                              {a.status && (
-                                                <span className={`status-pill ${a.status}`}>
-                                                  <span className="dot" />
-                                                  {statusLabel(a.status)}
-                                                </span>
-                                              )}
-                                            </td>
-                                          </tr>
-                                        );
-                                      })}
-                                    </tbody>
-                                  </table>
-                                </div>
-                                )}
-                                {ads.length === 0 && (
-                                  <p className="muted" style={{ fontSize: 12 }}>
-                                    No ad level rows for this campaign yet. Upload the by-ad CSV export from Data and
-                                    Team to break it down per ad.
-                                  </p>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                  {isCampaignOpen && (
+                    <div className="stack" style={{ gap: 10 }}>
+                      {ads.length > 0 && (
+                        <div style={{ overflowX: 'auto' }}>
+                          <table className="data">
+                            <thead>
+                              <tr>
+                                <th>Ad</th>
+                                <th>Spend</th>
+                                <th>% of campaign</th>
+                                <th>Leads</th>
+                                <th>Shows</th>
+                                <th>Conversion rate</th>
+                                <th>Cost / lead</th>
+                                <th>Cost / booking</th>
+                                <th>Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {ads.map((a) => {
+                                const adKey = `${a.channel}|${a.campaign}|${a.ad_name}`;
+                                return (
+                                  <tr key={adKey}>
+                                    <td style={{ fontWeight: 600 }}>{a.ad_name}</td>
+                                    <td className="num">{fmtMoney(a.spend)}</td>
+                                    <td className="num">
+                                      {r.spend > 0 ? ((a.spend / r.spend) * 100).toFixed(0) + '%' : '—'}
+                                    </td>
+                                    <td className="num">{a.leads_reported ?? '—'}</td>
+                                    <td className="num">{a.completed ?? '—'}</td>
+                                    <td className="num">
+                                      {a.leads_reported && a.purchases !== null
+                                        ? fmtPct(a.purchases / a.leads_reported)
+                                        : '—'}
+                                    </td>
+                                    <td className="num">
+                                      {a.cost_per_lead !== null ? fmtMoney(a.cost_per_lead) : '—'}
+                                    </td>
+                                    <td className="num">
+                                      {a.purchases ? fmtMoney(a.spend / a.purchases) : '—'}
+                                    </td>
+                                    <td>
+                                      {a.status && (
+                                        <span className={`status-pill ${a.status}`}>
+                                          <span className="dot" />
+                                          {statusLabel(a.status)}
+                                        </span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      {ads.length === 0 && (
+                        <p className="muted" style={{ fontSize: 12 }}>
+                          No ad level rows for this campaign yet. Upload the by-ad CSV export from Data and Team to
+                          break it down per ad.
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>

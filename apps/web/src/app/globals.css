@@ -499,9 +499,7 @@ table.data tr:nth-child(even) td {
   border-radius: 0;
 }
 
-/* Ad line item drill-down under Spend by platform: creative type filter
-   chips, the editable creative type tag, and the cost-per-lead status
-   pill (top performer / watch / underperforming). */
+/* Meta/Google switcher inside the demo campaign editor. */
 .type-filters {
   display: flex;
   gap: 6px;
@@ -525,48 +523,61 @@ table.data tr:nth-child(even) td {
   font-weight: 600;
 }
 
-.creative-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border-radius: 999px;
-  padding: 3px 9px;
-  font-size: 12px;
-  font-weight: 600;
-  border: 1px solid var(--hairline);
-  background: var(--paper);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.creative-tag .edit {
-  color: var(--ink-soft);
-  font-size: 11px;
-}
-
-.creative-tag.manual {
-  border-style: dashed;
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-
-/* One card per campaign in the Campaigns and ads breakdown. */
+/* One card per campaign in the Campaigns and ads breakdown. A full
+   border (not just the shadow) plus generous gap between cards (see
+   the inline gap on their wrapping stack) keeps campaigns from reading
+   as one continuous, hard-to-parse block. The left edge is colored by
+   status, not channel - this list is already narrowed to one platform
+   by the time it renders, so channel color would be redundant. */
 .campaign-block {
+  border: 1px solid var(--hairline);
   border-left: 4px solid var(--hairline);
   border-radius: 12px;
-  padding: 14px 16px;
+  padding: 16px 18px;
   background: var(--card);
   box-shadow: var(--shadow-card);
 }
 
-.campaign-block.chan-meta { border-left-color: var(--ch-meta); }
-.campaign-block.chan-google { border-left-color: var(--ch-google); }
+.campaign-block.status-top { border-left-color: var(--positive); }
+.campaign-block.status-watch { border-left-color: var(--amber); }
+.campaign-block.status-under { border-left-color: var(--negative); }
+
+.campaign-name {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.status-word {
+  font-weight: 600;
+}
+
+.status-word-top { color: var(--positive); }
+.status-word-watch { color: var(--amber); }
+.status-word-under { color: var(--negative); }
+
+/* Expand/collapse control for a campaign's ad-level table. A plain
+   bordered button reads as clearly clickable, unlike a bare label. */
+.campaign-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 6px 12px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
 
 .campaign-stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 26px;
+  gap: 10px 28px;
+  padding-top: 4px;
+  border-top: 1px solid var(--hairline);
 }
 
 .campaign-stats > span {
@@ -599,23 +610,6 @@ table.data tr:nth-child(even) td {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--ink-soft);
-}
-
-/* Format tile beside each ad title. CSV exports carry no creative assets
-   (thumbnails need the ad platform APIs), so the tile identifies the
-   format at a glance instead. */
-.creative-tile {
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 700;
-  flex: none;
 }
 
 .status-pill {
