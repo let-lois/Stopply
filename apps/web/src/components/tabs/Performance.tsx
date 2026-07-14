@@ -496,6 +496,18 @@ function MonthSection({
                           .filter((a) => a.channel === channel && a.campaign === r.campaign)
                           .filter((a) => !creativeFilter || a.creative_type === creativeFilter);
                         const bookings = ads.reduce((a, x) => a + (x.purchases ?? 0), 0);
+                        // A campaign's own status is the most concerning status
+                        // among its ads (never invented from scratch - just
+                        // rolled up from the same per-ad status already
+                        // computed for the ad-level table below).
+                        const adStatuses = ads.map((a) => a.status).filter((s): s is NonNullable<AdLineItem['status']> => !!s);
+                        const campaignStatus = adStatuses.includes('under')
+                          ? 'under'
+                          : adStatuses.includes('watch')
+                            ? 'watch'
+                            : adStatuses.includes('top')
+                              ? 'top'
+                              : null;
                         const campaignKey = `${channel}|${r.campaign}`;
                         const isCampaignOpen = openCampaignRows.has(campaignKey);
                         return (
@@ -530,10 +542,16 @@ function MonthSection({
                                     {r.campaign_type ?? 'Set campaign type'} <span className="edit">&#9998;</span>
                                   </span>
                                 )}
+                                {campaignStatus && (
+                                  <span className={`status-pill ${campaignStatus}`}>
+                                    <span className="dot" />
+                                    {statusLabel(campaignStatus)}
+                                  </span>
+                                )}
                               </div>
                               <button
                                 className="row small"
-                                style={{ width: 'auto', gap: 16 }}
+                                style={{ width: 'auto', gap: 6, color: 'var(--ink-soft)' }}
                                 onClick={() =>
                                   setOpenCampaignRows((prev) => {
                                     const next = new Set(prev);
@@ -543,53 +561,44 @@ function MonthSection({
                                   })
                                 }
                               >
-                                <span>
-                                  <span className="muted">Spend</span> <span className="num">{fmtMoney(r.spend)}</span>
-                                </span>
-                                <span>
-                                  <span className="muted">{labels.lead}</span> <span className="num">{fmtNum(r.leads)}</span>
-                                </span>
-                                <span>
-                                  <span className="muted">Cost / {labels.lead.toLowerCase().replace(/s$/, '')}</span>{' '}
-                                  <span className="num">{r.leads > 0 ? fmtMoney(r.spend / r.leads) : '-'}</span>
-                                </span>
-                                <span aria-hidden="true">{isCampaignOpen ? '▲' : '▼'}</span>
+                                {ads.length} ad{ads.length === 1 ? '' : 's'}
+                                <span aria-hidden="true">{isCampaignOpen ? '▾' : '▸'}</span>
                               </button>
+                            </div>
+
+                            <div className="campaign-stats">
+                              <span>
+                                <span className="muted">Spend</span>
+                                <span className="num">{fmtMoney(r.spend)}</span>
+                              </span>
+                              <span>
+                                <span className="muted">{labels.lead}</span>
+                                <span className="num">{fmtNum(r.leads)}</span>
+                              </span>
+                              <span>
+                                <span className="muted">Bookings</span>
+                                <span className="num">{fmtNum(bookings)}</span>
+                              </span>
+                              <span>
+                                <span className="muted">{labels.completed}</span>
+                                <span className="num">{fmtNum(r.completed)}</span>
+                              </span>
+                              <span>
+                                <span className="muted">Cost / {labels.lead.toLowerCase().replace(/s$/, '')}</span>
+                                <span className="num">{r.leads > 0 ? fmtMoney(r.spend / r.leads) : '-'}</span>
+                              </span>
+                              <span>
+                                <span className="muted">Conversion rate</span>
+                                <span className="num">{r.leads > 0 ? fmtPct(bookings / r.leads) : '-'}</span>
+                              </span>
+                              <span>
+                                <span className="muted">Cost / booking</span>
+                                <span className="num">{bookings > 0 ? fmtMoney(r.spend / bookings) : '-'}</span>
+                              </span>
                             </div>
 
                             {isCampaignOpen && (
                               <div className="stack" style={{ gap: 10 }}>
-                                <div className="campaign-stats">
-                                  <span>
-                                    <span className="muted">Spend</span>
-                                    <span className="num">{fmtMoney(r.spend)}</span>
-                                  </span>
-                                  <span>
-                                    <span className="muted">{labels.lead}</span>
-                                    <span className="num">{fmtNum(r.leads)}</span>
-                                  </span>
-                                  <span>
-                                    <span className="muted">{labels.completed}</span>
-                                    <span className="num">{fmtNum(r.completed)}</span>
-                                  </span>
-                                  <span>
-                                    <span className="muted">Cost / {labels.lead.toLowerCase().replace(/s$/, '')}</span>
-                                    <span className="num">{r.leads > 0 ? fmtMoney(r.spend / r.leads) : '-'}</span>
-                                  </span>
-                                  {bookings > 0 && (
-                                    <>
-                                      <span>
-                                        <span className="muted">Conversion rate</span>
-                                        <span className="num">{r.leads > 0 ? fmtPct(bookings / r.leads) : '-'}</span>
-                                      </span>
-                                      <span>
-                                        <span className="muted">Cost / booking</span>
-                                        <span className="num">{fmtMoney(r.spend / bookings)}</span>
-                                      </span>
-                                    </>
-                                  )}
-                                </div>
-
                                 {ads.length > 0 && (
                                 <div style={{ overflowX: 'auto' }}>
                                   <table className="data">
