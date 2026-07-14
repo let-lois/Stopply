@@ -49,13 +49,17 @@ const TOKEN_TO_VAR: Record<string, string> = {
 // a client's dashboard is one continuous page and the sidebar entries
 // for these just scroll to the matching section on it.
 type ConsoleKey = 'clients' | 'team' | 'audit' | 'secrets';
-type SectionKey = 'performance' | 'work-backwards' | 'planning' | 'present' | 'data-team';
+type SectionKey = 'performance' | 'meta' | 'google' | 'work-backwards' | 'planning' | 'present' | 'data-team';
 type TabKey = ConsoleKey | SectionKey;
 
 // KPIs and Goals are hidden from the nav for now (too much noise on top
 // of the Main Dashboard); their sections and route keys still exist so
-// they are one line to bring back.
-const CLIENT_SECTIONS: SectionKey[] = ['performance', 'present', 'data-team'];
+// they are one line to bring back. Meta and Google are each their own
+// section (not folded into Main Dashboard's Campaigns and ads) so a
+// channel's full campaign/ad breakdown has its own page instead of
+// competing with the other channel's for space; Main Dashboard is just
+// the combined recap.
+const CLIENT_SECTIONS: SectionKey[] = ['performance', 'meta', 'google', 'present', 'data-team'];
 
 // Sections the client never presents from: agency working areas. They
 // group to the right side of the profile nav under an Internal label.
@@ -282,6 +286,8 @@ export function AppShell({
     audit: 'Audit log',
     secrets: 'Keys & secrets',
     performance: 'Main Dashboard',
+    meta: 'Meta',
+    google: 'Google',
     'work-backwards': 'KPIs',
     planning: 'Goals',
     present: 'Present',
@@ -472,6 +478,43 @@ export function AppShell({
                         sources={sources}
                         comparison={comparison}
                         refreshSources={loadSources}
+                        hideCampaigns
+                      />
+                    </section>
+                  )}
+                  {/* Meta and Google each get the same PerformanceTab, just
+                      narrowed to their own channel via channelFilter, so
+                      each platform's campaigns and ads live on its own page
+                      instead of sharing space with the other's. */}
+                  {sectionKeys.includes('meta') && (
+                    <section id="section-meta" className="page-section stack" style={{ gap: 10 }}>
+                      <h2 className="section-title">Meta</h2>
+                      <PerformanceTab
+                        settings={settings}
+                        labels={labels}
+                        months={months}
+                        rangeStart={rangeStart || months[0] || ''}
+                        rangeEnd={rangeEnd || months[0] || ''}
+                        sources={sources}
+                        comparison={comparison}
+                        refreshSources={loadSources}
+                        channelFilter="meta"
+                      />
+                    </section>
+                  )}
+                  {sectionKeys.includes('google') && (
+                    <section id="section-google" className="page-section stack" style={{ gap: 10 }}>
+                      <h2 className="section-title">Google</h2>
+                      <PerformanceTab
+                        settings={settings}
+                        labels={labels}
+                        months={months}
+                        rangeStart={rangeStart || months[0] || ''}
+                        rangeEnd={rangeEnd || months[0] || ''}
+                        sources={sources}
+                        comparison={comparison}
+                        refreshSources={loadSources}
+                        channelFilter="google"
                       />
                     </section>
                   )}

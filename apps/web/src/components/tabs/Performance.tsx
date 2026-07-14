@@ -69,9 +69,14 @@ interface Props {
   rangeStart: string;
   rangeEnd: string;
   sources: SourceInfo[];
-  // Narrows every number on this tab to one ad platform. null shows
-  // everything; nothing currently sets this to a non-null value.
+  // Narrows every number on this tab to one ad platform. null/undefined
+  // shows everything (the Main Dashboard recap); the Meta and Google
+  // tabs each set this to their own channel.
   channelFilter?: 'meta' | 'google' | null;
+  // Hides the Campaigns and ads section (and its Manage campaigns
+  // editor). Set on the Main Dashboard recap, where campaign-level
+  // detail belongs on the Meta/Google tabs instead, not mixed in here.
+  hideCampaigns?: boolean;
   // Comparison basis, owned by AppShell's sticky header and shared here.
   comparison: Comparison;
   refreshSources: () => void;
@@ -109,7 +114,7 @@ function sumChannels(data: MonthData | undefined, field: 'leads' | 'scheduled' |
   return data.channels.reduce((acc, ch) => acc + Number(ch[field] ?? 0), 0);
 }
 
-export function PerformanceTab({ settings, labels, months, rangeStart, rangeEnd, sources, channelFilter, comparison, refreshSources }: Props) {
+export function PerformanceTab({ settings, labels, months, rangeStart, rangeEnd, sources, channelFilter, hideCampaigns, comparison, refreshSources }: Props) {
   const canAdmin = settings.role !== 'viewer';
 
   if (months.length === 0) {
@@ -148,6 +153,7 @@ export function PerformanceTab({ settings, labels, months, rangeStart, rangeEnd,
       sources={sources}
       canAdmin={canAdmin}
       channelFilter={channelFilter ?? null}
+      hideCampaigns={hideCampaigns}
       refreshSources={refreshSources}
     />
   );
@@ -162,6 +168,7 @@ function MonthSection({
   sources,
   canAdmin,
   channelFilter,
+  hideCampaigns,
   refreshSources,
 }: {
   selectedMonths: string[];
@@ -172,6 +179,7 @@ function MonthSection({
   sources: SourceInfo[];
   canAdmin: boolean;
   channelFilter: 'meta' | 'google' | null;
+  hideCampaigns?: boolean;
   refreshSources: () => void;
 }) {
   const [basis, setBasis] = useState<'first' | 'latest'>('first');
@@ -370,7 +378,7 @@ function MonthSection({
           )}
 
           <div className="row" style={{ justifyContent: 'space-between' }}>
-            <h3>Channels (in period)</h3>
+            <h3>{channelFilter ? 'Attribution' : 'Channels (in period)'}</h3>
             <div className="row" style={{ gap: 4 }}>
               <button className={`small ${basis === 'first' ? 'primary' : ''}`} onClick={() => setBasis('first')}>
                 First touch
@@ -380,47 +388,50 @@ function MonthSection({
               </button>
             </div>
           </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table className="data">
-              <thead>
-                <tr>
-                  <th>Channel</th>
-                  <th>{labels.lead}</th>
-                  <th>{labels.scheduled}</th>
-                  <th>{labels.completed}</th>
-                  <th>{labels.purchase}</th>
-                  <th>Revenue</th>
-                  <th>Spend</th>
-                  <th>ROAS</th>
-                </tr>
-              </thead>
-              <tbody>
-                {view.channels.map((ch) => (
-                  <tr key={ch.channel}>
-                    <td>
-                      <span style={{ color: channelColor(ch.channel), marginRight: 6 }}>{'●'}</span>
-                      {ch.channel}
-                      {sourceFor(ch.channel) && (
-                        <SourceCheck
-                          source={sourceFor(ch.channel)!}
-                          timezone={timezone}
-                          canVerify={canAdmin}
-                          onVerified={refreshSources}
-                        />
-                      )}
-                    </td>
-                    <td className="num">{fmtNum(ch.leads)}</td>
-                    <td className="num">{fmtNum(ch.scheduled)}</td>
-                    <td className="num">{fmtNum(ch.completed)}</td>
-                    <td className="num">{fmtNum(ch.purchases)}</td>
-                    <td className="num">{fmtMoney(ch.revenue)}</td>
-                    <td className="num">{fmtMoney(ch.spend)}</td>
-                    <td className="num">{ch.spend > 0 && ch.revenue > 0 ? (ch.revenue / ch.spend).toFixed(1) + 'x' : '-'}</td>
+
+          {!channelFilter && (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="data">
+                <thead>
+                  <tr>
+                    <th>Channel</th>
+                    <th>{labels.lead}</th>
+                    <th>{labels.scheduled}</th>
+                    <th>{labels.completed}</th>
+                    <th>{labels.purchase}</th>
+                    <th>Revenue</th>
+                    <th>Spend</th>
+                    <th>ROAS</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {view.channels.map((ch) => (
+                    <tr key={ch.channel}>
+                      <td>
+                        <span style={{ color: channelColor(ch.channel), marginRight: 6 }}>{'●'}</span>
+                        {ch.channel}
+                        {sourceFor(ch.channel) && (
+                          <SourceCheck
+                            source={sourceFor(ch.channel)!}
+                            timezone={timezone}
+                            canVerify={canAdmin}
+                            onVerified={refreshSources}
+                          />
+                        )}
+                      </td>
+                      <td className="num">{fmtNum(ch.leads)}</td>
+                      <td className="num">{fmtNum(ch.scheduled)}</td>
+                      <td className="num">{fmtNum(ch.completed)}</td>
+                      <td className="num">{fmtNum(ch.purchases)}</td>
+                      <td className="num">{fmtMoney(ch.revenue)}</td>
+                      <td className="num">{fmtMoney(ch.spend)}</td>
+                      <td className="num">{ch.spend > 0 && ch.revenue > 0 ? (ch.revenue / ch.spend).toFixed(1) + 'x' : '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           <h3>Lead cohort</h3>
           <CohortStrip data={view} month={newestMonth} />
@@ -429,6 +440,8 @@ function MonthSection({
             <TeamLeaderboard reps={view.reps!} labels={labels} />
           )}
 
+          {!hideCampaigns && (
+          <div className="stack">
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 style={{ margin: 0 }}>Campaigns and ads</h3>
             {isDemoMode() && (
@@ -707,6 +720,8 @@ function MonthSection({
             })}
             {view.campaigns.length === 0 && <p className="muted">No spend imported for this period.</p>}
           </div>
+          </div>
+          )}
 
           {canAdmin && (
             <div className="stack">
