@@ -5,4 +5,5 @@ export * from './stageWriter';
 export * from './boulevard';
 export * from './housecallpro';
 export * from './jobber';
+export * from './metaAds';
 export * from './registry';
