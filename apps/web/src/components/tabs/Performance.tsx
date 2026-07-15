@@ -398,10 +398,11 @@ function MonthSection({
             )}
           </div>
 
-          {managingCampaigns && (
+          {managingCampaigns && channelFilter && (
             <DemoCampaignEditor
               clientId={getActiveDemoClient().id}
               month={newestMonth}
+              channel={channelFilter}
               onChange={reloadMonths}
               onClose={() => setManagingCampaigns(false)}
             />

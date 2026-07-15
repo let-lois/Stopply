@@ -1,13 +1,20 @@
 'use client';
 
 // Demo-only campaign editor: lets whoever is driving the demo add, edit,
-// and remove campaigns/creatives for Meta and Google on the fly, without
-// asking an engineer to change code. Edits save to this browser's
-// localStorage only (see getEditableCampaignRows/saveEditableCampaignRows
-// in lib/demoData) - never touches the codebase, never affects any other
-// session, and "Reset to demo defaults" always gets back to a known-good
-// state. Real (non-demo) tenants never see this; gated by isDemoMode() at
-// the call site in Performance.tsx.
+// and remove campaigns/creatives for the current channel on the fly,
+// without asking an engineer to change code. Edits save to this
+// browser's localStorage only (see getEditableCampaignRows/
+// saveEditableCampaignRows in lib/demoData) - never touches the
+// codebase, never affects any other session, and "Reset to demo
+// defaults" always gets back to a known-good state. Real (non-demo)
+// tenants never see this; gated by isDemoMode() at the call site in
+// Performance.tsx.
+//
+// Locked to a single channel (passed in, not switchable here): this
+// editor is mounted once per Meta/Google Ads tab, and each of those
+// tabs already scopes everything else on the page to its own channel.
+// Letting the editor flip between Meta and Google on its own let you
+// edit the other channel's campaigns from inside the wrong tab.
 
 import { useState } from 'react';
 import {
@@ -45,27 +52,26 @@ function toNumber(v: string): number {
 export function DemoCampaignEditor({
   clientId,
   month,
+  channel,
   onChange,
   onClose,
 }: {
   clientId: string;
   month: string;
+  channel: 'meta' | 'google';
   onChange: () => void;
   onClose: () => void;
 }) {
-  const [channel, setChannel] = useState<'meta' | 'google'>('meta');
-  const [rows, setRows] = useState<CampaignRow[]>(() => getEditableCampaignRows(clientId, month, 'meta'));
+  const [rows, setRows] = useState<CampaignRow[]>(() => getEditableCampaignRows(clientId, month, channel));
+  // Only one campaign is ever open for editing at a time - opening
+  // another closes the previous one, so edits stay in one clearly
+  // focused spot instead of every campaign showing raw inputs at once.
+  const [editingCampaign, setEditingCampaign] = useState<string | null>(null);
   const [newCreativeDrafts, setNewCreativeDrafts] = useState<Record<string, NewCreativeDraft>>({});
   const [addingCampaign, setAddingCampaign] = useState(false);
   const [newCampaignName, setNewCampaignName] = useState('');
   const [newCampaignType, setNewCampaignType] = useState('');
   const [newCampaignDraft, setNewCampaignDraft] = useState<NewCreativeDraft>(blankDraft());
-
-  const switchChannel = (next: 'meta' | 'google') => {
-    setChannel(next);
-    setRows(getEditableCampaignRows(clientId, month, next));
-    setAddingCampaign(false);
-  };
 
   const persist = (next: CampaignRow[]) => {
     setRows(next);
@@ -89,6 +95,7 @@ export function DemoCampaignEditor({
     if (!confirm(`Remove "${campaign}" and all of its creatives? You can always bring it back with "Reset to demo defaults".`)) {
       return;
     }
+    if (editingCampaign === campaign) setEditingCampaign(null);
     persist(rows.filter((r) => r.campaign !== campaign));
   };
 
@@ -134,6 +141,7 @@ export function DemoCampaignEditor({
     }
     resetEditableCampaignRows(clientId, month, channel);
     setRows(getEditableCampaignRows(clientId, month, channel));
+    setEditingCampaign(null);
     onChange();
   };
 
@@ -158,181 +166,18 @@ export function DemoCampaignEditor({
         </div>
       </div>
 
-      <div className="type-filters">
-        <button className={channel === 'meta' ? 'active' : ''} onClick={() => switchChannel('meta')}>
-          Meta
-        </button>
-        <button className={channel === 'google' ? 'active' : ''} onClick={() => switchChannel('google')}>
-          Google
-        </button>
-      </div>
+      <button
+        className="small primary"
+        style={{ alignSelf: 'flex-start' }}
+        onClick={() => {
+          setAddingCampaign((v) => !v);
+          setEditingCampaign(null);
+        }}
+      >
+        {addingCampaign ? 'Cancel' : '+ Add campaign'}
+      </button>
 
-      {campaignNames.length === 0 && (
-        <p className="muted" style={{ fontSize: 13 }}>
-          No {channel} campaigns yet. Add one below.
-        </p>
-      )}
-
-      {campaignNames.map((campaignName) => {
-        const campaignRows = rows
-          .map((r, i) => ({ r, i }))
-          .filter(({ r }) => r.campaign === campaignName);
-        const campaignType = campaignRows[0]!.r.campaignType;
-        const draft = newCreativeDrafts[campaignName] ?? blankDraft();
-
-        return (
-          <div key={campaignName} className="campaign-block stack" style={{ gap: 10 }}>
-            <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
-              <span style={{ fontWeight: 700, fontSize: 15 }}>{campaignName}</span>
-              <button className="small" onClick={() => removeCampaign(campaignName)}>
-                Remove campaign
-              </button>
-            </div>
-
-            <div style={{ overflowX: 'auto' }}>
-              <table className="data">
-                <thead>
-                  <tr>
-                    <th>Creative</th>
-                    <th>Type</th>
-                    <th>Spend</th>
-                    <th>Leads</th>
-                    <th>Shows</th>
-                    <th>Bookings</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {campaignRows.map(({ r, i }) => (
-                    <tr key={i}>
-                      <td>
-                        <input
-                          value={r.ad}
-                          onChange={(e) => updateRow(i, { ad: e.target.value })}
-                          style={{ minWidth: 160 }}
-                        />
-                      </td>
-                      <td>
-                        <select
-                          value={r.creativeType ?? ''}
-                          onChange={(e) => updateRow(i, { creativeType: e.target.value || null })}
-                          style={{ width: 'auto' }}
-                        >
-                          <option value="">Untagged</option>
-                          {CREATIVE_TYPE_OPTIONS.map((t) => (
-                            <option key={t} value={t}>
-                              {t}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          min={0}
-                          value={r.spend}
-                          onChange={(e) => updateRow(i, { spend: toNumber(e.target.value) })}
-                          style={{ width: 90 }}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          min={0}
-                          value={r.leads}
-                          onChange={(e) => updateRow(i, { leads: toNumber(e.target.value) })}
-                          style={{ width: 70 }}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          min={0}
-                          value={r.shows}
-                          onChange={(e) => updateRow(i, { shows: toNumber(e.target.value) })}
-                          style={{ width: 70 }}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          min={0}
-                          value={r.bookings}
-                          onChange={(e) => updateRow(i, { bookings: toNumber(e.target.value) })}
-                          style={{ width: 70 }}
-                        />
-                      </td>
-                      <td>
-                        <button className="small" onClick={() => removeCreative(i)}>
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
-              <input
-                placeholder="New creative name"
-                value={draft.ad}
-                onChange={(e) => setNewCreativeDrafts((prev) => ({ ...prev, [campaignName]: { ...draft, ad: e.target.value } }))}
-                style={{ width: 'auto', flex: '1 1 160px' }}
-              />
-              <select
-                value={draft.creativeType}
-                onChange={(e) => setNewCreativeDrafts((prev) => ({ ...prev, [campaignName]: { ...draft, creativeType: e.target.value } }))}
-                style={{ width: 'auto' }}
-              >
-                <option value="">Untagged</option>
-                {CREATIVE_TYPE_OPTIONS.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="number"
-                min={0}
-                placeholder="Spend"
-                value={draft.spend}
-                onChange={(e) => setNewCreativeDrafts((prev) => ({ ...prev, [campaignName]: { ...draft, spend: e.target.value } }))}
-                style={{ width: 90 }}
-              />
-              <input
-                type="number"
-                min={0}
-                placeholder="Leads"
-                value={draft.leads}
-                onChange={(e) => setNewCreativeDrafts((prev) => ({ ...prev, [campaignName]: { ...draft, leads: e.target.value } }))}
-                style={{ width: 70 }}
-              />
-              <input
-                type="number"
-                min={0}
-                placeholder="Shows"
-                value={draft.shows}
-                onChange={(e) => setNewCreativeDrafts((prev) => ({ ...prev, [campaignName]: { ...draft, shows: e.target.value } }))}
-                style={{ width: 70 }}
-              />
-              <input
-                type="number"
-                min={0}
-                placeholder="Bookings"
-                value={draft.bookings}
-                onChange={(e) => setNewCreativeDrafts((prev) => ({ ...prev, [campaignName]: { ...draft, bookings: e.target.value } }))}
-                style={{ width: 70 }}
-              />
-              <button className="small" onClick={() => addCreative(campaignName, campaignType)}>
-                Add creative
-              </button>
-            </div>
-          </div>
-        );
-      })}
-
-      {addingCampaign ? (
+      {addingCampaign && (
         <div className="campaign-block stack" style={{ gap: 10 }}>
           <span style={{ fontWeight: 700, fontSize: 15 }}>New {channel} campaign</span>
           <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
@@ -403,20 +248,200 @@ export function DemoCampaignEditor({
               style={{ width: 70 }}
             />
           </div>
-          <div className="row" style={{ width: 'auto', gap: 8 }}>
-            <button className="primary small" onClick={addCampaign}>
-              Add campaign
-            </button>
-            <button className="small" onClick={() => setAddingCampaign(false)}>
-              Cancel
-            </button>
-          </div>
+          <button className="primary small" style={{ alignSelf: 'flex-start' }} onClick={addCampaign}>
+            Add campaign
+          </button>
         </div>
-      ) : (
-        <button className="small" style={{ alignSelf: 'flex-start' }} onClick={() => setAddingCampaign(true)}>
-          + Add {channel} campaign
-        </button>
       )}
+
+      {campaignNames.length === 0 && !addingCampaign && (
+        <p className="muted" style={{ fontSize: 13 }}>
+          No {channel} campaigns yet. Add one above.
+        </p>
+      )}
+
+      <div className="stack" style={{ gap: 8 }}>
+        {campaignNames.map((campaignName) => {
+          const campaignRows = rows
+            .map((r, i) => ({ r, i }))
+            .filter(({ r }) => r.campaign === campaignName);
+          const campaignType = campaignRows[0]!.r.campaignType;
+          const totalSpend = campaignRows.reduce((a, { r }) => a + r.spend, 0);
+          const isOpen = editingCampaign === campaignName;
+          const draft = newCreativeDrafts[campaignName] ?? blankDraft();
+
+          return (
+            <div key={campaignName} className="campaign-block stack" style={{ gap: isOpen ? 12 : 0 }}>
+              <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                <span className="row" style={{ width: 'auto', gap: 10 }}>
+                  <span style={{ fontWeight: 700, fontSize: 15 }}>{campaignName}</span>
+                  <span className="muted" style={{ fontSize: 12.5 }}>
+                    {campaignType} &middot; {campaignRows.length} creative{campaignRows.length === 1 ? '' : 's'} &middot;{' '}
+                    ${totalSpend.toLocaleString()} spend
+                  </span>
+                </span>
+                <button
+                  className="small"
+                  onClick={() => {
+                    setEditingCampaign(isOpen ? null : campaignName);
+                    setAddingCampaign(false);
+                  }}
+                >
+                  {isOpen ? 'Close' : 'Edit'}
+                </button>
+              </div>
+
+              {isOpen && (
+                <>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table className="data">
+                      <thead>
+                        <tr>
+                          <th>Creative</th>
+                          <th>Type</th>
+                          <th>Spend</th>
+                          <th>Leads</th>
+                          <th>Shows</th>
+                          <th>Bookings</th>
+                          <th />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {campaignRows.map(({ r, i }) => (
+                          <tr key={i}>
+                            <td>
+                              <input
+                                value={r.ad}
+                                onChange={(e) => updateRow(i, { ad: e.target.value })}
+                                style={{ minWidth: 160 }}
+                              />
+                            </td>
+                            <td>
+                              <select
+                                value={r.creativeType ?? ''}
+                                onChange={(e) => updateRow(i, { creativeType: e.target.value || null })}
+                                style={{ width: 'auto' }}
+                              >
+                                <option value="">Untagged</option>
+                                {CREATIVE_TYPE_OPTIONS.map((t) => (
+                                  <option key={t} value={t}>
+                                    {t}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                min={0}
+                                value={r.spend}
+                                onChange={(e) => updateRow(i, { spend: toNumber(e.target.value) })}
+                                style={{ width: 90 }}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                min={0}
+                                value={r.leads}
+                                onChange={(e) => updateRow(i, { leads: toNumber(e.target.value) })}
+                                style={{ width: 70 }}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                min={0}
+                                value={r.shows}
+                                onChange={(e) => updateRow(i, { shows: toNumber(e.target.value) })}
+                                style={{ width: 70 }}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                min={0}
+                                value={r.bookings}
+                                onChange={(e) => updateRow(i, { bookings: toNumber(e.target.value) })}
+                                style={{ width: 70 }}
+                              />
+                            </td>
+                            <td>
+                              <button className="small" onClick={() => removeCreative(i)}>
+                                Remove
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
+                    <input
+                      placeholder="New creative name"
+                      value={draft.ad}
+                      onChange={(e) => setNewCreativeDrafts((prev) => ({ ...prev, [campaignName]: { ...draft, ad: e.target.value } }))}
+                      style={{ width: 'auto', flex: '1 1 160px' }}
+                    />
+                    <select
+                      value={draft.creativeType}
+                      onChange={(e) => setNewCreativeDrafts((prev) => ({ ...prev, [campaignName]: { ...draft, creativeType: e.target.value } }))}
+                      style={{ width: 'auto' }}
+                    >
+                      <option value="">Untagged</option>
+                      {CREATIVE_TYPE_OPTIONS.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="Spend"
+                      value={draft.spend}
+                      onChange={(e) => setNewCreativeDrafts((prev) => ({ ...prev, [campaignName]: { ...draft, spend: e.target.value } }))}
+                      style={{ width: 90 }}
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="Leads"
+                      value={draft.leads}
+                      onChange={(e) => setNewCreativeDrafts((prev) => ({ ...prev, [campaignName]: { ...draft, leads: e.target.value } }))}
+                      style={{ width: 70 }}
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="Shows"
+                      value={draft.shows}
+                      onChange={(e) => setNewCreativeDrafts((prev) => ({ ...prev, [campaignName]: { ...draft, shows: e.target.value } }))}
+                      style={{ width: 70 }}
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="Bookings"
+                      value={draft.bookings}
+                      onChange={(e) => setNewCreativeDrafts((prev) => ({ ...prev, [campaignName]: { ...draft, bookings: e.target.value } }))}
+                      style={{ width: 70 }}
+                    />
+                    <button className="small" onClick={() => addCreative(campaignName, campaignType)}>
+                      Add creative
+                    </button>
+                  </div>
+
+                  <button className="small" style={{ alignSelf: 'flex-start' }} onClick={() => removeCampaign(campaignName)}>
+                    Remove campaign
+                  </button>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
