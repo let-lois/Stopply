@@ -26,7 +26,7 @@ function describeApiError(err: unknown): string {
   return err instanceof Error ? err.message : 'request failed';
 }
 
-export const PLATFORM_LABEL: Record<string, string> = { meta: 'Meta', google: 'Google' };
+export const PLATFORM_LABEL: Record<string, string> = { meta: 'Meta', google: 'Google Ads' };
 
 export interface TenantCard {
   id: string;

@@ -17,6 +17,10 @@ interface DemoClient {
   months: string[];
   meta: number; // monthly meta spend baseline, used to derive month data
   google: number; // monthly google spend baseline
+  // Static public asset path for this client's own logo, shown in the
+  // client profile header (never in the left agency sidebar, that is
+  // always Stopply's own mark). Null falls back to no logo shown.
+  logoUrl: string | null;
 }
 
 const DEMO_CLIENTS: DemoClient[] = [
@@ -32,6 +36,7 @@ const DEMO_CLIENTS: DemoClient[] = [
     months: ['2026-05', '2026-06'],
     meta: 7100,
     google: 4200,
+    logoUrl: '/demo-logos/be-clinical.svg',
   },
   {
     id: 'back-9-golf',
@@ -45,6 +50,7 @@ const DEMO_CLIENTS: DemoClient[] = [
     months: ['2026-06'],
     meta: 3500,
     google: 2500,
+    logoUrl: null,
   },
   {
     id: 'deep-clean-cleaners',
@@ -58,6 +64,7 @@ const DEMO_CLIENTS: DemoClient[] = [
     months: ['2026-06'],
     meta: 1500,
     google: 3000,
+    logoUrl: null,
   },
 ];
 
@@ -77,6 +84,10 @@ export function setActiveDemoClient(id: string): DemoClient | null {
 
 export function getActiveDemoClient(): DemoClient {
   return DEMO_CLIENTS.find((c) => c.id === activeClientId) ?? DEFAULT_CLIENT;
+}
+
+export function getActiveDemoClientLogoUrl(): string | null {
+  return getActiveDemoClient().logoUrl;
 }
 
 export const DEMO_ME: Me = {
@@ -172,64 +183,51 @@ export function getDemoSources(): SourceInfo[] {
   return sources;
 }
 
-function monthData(month: string, meta: number, google: number, scale: number): MonthData {
-  const leadsMeta = meta > 0 ? Math.round(47 * scale) : 0;
-  const leadsGoogle = google > 0 ? Math.round(33 * scale) : 0;
-  const channels = [];
-  const campaigns = [];
-  const adLineItems = [];
+// Fallback for a client/month with no entry in DEFAULT_CAMPAIGN_ROWS
+// and no saved edits either. Not reachable today - every current demo
+// client/month has hand-authored rows - it only guards a future client
+// added without them. Spend is the one real input (a client's
+// configured budget); everything else has no underlying data to sum,
+// so it is 0 rather than a plausible-looking invented number.
+function monthData(month: string, meta: number, google: number): MonthData {
+  const channels: ChannelMetrics[] = [];
   if (meta > 0) {
     channels.push({
       period_month: month,
       channel: 'meta',
       attribution_basis: 'first' as const,
-      leads: leadsMeta,
-      scheduled: Math.round(leadsMeta * 0.58),
-      completed: Math.round(leadsMeta * 0.4),
-      purchases: Math.round(leadsMeta * 0.3),
-      revenue: Math.round(meta * 2.5),
+      leads: 0,
+      scheduled: 0,
+      completed: 0,
+      purchases: 0,
+      revenue: 0,
       spend: meta,
     });
-    campaigns.push(
-      { period_month: month, channel: 'meta', campaign: 'Meta - Spring Promo', campaign_type: 'Lead Generation', spend: Math.round(meta * 0.55), leads: Math.round(leadsMeta * 0.5), completed: Math.round(leadsMeta * 0.2), revenue: Math.round(meta * 1.3) },
-      { period_month: month, channel: 'meta', campaign: 'Meta - Retargeting', campaign_type: 'Retargeting', spend: Math.round(meta * 0.45), leads: Math.round(leadsMeta * 0.5), completed: Math.round(leadsMeta * 0.2), revenue: Math.round(meta * 1.2) }
-    );
-    adLineItems.push(
-      { period_month: month, channel: 'meta', campaign: 'Meta - Spring Promo', ad_name: 'Before/After Carousel', ad_id: 'demo-ad-1', creative_type: 'carousel', creative_type_source: 'auto' as const, spend: Math.round(meta * 0.3), leads_reported: Math.round(leadsMeta * 0.28), cost_per_lead: Math.round((meta * 0.3) / Math.max(1, leadsMeta * 0.28)), completed: null, purchases: null, status: 'top' as const },
-      { period_month: month, channel: 'meta', campaign: 'Meta - Retargeting', ad_name: 'Testimonial Video', ad_id: 'demo-ad-2', creative_type: 'video', creative_type_source: 'auto' as const, spend: Math.round(meta * 0.25), leads_reported: Math.round(leadsMeta * 0.22), cost_per_lead: Math.round((meta * 0.25) / Math.max(1, leadsMeta * 0.22)), completed: null, purchases: null, status: 'watch' as const }
-    );
   }
   if (google > 0) {
     channels.push({
       period_month: month,
       channel: 'google',
       attribution_basis: 'first' as const,
-      leads: leadsGoogle,
-      scheduled: Math.round(leadsGoogle * 0.6),
-      completed: Math.round(leadsGoogle * 0.48),
-      purchases: Math.round(leadsGoogle * 0.36),
-      revenue: Math.round(google * 3.9),
+      leads: 0,
+      scheduled: 0,
+      completed: 0,
+      purchases: 0,
+      revenue: 0,
       spend: google,
-    });
-    campaigns.push(
-      { period_month: month, channel: 'google', campaign: 'Google - Search Brand', campaign_type: 'Search', spend: Math.round(google * 0.4), leads: Math.round(leadsGoogle * 0.45), completed: Math.round(leadsGoogle * 0.22), revenue: Math.round(google * 1.6) },
-      { period_month: month, channel: 'google', campaign: 'Google - Near Me', campaign_type: null, spend: Math.round(google * 0.6), leads: Math.round(leadsGoogle * 0.55), completed: Math.round(leadsGoogle * 0.26), revenue: Math.round(google * 2.3) }
-    );
-    adLineItems.push({
-      period_month: month, channel: 'google', campaign: 'Google - Near Me', ad_name: 'Near Me - RSA', ad_id: 'demo-ad-3', creative_type: 'text', creative_type_source: 'auto' as const, spend: Math.round(google * 0.5), leads_reported: Math.round(leadsGoogle * 0.5), cost_per_lead: Math.round((google * 0.5) / Math.max(1, leadsGoogle * 0.5)), completed: null, purchases: null, status: 'top' as const,
     });
   }
   return {
     month,
     basis: 'first',
     channels,
-    campaigns,
-    adLineItems,
+    campaigns: [],
+    adLineItems: [],
     cohort: [],
     quality: null,
     targets: [
-      { period_month: month, metric: 'leads', value: Math.round((leadsMeta + leadsGoogle) * 1.15) || 20 },
-      { period_month: month, metric: 'revenue', value: Math.round((meta * 2.5 + google * 3.9) * 1.1) || 5000 },
+      { period_month: month, metric: 'leads', value: 0 },
+      { period_month: month, metric: 'revenue', value: 0 },
     ],
   };
 }
@@ -240,7 +238,7 @@ function monthData(month: string, meta: number, google: number, scale: number): 
 // which are active vs paused); Back 9 Golf and Deep Clean Cleaners are
 // fully fabricated but industry-plausible. Every spend/lead/show/booking
 // number below is fabricated, not any client's actual figures.
-interface CampaignRow {
+export interface CampaignRow {
   campaign: string;
   campaignType: string;
   ad: string;
@@ -313,7 +311,6 @@ function statusForCostPerLead(costPerLead: number): 'top' | 'watch' | 'under' {
 function buildCampaignChannel(
   channel: 'meta' | 'google',
   rows: CampaignRow[],
-  roas: number,
   month: string
 ): { channelMetrics: ChannelMetrics; campaigns: CampaignMetrics[]; adLineItems: AdLineItem[] } {
   const byCampaign = new Map<string, CampaignRow[]>();
@@ -335,7 +332,10 @@ function buildCampaignChannel(
       spend,
       leads,
       completed,
-      revenue: Math.round(spend * roas),
+      // No POS/booking integration (e.g. Boulevard) exists yet to say
+      // what a completed appointment is actually worth, so revenue is
+      // always 0 here rather than a made-up multiplier of ad spend.
+      revenue: 0,
     };
   });
 
@@ -371,10 +371,14 @@ function buildCampaignChannel(
     channel,
     attribution_basis: 'first',
     leads,
-    scheduled: Math.round(completed / 0.82),
+    // "Scheduled" (booked on the calendar, before the "shows"/completed
+    // count below) has no matching field in CampaignRow - there's
+    // nothing to sum, and no real source for it yet, so this is 0
+    // rather than a made-up ratio off `completed`.
+    scheduled: 0,
     completed,
     purchases,
-    revenue: Math.round(spend * roas),
+    revenue: 0,
     spend,
   };
 
@@ -382,10 +386,9 @@ function buildCampaignChannel(
 }
 
 function buildHandAuthoredMonthData(month: string, metaRows: CampaignRow[], googleRows: CampaignRow[]): MonthData {
-  const meta = buildCampaignChannel('meta', metaRows, 2.5, month);
-  const google = buildCampaignChannel('google', googleRows, 3.9, month);
+  const meta = buildCampaignChannel('meta', metaRows, month);
+  const google = buildCampaignChannel('google', googleRows, month);
   const totalLeads = meta.channelMetrics.leads + google.channelMetrics.leads;
-  const totalRevenue = meta.channelMetrics.revenue + google.channelMetrics.revenue;
 
   return {
     month,
@@ -397,7 +400,7 @@ function buildHandAuthoredMonthData(month: string, metaRows: CampaignRow[], goog
     quality: null,
     targets: [
       { period_month: month, metric: 'leads', value: Math.round(totalLeads * 1.15) },
-      { period_month: month, metric: 'revenue', value: Math.round(totalRevenue * 1.1) },
+      { period_month: month, metric: 'revenue', value: 0 },
     ],
   };
 }
@@ -431,24 +434,83 @@ const BE_CLINICAL_MAY_GOOGLE: CampaignRow[] = [
 ];
 
 // Hand-authored per-client month breakdowns, keyed by month then client
-// id. Any client/month combination not in this map falls back to the
-// generic monthData() formula below.
-const HAND_AUTHORED_DATA: Record<string, Record<string, () => MonthData>> = {
+// id then channel. These are the *defaults* - a starting point. The
+// user can add/edit/remove campaigns and creatives from the "Manage
+// campaigns" editor on the Main Dashboard; those edits are saved to
+// localStorage (see getEditableCampaignRows below) and take over from
+// the defaults for that specific client/month/channel. Any client/month
+// combination not in this map, with no saved edits either, falls back
+// to the generic monthData() formula below.
+const DEFAULT_CAMPAIGN_ROWS: Record<string, Record<string, { meta: CampaignRow[]; google: CampaignRow[] }>> = {
   '2026-05': {
-    'be-clinical': () => buildHandAuthoredMonthData('2026-05', BE_CLINICAL_MAY_META, BE_CLINICAL_MAY_GOOGLE),
+    'be-clinical': { meta: BE_CLINICAL_MAY_META, google: BE_CLINICAL_MAY_GOOGLE },
   },
   '2026-06': {
-    'be-clinical': () => buildHandAuthoredMonthData('2026-06', BE_CLINICAL_JUNE_META, BE_CLINICAL_JUNE_GOOGLE),
-    'back-9-golf': () => buildHandAuthoredMonthData('2026-06', BACK_9_GOLF_JUNE_META, BACK_9_GOLF_JUNE_GOOGLE),
-    'deep-clean-cleaners': () => buildHandAuthoredMonthData('2026-06', DEEP_CLEAN_JUNE_META, DEEP_CLEAN_JUNE_GOOGLE),
+    'be-clinical': { meta: BE_CLINICAL_JUNE_META, google: BE_CLINICAL_JUNE_GOOGLE },
+    'back-9-golf': { meta: BACK_9_GOLF_JUNE_META, google: BACK_9_GOLF_JUNE_GOOGLE },
+    'deep-clean-cleaners': { meta: DEEP_CLEAN_JUNE_META, google: DEEP_CLEAN_JUNE_GOOGLE },
   },
 };
 
+// Edits live in localStorage, never touch the codebase, and are scoped
+// to this one browser - "practical... but not so much freedom I could
+// destroy everything." Keyed per client/month/channel so editing one
+// client's June Meta campaigns never affects another client or channel.
+function campaignOverrideKey(clientId: string, month: string, channel: 'meta' | 'google'): string {
+  return `demo-campaigns:${clientId}:${month}:${channel}`;
+}
+
+function readCampaignOverride(clientId: string, month: string, channel: 'meta' | 'google'): CampaignRow[] | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(campaignOverrideKey(clientId, month, channel));
+    return raw ? (JSON.parse(raw) as CampaignRow[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function hasCampaignOverride(clientId: string, month: string, channel: 'meta' | 'google'): boolean {
+  return readCampaignOverride(clientId, month, channel) !== null;
+}
+
+// The rows actually in effect right now: saved edits if any exist, else
+// the hand-authored defaults, else an empty list (a blank slate the
+// editor can build up from scratch via "Add campaign").
+export function getEditableCampaignRows(clientId: string, month: string, channel: 'meta' | 'google'): CampaignRow[] {
+  const override = readCampaignOverride(clientId, month, channel);
+  if (override) return override;
+  return DEFAULT_CAMPAIGN_ROWS[month]?.[clientId]?.[channel] ?? [];
+}
+
+export function saveEditableCampaignRows(
+  clientId: string,
+  month: string,
+  channel: 'meta' | 'google',
+  rows: CampaignRow[]
+): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(campaignOverrideKey(clientId, month, channel), JSON.stringify(rows));
+  } catch {
+    /* ignore, e.g. storage disabled or full */
+  }
+}
+
+export function resetEditableCampaignRows(clientId: string, month: string, channel: 'meta' | 'google'): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(campaignOverrideKey(clientId, month, channel));
+}
+
 function getMonthDataForClient(client: DemoClient, month: string): MonthData {
-  const handAuthored = HAND_AUTHORED_DATA[month]?.[client.id];
-  if (handAuthored) return handAuthored();
-  const scale = month === client.months[client.months.length - 1] ? 1 : 0.85;
-  return monthData(month, client.meta, client.google, scale);
+  const hasDefaults = !!DEFAULT_CAMPAIGN_ROWS[month]?.[client.id];
+  const hasEdits = hasCampaignOverride(client.id, month, 'meta') || hasCampaignOverride(client.id, month, 'google');
+  if (hasDefaults || hasEdits) {
+    const metaRows = getEditableCampaignRows(client.id, month, 'meta');
+    const googleRows = getEditableCampaignRows(client.id, month, 'google');
+    return buildHandAuthoredMonthData(month, metaRows, googleRows);
+  }
+  return monthData(month, client.meta, client.google);
 }
 
 export function getDemoMonthData(month: string): MonthData {

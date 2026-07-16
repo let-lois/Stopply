@@ -11,51 +11,64 @@
    applies to the agency console and default themed tenants; white
    labeled tenants keep their own inline theme vars, which always win. */
 
+/* "Warm Ledger" theme: warm ivory ground instead of stark white, cards
+   separated by soft elevation (shadow) rather than a hairline border so
+   surfaces don't all read as one flat plane. The interactive accent is a
+   neutral deep navy-slate, not the brand pink - an all-pink UI read as
+   too soft/consumer-beauty for a BI tool. The pink brand mark still
+   carries the brand identity via the logo; --brand-pop keeps it
+   available for the rare deliberate highlight. Distinct from the
+   functional positive/negative/amber and channel colors, which keep
+   their own meaning. */
 :root {
-  --paper: #ffffff;
-  --sidebar-bg: #f5f4ef;
+  --paper: #faf8f3;
+  --sidebar-bg: #f1eee3;
   --card: #ffffff;
-  --ink: #1b1b18;
-  --ink-soft: #6b6a65;
-  --hairline: #e5e3dd;
-  --accent: #1f7ae0;
-  --accent-soft: #e8f1fc;
+  --ink: #211d16;
+  --ink-soft: #7a7566;
+  --hairline: #e9e4d6;
+  --accent: #263449;
+  --accent-soft: #e3e7ec;
+  --brand-pop: #fe5371;
   --positive: #1f9d6b;
-  --negative: #d56a4f;
+  --negative: #c7502f;
   --amber: #c7902f;
   --verified-green: #1f9d6b;
   --gray-check: #c3ccd8;
-  --red-check: #d56a4f;
+  --red-check: #c7502f;
   --ch-google: #1f7ae0;
   --ch-meta: #6f5ad6;
   --ch-website: #8b97a8;
-  --brand-grad-from: #1f7ae0;
-  --brand-grad-to: #4ba3e8;
+  --brand-grad-from: #263449;
+  --brand-grad-to: #47607f;
+  --shadow-card: 0 1px 2px rgba(60, 48, 20, 0.06), 0 8px 20px -10px rgba(60, 48, 20, 0.16);
   --font-display: 'Fraunces', serif;
   --font-body: 'Spline Sans', sans-serif;
   --font-mono: 'Spline Sans Mono', monospace;
 }
 
 :root[data-theme='dark'] {
-  --paper: #1a1918;
-  --sidebar-bg: #30302e;
-  --card: #262624;
-  --ink: #ede9e2;
-  --ink-soft: #9a9891;
-  --hairline: #3a3936;
-  --accent: #4da3ff;
-  --accent-soft: #15273c;
+  --paper: #17140f;
+  --sidebar-bg: #2c2822;
+  --card: #322d25;
+  --ink: #ede8df;
+  --ink-soft: #a19b8d;
+  --hairline: #3d372c;
+  --accent: #93aac7;
+  --accent-soft: #2a3543;
+  --brand-pop: #ff6b86;
   --positive: #3fc08a;
-  --negative: #e6886e;
+  --negative: #e07357;
   --amber: #d9a441;
   --verified-green: #3fc08a;
   --gray-check: #44505f;
-  --red-check: #e6886e;
+  --red-check: #e07357;
   --ch-google: #4da3ff;
   --ch-meta: #9385ec;
   --ch-website: #7e8b9c;
-  --brand-grad-from: #4da3ff;
-  --brand-grad-to: #6fb6ff;
+  --brand-grad-from: #93aac7;
+  --brand-grad-to: #bccddf;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.24), 0 8px 20px -10px rgba(0, 0, 0, 0.4);
 }
 
 :root { color-scheme: light; }
@@ -141,9 +154,9 @@ textarea {
 
 .card {
   background: var(--card);
-  border: 1px solid var(--hairline);
   border-radius: 12px;
   padding: 20px;
+  box-shadow: var(--shadow-card);
 }
 
 .muted {
@@ -264,6 +277,47 @@ textarea {
   margin-right: 4px;
 }
 
+/* Master date range + comparison basis, in the sticky profile header.
+   Ghost controls (no visible box at rest) instead of full bordered
+   selects, so this reads as lightweight navigation, not a form. */
+.date-controls {
+  padding: 6px 0 10px;
+  flex-wrap: wrap;
+}
+
+.date-controls select,
+.date-controls button.small {
+  border: none;
+  background: transparent;
+  min-height: 0;
+  width: auto;
+  color: var(--ink);
+  border-radius: 6px;
+}
+
+.date-controls select {
+  padding: 4px 4px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.date-controls button.small {
+  padding: 4px 6px;
+  color: var(--ink-soft);
+}
+
+.date-controls select:hover,
+.date-controls select:focus,
+.date-controls button.small:hover:not(:disabled) {
+  background: var(--accent-soft);
+  outline: none;
+}
+
+.date-controls button.small:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 /* Anchored sections need to land below the sticky profile header. */
 .main-content.has-profile-head .page-section {
   scroll-margin-top: 108px;
@@ -302,8 +356,12 @@ textarea {
 .sidebar-brand {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 10px;
-  padding: 4px 6px 16px;
+  margin: -16px -12px 14px;
+  padding: 22px 12px;
+  border-bottom: 1px solid var(--hairline);
 }
 
 .sidebar-nav {
@@ -369,10 +427,15 @@ textarea {
 
 .kpi {
   background: var(--card);
-  border: 1px solid var(--hairline);
   border-radius: 12px;
+  border-top: 3px solid var(--hairline);
   padding: 14px 16px;
+  box-shadow: var(--shadow-card);
 }
+
+.kpi-spend { border-top-color: var(--ink); }
+.kpi-leads { border-top-color: var(--accent); }
+.kpi-revenue { border-top-color: var(--positive); }
 
 .kpi .label {
   font-size: 12px;
@@ -401,6 +464,9 @@ table.data {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
+  background: var(--card);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
 }
 
 table.data th {
@@ -410,18 +476,30 @@ table.data th {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  padding: 8px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--hairline);
 }
 
 table.data td {
-  padding: 8px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--hairline);
 }
 
-/* Ad line item drill-down under Spend by platform: creative type filter
-   chips, the editable creative type tag, and the cost-per-lead status
-   pill (top performer / watch / underperforming). */
+table.data tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--paper) 55%, var(--card));
+}
+
+/* A table already inside an elevated surface (.card, .campaign-block)
+   would otherwise double up on shadow/background - fall back to a
+   plain, unboxed table there instead. */
+.card table.data,
+.campaign-block table.data {
+  box-shadow: none;
+  background: transparent;
+  border-radius: 0;
+}
+
+/* Meta/Google switcher inside the demo campaign editor. */
 .type-filters {
   display: flex;
   gap: 6px;
@@ -445,44 +523,61 @@ table.data td {
   font-weight: 600;
 }
 
-.creative-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border-radius: 999px;
-  padding: 3px 9px;
-  font-size: 12px;
-  font-weight: 600;
-  border: 1px solid var(--hairline);
-  background: var(--paper);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.creative-tag .edit {
-  color: var(--ink-soft);
-  font-size: 11px;
-}
-
-.creative-tag.manual {
-  border-style: dashed;
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-
-/* One card per campaign in the Campaigns and ads breakdown. */
+/* One card per campaign in the Campaigns and ads breakdown. A full
+   border (not just the shadow) plus generous gap between cards (see
+   the inline gap on their wrapping stack) keeps campaigns from reading
+   as one continuous, hard-to-parse block. The left edge is colored by
+   status, not channel - this list is already narrowed to one platform
+   by the time it renders, so channel color would be redundant. */
 .campaign-block {
   border: 1px solid var(--hairline);
+  border-left: 4px solid var(--hairline);
   border-radius: 12px;
-  padding: 14px 16px;
+  padding: 16px 18px;
   background: var(--card);
+  box-shadow: var(--shadow-card);
+}
+
+.campaign-block.status-top { border-left-color: var(--positive); }
+.campaign-block.status-watch { border-left-color: var(--amber); }
+.campaign-block.status-under { border-left-color: var(--negative); }
+
+.campaign-name {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.status-word {
+  font-weight: 600;
+}
+
+.status-word-top { color: var(--positive); }
+.status-word-watch { color: var(--amber); }
+.status-word-under { color: var(--negative); }
+
+/* Expand/collapse control for a campaign's ad-level table. A plain
+   bordered button reads as clearly clickable, unlike a bare label. */
+.campaign-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 6px 12px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .campaign-stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 26px;
+  gap: 10px 28px;
+  padding-top: 4px;
+  border-top: 1px solid var(--hairline);
 }
 
 .campaign-stats > span {
@@ -515,23 +610,6 @@ table.data td {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--ink-soft);
-}
-
-/* Format tile beside each ad title. CSV exports carry no creative assets
-   (thumbnails need the ad platform APIs), so the tile identifies the
-   format at a glance instead. */
-.creative-tile {
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 700;
-  flex: none;
 }
 
 .status-pill {
@@ -854,22 +932,15 @@ table.data td {
   overflow: hidden;
 }
 
-/* Brand mark used top left when no client logo is present. The Stopply
-   wordmark image has fixed dark ink on a transparent background, it does
-   not invert for theme the way the old currentColor SVG did. In dark mode
-   give it a light backing plate so it stays legible; light mode is
-   unaffected since the ink already reads fine there. */
+/* Brand mark used top left. The current Stopply wordmark is rendered in
+   the brand accent color on a transparent background, which reads fine
+   on both the light and dark paper directly, no backing plate needed. */
 .brand-logo {
   display: inline-flex;
   align-items: center;
   height: 30px;
   width: auto;
-}
-
-:root[data-theme='dark'] .brand-logo {
-  background: #ffffff;
-  border-radius: 8px;
-  padding: 4px 10px;
+  max-width: 100%;
 }
 
 /* Code box: keeps snippets out of the way for non technical users. They
