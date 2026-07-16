@@ -14,6 +14,8 @@
 // its own.
 
 import type { AdSpendRow, AdLineItemRow, ParseResult } from './parsers';
+import type { Connector, ConnectorContext, AdSyncStats, TestConnectionResult } from './types';
+import { writeAdSpendRows, writeAdLineItemRows } from './adSpendWriter';
 
 const GRAPH_API_VERSION = 'v21.0';
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
@@ -159,3 +161,59 @@ export async function testMetaConnection(
     return { ok: false, message: err instanceof Error ? err.message : 'network error' };
   }
 }
+
+// Slots into the same Connector framework Boulevard/Housecall/Jobber use,
+// so it gets the existing credential-storage UI, encryption, and audit
+// log for free. The only real difference is syncMonth: it writes
+// ad-spend/ad-line-item rows (via adSpendWriter) instead of CRM stage
+// events, and there is no funnel stage map for ad spend to configure.
+export const metaAdsConnector: Connector = {
+  provider: 'meta-ads',
+
+  getRequirements() {
+    return {
+      provider: 'meta-ads',
+      displayName: 'Meta Ads (live API)',
+      authKind: 'api_key' as const,
+      credentialFields: [
+        { key: 'accessToken', label: 'System User access token', secret: true },
+        { key: 'adAccountId', label: 'Ad account ID (numbers only, no "act_" prefix)', secret: false },
+      ],
+      planRequirement:
+        'Requires a Meta Business System User access token with access to this ad account (Business Settings -> System Users). This is Standard Access: no Meta App Review needed for an ad account your own Business Manager already administers.',
+      planLink: 'https://business.facebook.com/settings/system-users',
+      tokenGuide: [
+        'In Business Settings, go to Users -> System Users and select or create one.',
+        'Under Assigned Assets, grant it access to this client’s ad account.',
+        'Generate a token for the System User with the ads_read permission, then paste it and the ad account ID here.',
+      ],
+      defaultStageMap: [],
+    };
+  },
+
+  async testConnection(creds, ctx): Promise<TestConnectionResult> {
+    if (!creds.accessToken || !creds.adAccountId) {
+      return { ok: false, failure: 'bad_credentials', message: 'Access token and ad account ID are both required' };
+    }
+    const result = await testMetaConnection(creds.accessToken, creds.adAccountId, ctx?.fetchImpl);
+    if (!result.ok) {
+      return { ok: false, failure: 'bad_credentials', message: result.message };
+    }
+    return { ok: true, connectedAs: result.accountName };
+  },
+
+  async syncMonth(creds, month, db, _sourceKey, ctx: ConnectorContext | undefined): Promise<AdSyncStats> {
+    const fetchImpl = ctx?.fetchImpl ?? fetch;
+    const accessToken = creds.accessToken ?? '';
+    const adAccountId = creds.adAccountId ?? '';
+    const [spendResult, lineItemResult] = await Promise.all([
+      fetchMetaCampaignSpend(accessToken, adAccountId, month, fetchImpl),
+      fetchMetaAdLineItems(accessToken, adAccountId, month, fetchImpl),
+    ]);
+    const adSpend = spendResult.adSpend ?? [];
+    const adLineItems = lineItemResult.adLineItems ?? [];
+    await writeAdSpendRows(db, month, adSpend);
+    await writeAdLineItemRows(db, month, adLineItems);
+    return { adSpendRows: adSpend.length, adLineItemRows: adLineItems.length };
+  },
+};

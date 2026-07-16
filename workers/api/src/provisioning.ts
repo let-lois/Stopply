@@ -130,6 +130,14 @@ export const DEFAULT_SOURCES: Array<{
     cadence: 1,
     how_to: 'Connect Jobber from the Integrations hub via OAuth.',
   },
+  {
+    key: 'meta-ads',
+    name: 'Meta Ads (live API)',
+    kind: 'integration',
+    connector_type: 'meta-ads',
+    cadence: 1,
+    how_to: 'Connect Meta Ads from the Integrations hub with a Business System User access token and ad account ID.',
+  },
 ];
 
 export async function applyTenantMigrations(
