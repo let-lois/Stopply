@@ -28,13 +28,23 @@ class RecordingDb implements ConnectorDb {
 }
 
 describe('connector requirements', () => {
-  it('every connector states plan requirements, a token guide, and default stage mappings', () => {
+  it('every connector states plan requirements and a token guide', () => {
     for (const connector of Object.values(CONNECTORS)) {
       const req = connector.getRequirements();
       expect(req.planRequirement.length).toBeGreaterThan(10);
       expect(req.planLink).toMatch(/^https:/);
       expect(req.tokenGuide.length).toBeGreaterThanOrEqual(3);
-      expect(req.defaultStageMap.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('CRM connectors state a default stage mapping; ad-spend connectors have none', () => {
+    for (const [provider, connector] of Object.entries(CONNECTORS)) {
+      const req = connector.getRequirements();
+      if (provider === 'meta-ads') {
+        expect(req.defaultStageMap).toHaveLength(0);
+      } else {
+        expect(req.defaultStageMap.length).toBeGreaterThan(0);
+      }
     }
   });
 });

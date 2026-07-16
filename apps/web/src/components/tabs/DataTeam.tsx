@@ -537,7 +537,7 @@ function IntegrationsSection({ toast, refreshSources }: { toast: (s: string) => 
                   Last sync {fmtStamp(row.lastSyncAt)}: {row.lastSyncResult?.slice(0, 120)}
                 </p>
               )}
-              <StageMapEditor provider={provider} req={req} toast={toast} />
+              {req.defaultStageMap.length > 0 && <StageMapEditor provider={provider} req={req} toast={toast} />}
             </div>
           );
         })}

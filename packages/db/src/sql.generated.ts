@@ -51,5 +51,10 @@ export const TENANT_MIGRATIONS: Migration[] = [
     "version": 4,
     "name": "0004_rep_metrics",
     "sql": "-- Per-rep monthly counters for door-to-door tenants: setters knock doors\n-- and set appointments, closers sit them and close. One row per rep per\n-- month per source; a rep active on both sides carries both sets of\n-- counters. Replaced wholesale per (month, source) on each import, same\n-- replay semantics as raw_ad_spend.\nCREATE TABLE IF NOT EXISTS rep_metrics (\n  period_month TEXT NOT NULL,\n  source_key TEXT NOT NULL,\n  rep TEXT NOT NULL,\n  knocks INTEGER NOT NULL DEFAULT 0,\n  pitches INTEGER NOT NULL DEFAULT 0,\n  appointments_set INTEGER NOT NULL DEFAULT 0,\n  sits_set INTEGER NOT NULL DEFAULT 0,\n  sits_run INTEGER NOT NULL DEFAULT 0,\n  closes INTEGER NOT NULL DEFAULT 0,\n  installs INTEGER NOT NULL DEFAULT 0,\n  PRIMARY KEY (period_month, source_key, rep)\n);\n"
+  },
+  {
+    "version": 5,
+    "name": "0005_meta_ads_provider",
+    "sql": "-- Widen the integrations table's provider check to allow meta-ads, an\n-- ad-spend connector (not CRM-shaped like the original three). SQLite\n-- can't alter a CHECK constraint in place, so this rebuilds the table:\n-- a copy with the wider constraint, move the rows over, swap names.\nCREATE TABLE integrations_new (\n  key TEXT PRIMARY KEY,\n  provider TEXT NOT NULL CHECK (provider IN ('boulevard', 'housecallpro', 'jobber', 'meta-ads')),\n  status TEXT NOT NULL DEFAULT 'disconnected' CHECK (status IN ('disconnected', 'connected', 'error')),\n  credentials_ciphertext TEXT,\n  credentials_iv TEXT,\n  connected_as TEXT,\n  connected_by TEXT,\n  connected_at TEXT,\n  last_sync_at TEXT,\n  last_sync_result TEXT,\n  plan_check_json TEXT\n);\nINSERT INTO integrations_new SELECT * FROM integrations;\nDROP TABLE integrations;\nALTER TABLE integrations_new RENAME TO integrations;\n"
   }
 ];

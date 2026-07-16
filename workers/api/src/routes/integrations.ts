@@ -80,7 +80,7 @@ integrationRoutes.get('/', async (c) => {
 
 const credsSchema = z
   .object({
-    provider: z.enum(['boulevard', 'housecallpro', 'jobber']),
+    provider: z.enum(['boulevard', 'housecallpro', 'jobber', 'meta-ads']),
     credentials: z.record(z.string().max(60), z.string().max(2048)).refine((r) => Object.keys(r).length <= 10),
   })
   .strict();
