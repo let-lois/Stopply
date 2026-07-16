@@ -37,6 +37,14 @@ export interface SyncStats {
   clientRecords: number;
 }
 
+// Ad-spend connectors (Meta, eventually Google) sync spend/lead rows
+// instead of CRM stage events, so "scheduled/completed/purchases" would
+// be meaningless zeros for them - this is the stats shape they report.
+export interface AdSyncStats {
+  adSpendRows: number;
+  adLineItemRows: number;
+}
+
 export interface ConnectorContext {
   fetchImpl?: typeof fetch;
   // Stage map overrides from funnel_stage_map rows.
@@ -44,7 +52,7 @@ export interface ConnectorContext {
 }
 
 export interface Connector {
-  provider: 'boulevard' | 'housecallpro' | 'jobber';
+  provider: 'boulevard' | 'housecallpro' | 'jobber' | 'meta-ads';
   getRequirements(): ConnectorRequirements;
   testConnection(creds: Record<string, string>, ctx?: ConnectorContext): Promise<TestConnectionResult>;
   syncMonth(
@@ -53,7 +61,7 @@ export interface Connector {
     db: ConnectorDb,
     sourceKey: string,
     ctx?: ConnectorContext
-  ): Promise<SyncStats>;
+  ): Promise<SyncStats | AdSyncStats>;
   handleWebhook?(payload: Record<string, unknown>, db: ConnectorDb, sourceKey: string): Promise<void>;
 }
 

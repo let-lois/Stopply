@@ -121,4 +121,55 @@ describe('integrations vault and routes', () => {
     expect(maps.results).toHaveLength(1);
     expect((maps.results[0] as Record<string, unknown>).stage).toBe('purchase');
   });
+
+  it('syncs meta-ads end to end: credentials save, test, then sync writes ad-spend and ad-line-item rows', async () => {
+    const originalFetch = global.fetch;
+    global.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/insights') && url.includes('level=campaign')) {
+        return new Response(
+          JSON.stringify({ data: [{ campaign_name: 'MAG | Lead Generation', spend: '100', actions: [{ action_type: 'lead', value: '5' }] }] }),
+          { status: 200 }
+        );
+      }
+      if (url.includes('/insights') && url.includes('level=ad')) {
+        return new Response(
+          JSON.stringify({
+            data: [{ campaign_name: 'MAG | Lead Generation', ad_id: 'ad1', ad_name: 'Video Ad 1', spend: '60', actions: [{ action_type: 'lead', value: '3' }] }],
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify({ name: 'Be CLINICAL San Ramon' }), { status: 200 });
+    }) as typeof fetch;
+
+    try {
+      await call('/api/tenant/integrations/meta-ads/credentials', {
+        method: 'PUT',
+        body: JSON.stringify({ provider: 'meta-ads', credentials: { accessToken: 'tok', adAccountId: '4048063365418328' } }),
+      });
+
+      const testRes = await call('/api/tenant/integrations/meta-ads/test', { method: 'POST', body: '{}' });
+      expect(testRes.status).toBe(200);
+      expect(await testRes.json()).toMatchObject({ ok: true, connectedAs: 'Be CLINICAL San Ramon' });
+
+      const syncRes = await call('/api/tenant/integrations/meta-ads/sync', {
+        method: 'POST',
+        body: JSON.stringify({ month: '2026-06' }),
+      });
+      expect(syncRes.status).toBe(200);
+      expect(await syncRes.json()).toMatchObject({ ok: true, stats: { adSpendRows: 1, adLineItemRows: 1 } });
+
+      const spend = await tenantDb.query('db-acme', `SELECT * FROM raw_ad_spend WHERE period_month = '2026-06'`);
+      expect(spend.results).toEqual([
+        expect.objectContaining({ channel: 'Meta', campaign: 'MAG | Lead Generation', spend: 100, leads_reported: 5 }),
+      ]);
+      const lineItems = await tenantDb.query('db-acme', `SELECT * FROM ad_line_items WHERE period_month = '2026-06'`);
+      expect(lineItems.results).toEqual([
+        expect.objectContaining({ channel: 'Meta', campaign: 'MAG | Lead Generation', ad_name: 'Video Ad 1', spend: 60, leads_reported: 3 }),
+      ]);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
 });

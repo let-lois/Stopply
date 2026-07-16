@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { fetchMetaCampaignSpend, fetchMetaAdLineItems, testMetaConnection } from '../src/metaAds';
+import { fetchMetaCampaignSpend, fetchMetaAdLineItems, testMetaConnection, metaAdsConnector } from '../src/metaAds';
+import type { ConnectorDb } from '../src/types';
+
+class RecordingDb implements ConnectorDb {
+  statements: Array<{ sql: string; params?: unknown[] }> = [];
+  async query<T>(): Promise<T[]> {
+    return [];
+  }
+  async batch(statements: Array<{ sql: string; params?: unknown[] }>): Promise<void> {
+    this.statements.push(...statements);
+  }
+}
 
 function fakeFetch(routes: Array<{ match: RegExp; status: number; body: unknown }>): typeof fetch {
   return (async (input: RequestInfo | URL) => {
@@ -140,5 +151,77 @@ describe('testMetaConnection', () => {
       fakeFetch([{ match: /act_/, status: 200, body: { error: { message: 'Invalid OAuth access token' } } }])
     );
     expect(result).toMatchObject({ ok: false, message: 'Invalid OAuth access token' });
+  });
+});
+
+describe('metaAdsConnector', () => {
+  it('declares an api_key connector with no funnel stage map', () => {
+    const req = metaAdsConnector.getRequirements();
+    expect(req.provider).toBe('meta-ads');
+    expect(req.authKind).toBe('api_key');
+    expect(req.credentialFields.map((f) => f.key)).toEqual(['accessToken', 'adAccountId']);
+    expect(req.defaultStageMap).toHaveLength(0);
+  });
+
+  it('testConnection rejects missing credentials without a network call', async () => {
+    const result = await metaAdsConnector.testConnection({});
+    expect(result).toMatchObject({ ok: false, failure: 'bad_credentials' });
+  });
+
+  it('testConnection reports bad_credentials on a Meta error', async () => {
+    const result = await metaAdsConnector.testConnection(
+      { accessToken: 'bad-token', adAccountId: '123' },
+      { fetchImpl: fakeFetch([{ match: /act_/, status: 200, body: { error: { message: 'Invalid OAuth access token' } } }]) }
+    );
+    expect(result).toMatchObject({ ok: false, failure: 'bad_credentials', message: 'Invalid OAuth access token' });
+  });
+
+  it('testConnection succeeds and reports the account name', async () => {
+    const result = await metaAdsConnector.testConnection(
+      { accessToken: 'token', adAccountId: '4048063365418328' },
+      { fetchImpl: fakeFetch([{ match: /act_/, status: 200, body: { name: 'Be CLINICAL San Ramon' } }]) }
+    );
+    expect(result).toMatchObject({ ok: true, connectedAs: 'Be CLINICAL San Ramon' });
+  });
+
+  it('syncMonth fetches campaign + ad level insights and writes both tables', async () => {
+    const db = new RecordingDb();
+    const fetchImpl = fakeFetch([
+      {
+        match: /level=campaign/,
+        status: 200,
+        body: { data: [{ campaign_name: 'MAG | Lead Generation', spend: '100', actions: [{ action_type: 'lead', value: '5' }] }] },
+      },
+      {
+        match: /level=ad/,
+        status: 200,
+        body: {
+          data: [
+            {
+              campaign_name: 'MAG | Lead Generation',
+              ad_id: '123',
+              ad_name: 'Video Ad 1',
+              spend: '60',
+              actions: [{ action_type: 'lead', value: '3' }],
+            },
+          ],
+        },
+      },
+    ]);
+
+    const stats = await metaAdsConnector.syncMonth(
+      { accessToken: 'token', adAccountId: '4048063365418328' },
+      '2026-06',
+      db,
+      'meta-ads',
+      { fetchImpl }
+    );
+
+    expect(stats).toEqual({ adSpendRows: 1, adLineItemRows: 1 });
+    const sql = db.statements.map((s) => s.sql);
+    expect(sql.some((s) => s.includes('DELETE FROM raw_ad_spend'))).toBe(true);
+    expect(sql.some((s) => s.includes('INSERT INTO raw_ad_spend'))).toBe(true);
+    expect(sql.some((s) => s.includes('DELETE FROM ad_line_items'))).toBe(true);
+    expect(sql.some((s) => s.includes('INSERT INTO ad_line_items'))).toBe(true);
   });
 });
