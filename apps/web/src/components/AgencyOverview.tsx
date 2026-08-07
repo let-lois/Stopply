@@ -101,6 +101,69 @@ function tintFor(platforms: string[]): string {
   return 'none';
 }
 
+// Card grid or list. A per user preference like the theme, kept in
+// localStorage rather than on the account, since it is a display choice and
+// nobody else is affected by it.
+type ClientsView = 'cards' | 'list';
+const VIEW_KEY = 'lbi-clients-view';
+
+function storedView(): ClientsView {
+  try {
+    const v = localStorage.getItem(VIEW_KEY);
+    if (v === 'cards' || v === 'list') return v;
+  } catch {
+    /* ignore */
+  }
+  return 'cards';
+}
+
+function ViewToggle({ view, onChange }: { view: ClientsView; onChange: (v: ClientsView) => void }) {
+  const options: Array<{ key: ClientsView; label: string; icon: React.ReactNode }> = [
+    {
+      key: 'cards',
+      label: 'Cards',
+      icon: (
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <rect x="0.9" y="0.9" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.5" />
+          <rect x="8.1" y="0.9" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.5" />
+          <rect x="0.9" y="8.1" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.5" />
+          <rect x="8.1" y="8.1" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+      ),
+    },
+    {
+      key: 'list',
+      label: 'List',
+      icon: (
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <path
+            d="M1 2.4h12M1 7h12M1 11.6h12"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          />
+        </svg>
+      ),
+    },
+  ];
+  return (
+    <div className="view-toggle" role="group" aria-label="Client layout">
+      {options.map((o) => (
+        <button
+          key={o.key}
+          type="button"
+          className={o.key === view ? 'active' : undefined}
+          aria-pressed={o.key === view}
+          onClick={() => onChange(o.key)}
+        >
+          {o.icon}
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // The account to feature in the hero: whichever rolled up most recently.
 // Real data off agency_rollup, not a computed "top performer", which would
 // mean putting numbers back on this page (see the note below).
@@ -127,6 +190,20 @@ export function ClientsSection({
   const [tenants, setTenants] = useState<TenantCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [provisioning, setProvisioning] = useState(false);
+  // Starts at the default and picks up the stored preference after mount:
+  // the app is a static export, so reading localStorage during render would
+  // not match the prerendered HTML.
+  const [view, setView] = useState<ClientsView>('cards');
+  useEffect(() => setView(storedView()), []);
+
+  const chooseView = (v: ClientsView) => {
+    setView(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const load = () => {
     setLoading(true);
@@ -184,6 +261,43 @@ export function ClientsSection({
     );
   };
 
+  // Denser alternative to the grid: one client per row, same information,
+  // scannable when the roster is long. Carries the platform tint as a left
+  // edge rather than a top rule and corner wash.
+  const listRow = (t: TenantCard) => {
+    const platforms = parsePlatforms(t.ad_platforms_json);
+    return (
+      <div
+        key={t.id}
+        className="client-list-row"
+        data-tint={tintFor(platforms)}
+        role="button"
+        tabIndex={0}
+        onClick={() => enter(t)}
+        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && enter(t)}
+      >
+        <span
+          className={`status-dot lg ${t.pulled_at ? 'green' : 'gray'}`}
+          style={{ marginTop: 0 }}
+          title={t.pulled_at ? 'Rolled up' : 'No rollup yet'}
+        />
+        <div className="client-list-name">
+          <strong>{t.name}</strong>
+          <span className="client-list-slug">{t.slug}</span>
+        </div>
+        <span className="client-list-stamp">
+          {t.pulled_at ? fmtStamp(t.pulled_at) : 'No rollup yet'}
+        </span>
+        <div className="client-list-badges">
+          {platforms.map((p) => (
+            <PlatformBadge key={p} platform={p} />
+          ))}
+        </div>
+        <span className="plan-badge">{t.plan}</span>
+      </div>
+    );
+  };
+
   return (
     <div className="stack clients-page" style={{ gap: 28 }}>
       <div className="row clients-head" style={{ justifyContent: 'space-between' }}>
@@ -195,12 +309,15 @@ export function ClientsSection({
             </span>
           )}
         </div>
-        {role === 'agency_admin' && (
-          <button className="primary action-cta" onClick={() => setProvisioning(true)}>
-            <PlusIcon />
-            New client
-          </button>
-        )}
+        <div className="row" style={{ gap: 12, width: 'auto' }}>
+          {!loading && tenants.length > 0 && <ViewToggle view={view} onChange={chooseView} />}
+          {role === 'agency_admin' && (
+            <button className="primary action-cta" onClick={() => setProvisioning(true)}>
+              <PlusIcon />
+              New client
+            </button>
+          )}
+        </div>
       </div>
 
       {loading && (
@@ -225,7 +342,10 @@ export function ClientsSection({
         </div>
       )}
 
-      {!loading && featured && (
+      {/* The hero belongs to the storefront view. List view is the dense
+          alternative, so it shows every client in one uninterrupted index
+          instead of pulling one out. */}
+      {!loading && view === 'cards' && featured && (
         <div
           className="clients-hero"
           role="button"
@@ -253,11 +373,15 @@ export function ClientsSection({
         </div>
       )}
 
-      {!loading && rest.length > 0 && (
+      {!loading && view === 'cards' && rest.length > 0 && (
         <div className="stack" style={{ gap: 14 }}>
           <span className="clients-eyebrow">All clients</span>
           <div className="client-grid">{rest.map(card)}</div>
         </div>
+      )}
+
+      {!loading && view === 'list' && tenants.length > 0 && (
+        <div className="client-list">{tenants.map(listRow)}</div>
       )}
 
       {provisioning && (

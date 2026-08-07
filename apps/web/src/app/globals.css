@@ -1454,3 +1454,171 @@ button.primary.action-cta:hover {
     transform: none;
   }
 }
+
+/* Card grid or list, the user's choice (see ClientsView in
+   AgencyOverview). Segmented control rather than a dropdown: two options,
+   both worth showing at once. */
+.view-toggle {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 10px;
+  border: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--card) 70%, transparent);
+}
+
+.view-toggle button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 13px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: color-mix(in srgb, var(--ink-soft) 72%, var(--ink));
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 200ms ease, color 200ms ease;
+}
+
+.view-toggle button:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--accent-soft) 55%, transparent);
+}
+
+.view-toggle button.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* List view. Same information as a card, laid out on one line so a long
+   roster stays scannable. The platform tint moves to the left edge. */
+.client-list {
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  border: 1px solid var(--hairline);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.client-list-row {
+  --tile-tint: var(--ink-soft);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 22px 18px 24px;
+  cursor: pointer;
+  border-bottom: 1px solid color-mix(in srgb, var(--hairline) 70%, transparent);
+  transition: background 200ms ease, padding-left 200ms ease;
+}
+
+.client-list-row:last-child {
+  border-bottom: none;
+}
+
+.client-list-row[data-tint='google'] { --tile-tint: var(--ch-google); }
+.client-list-row[data-tint='meta'] { --tile-tint: var(--ch-meta); }
+.client-list-row[data-tint='both'] { --tile-tint: color-mix(in srgb, var(--ch-google), var(--ch-meta)); }
+
+/* Tint rail, revealed on hover. Kept as a pseudo element so the row's own
+   padding shift is the only layout change. */
+.client-list-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: var(--tile-tint);
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+.client-list-row:hover,
+.client-list-row:focus-visible {
+  background: color-mix(in srgb, var(--tile-tint) 9%, transparent);
+  padding-left: 28px;
+}
+
+.client-list-row:hover::before,
+.client-list-row:focus-visible::before {
+  opacity: 1;
+}
+
+.client-list-name {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.client-list-name strong {
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.client-list-slug,
+.client-list-stamp {
+  font-size: 12.5px;
+  color: color-mix(in srgb, var(--ink-soft) 78%, var(--ink));
+  white-space: nowrap;
+}
+
+/* Fixed columns for everything right of the name. Without these the plan
+   badge's width (pro vs whitelabel) pushes the platform badges around and
+   nothing lines up down the list. */
+.client-list-stamp {
+  flex: none;
+  min-width: 118px;
+  text-align: right;
+}
+
+.client-list-row .plan-badge {
+  min-width: 104px;
+  justify-content: center;
+}
+
+.client-list-badges {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+}
+
+/* Below the grid breakpoint a row cannot hold five columns, so it stacks
+   and the secondary columns drop rather than squeezing the name. */
+@media (max-width: 820px) {
+  .client-list-stamp {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .client-list-row {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .client-list-name {
+    flex: 1 0 100%;
+    order: -1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .client-list-row,
+  .view-toggle button {
+    transition: none;
+  }
+
+  .client-list-row:hover,
+  .client-list-row:focus-visible {
+    padding-left: 24px;
+  }
+}
