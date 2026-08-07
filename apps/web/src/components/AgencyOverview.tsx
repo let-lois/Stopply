@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from 'react';
 import { api, ApiError, setCsrf } from '@/lib/api';
+import { fmtStamp } from '@/lib/format';
 import { CodeBox } from './CodeBox';
 
 // The API's 400 responses carry a zod flatten() body under `details`:
@@ -65,10 +66,57 @@ export function parsePlatformBudgets(json: string | null): Record<string, number
   }
 }
 
-// A plain selection list, not a dashboard. Every number that used to live
-// on each card (leads, revenue, ROAS, budget pacing, edit budget) now lives
+const PLATFORM_LOGO: Record<string, string> = {
+  meta: '/channel-logos/meta.webp',
+  google: '/channel-logos/google-ads.webp',
+};
+
+function PlatformBadge({ platform }: { platform: string }) {
+  const logo = PLATFORM_LOGO[platform];
+  return (
+    <span className="platform-badge" data-platform={platform}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {logo && <img src={logo} alt="" />}
+      {PLATFORM_LABEL[platform] ?? platform}
+    </span>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+      <path d="M7.5 2v11M2 7.5h11" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// Which tint a card carries: Google leans blue, Meta purple, both blend.
+// Purely decorative, the platform badges below still name them in text.
+function tintFor(platforms: string[]): string {
+  const google = platforms.includes('google');
+  const meta = platforms.includes('meta');
+  if (google && meta) return 'both';
+  if (google) return 'google';
+  if (meta) return 'meta';
+  return 'none';
+}
+
+// The account to feature in the hero: whichever rolled up most recently.
+// Real data off agency_rollup, not a computed "top performer", which would
+// mean putting numbers back on this page (see the note below).
+function pickFeatured(tenants: TenantCard[]): TenantCard | null {
+  if (tenants.length === 0) return null;
+  const rolled = tenants.filter((t) => t.pulled_at);
+  if (rolled.length === 0) return tenants[0];
+  return rolled.reduce((best, t) => (t.pulled_at! > best.pulled_at! ? t : best));
+}
+
+// A selection surface, not a dashboard. Every number that used to live on
+// each client (leads, revenue, ROAS, budget pacing, edit budget) now lives
 // inside that client's own dashboard instead (see the Ad budget section
-// added to Data and Team), so this is just "which client" and nothing else.
+// added to Data and Team), so this stays "which client" and nothing else.
+// The storefront treatment is layout and hierarchy only; it deliberately
+// does not reintroduce metrics as card or hero stats.
 export function ClientsSection({
   role,
   onEnterTenant,
@@ -98,23 +146,78 @@ export function ClientsSection({
     onEnterTenant(res.tenant);
   };
 
+  const featured = pickFeatured(tenants);
+  const rest = tenants.filter((t) => t.id !== featured?.id);
+
+  const card = (t: TenantCard) => {
+    const platforms = parsePlatforms(t.ad_platforms_json);
+    return (
+      <div
+        key={t.id}
+        className="client-card"
+        data-tint={tintFor(platforms)}
+        role="button"
+        tabIndex={0}
+        onClick={() => enter(t)}
+        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && enter(t)}
+      >
+        <div className="client-card-head">
+          <span
+            className={`status-dot lg ${t.pulled_at ? 'green' : 'gray'}`}
+            title={t.pulled_at ? 'Rolled up' : 'No rollup yet'}
+          />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <h3 className="client-card-name">{t.name}</h3>
+            <div className="client-card-slug">{t.slug}</div>
+          </div>
+          {/* Tier sits in the head, not with the platforms: plan names vary
+              in width (starter vs whitelabel) and would wrap the platform
+              row on some cards but not others, leaving the grid ragged. */}
+          <span className="plan-badge">{t.plan}</span>
+        </div>
+        <div className="client-card-badges">
+          {platforms.map((p) => (
+            <PlatformBadge key={p} platform={p} />
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="stack" style={{ gap: 20 }}>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h1>Clients</h1>
+    <div className="stack clients-page" style={{ gap: 28 }}>
+      <div className="row clients-head" style={{ justifyContent: 'space-between' }}>
+        <div className="stack" style={{ gap: 6, width: 'auto' }}>
+          <h1>Clients</h1>
+          {!loading && tenants.length > 0 && (
+            <span className="clients-eyebrow">
+              {tenants.length} {tenants.length === 1 ? 'account' : 'accounts'}
+            </span>
+          )}
+        </div>
         {role === 'agency_admin' && (
-          <button className="primary" onClick={() => setProvisioning(true)}>
+          <button className="primary action-cta" onClick={() => setProvisioning(true)}>
+            <PlusIcon />
             New client
           </button>
         )}
       </div>
 
-      {loading && <div className="skeleton" style={{ minHeight: 120 }} />}
+      {loading && (
+        <>
+          <div className="skeleton" style={{ minHeight: 250, borderRadius: 20 }} />
+          <div className="client-grid">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="skeleton client-card-skeleton" />
+            ))}
+          </div>
+        </>
+      )}
 
       {!loading && tenants.length === 0 && (
-        <div className="card stack">
-          <h3>No clients yet</h3>
-          <p className="muted">
+        <div className="clients-empty">
+          <h3 style={{ fontSize: 22 }}>No clients yet</h3>
+          <p className="muted" style={{ margin: 0, maxWidth: 420 }}>
             {role === 'agency_admin'
               ? 'Provision your first client with New client to get started.'
               : 'No clients have been assigned to you yet.'}
@@ -122,36 +225,38 @@ export function ClientsSection({
         </div>
       )}
 
-      {tenants.length > 0 && (
-        <div className="card" style={{ padding: 0 }}>
-          {tenants.map((t) => {
-            const platforms = parsePlatforms(t.ad_platforms_json);
-            return (
-              <div
-                key={t.id}
-                className="client-row"
-                role="button"
-                tabIndex={0}
-                onClick={() => enter(t)}
-                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && enter(t)}
-              >
-                <span className={`status-dot ${t.pulled_at ? 'green' : 'gray'}`} title={t.pulled_at ? 'Rolled up' : 'No rollup yet'} />
-                <strong style={{ flex: 1 }}>{t.name}</strong>
-                {platforms.length > 0 && (
-                  <div className="row" style={{ gap: 4, flexWrap: 'wrap', width: 'auto' }}>
-                    {platforms.map((p) => (
-                      <span key={p} className="platform-tag">
-                        {PLATFORM_LABEL[p] ?? p}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <span className="muted" style={{ fontSize: 12, width: 70, textAlign: 'right' }}>
-                  {t.plan}
-                </span>
-              </div>
-            );
-          })}
+      {!loading && featured && (
+        <div
+          className="clients-hero"
+          role="button"
+          tabIndex={0}
+          onClick={() => enter(featured)}
+          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && enter(featured)}
+        >
+          <span className="clients-eyebrow">
+            {featured.pulled_at ? 'Most recent activity' : 'Featured client'}
+          </span>
+          <h2 className="clients-hero-title">{featured.name}</h2>
+          <div className="clients-hero-meta">
+            <span
+              className={`status-dot lg ${featured.pulled_at ? 'green' : 'gray'}`}
+              style={{ marginTop: 0 }}
+            />
+            <span>
+              {featured.pulled_at ? `Rolled up ${fmtStamp(featured.pulled_at)}` : 'No rollup yet'}
+            </span>
+            {parsePlatforms(featured.ad_platforms_json).map((p) => (
+              <PlatformBadge key={p} platform={p} />
+            ))}
+            <span className="plan-badge">{featured.plan}</span>
+          </div>
+        </div>
+      )}
+
+      {!loading && rest.length > 0 && (
+        <div className="stack" style={{ gap: 14 }}>
+          <span className="clients-eyebrow">All clients</span>
+          <div className="client-grid">{rest.map(card)}</div>
         </div>
       )}
 

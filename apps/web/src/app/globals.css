@@ -136,10 +136,14 @@ button {
   padding: 0 16px;
 }
 
+/* Label is --paper, not #fff: the dark palette's accent is a light blue
+   (#93aac7), so white on it measured 2.38:1, unreadable. --paper tracks the
+   ground in both palettes, so the label stays the opposite end of the scale
+   from the accent whichever way the theme goes. */
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--paper);
 }
 
 button.small {
@@ -355,7 +359,9 @@ textarea {
   gap: 4px;
   padding: 16px 12px;
   background: var(--sidebar-bg);
-  border-right: 1px solid var(--hairline);
+  /* Softened from a full hairline so the panel edge reads as a seam rather
+     than a rule, keeping the eye on the content column. */
+  border-right: 1px solid color-mix(in srgb, var(--hairline) 55%, transparent);
   /* Fixed, not sticky: sticky silently degrades to scrolling away in some
      browsers depending on ancestor overflow, and the sidebar must never
      move. The content column offsets itself by the same width below. */
@@ -405,8 +411,12 @@ textarea {
   background: var(--accent-soft);
 }
 
+/* The nav is wayfinding, not the subject of the page, so the active chip
+   sits back rather than competing with the content. Only the chip's fill is
+   softened; the label keeps its full --accent color, which is what carries
+   the contrast, so readability is untouched. */
 .sidebar-nav button.active {
-  background: var(--accent-soft);
+  background: color-mix(in srgb, var(--accent-soft) 62%, transparent);
   color: var(--accent);
   font-weight: 600;
 }
@@ -659,27 +669,6 @@ table.data tr:nth-child(even) td {
   background: color-mix(in srgb, var(--negative) 14%, transparent);
 }
 
-/* Client roster: a plain selection list, not a dashboard. Each row is
-   just enough to tell clients apart and click into one; everything else
-   (leads, revenue, ROAS, budget pacing) lives inside that client's own
-   dashboard instead. */
-.client-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--hairline);
-  cursor: pointer;
-}
-
-.client-row:last-child {
-  border-bottom: none;
-}
-
-.client-row:hover {
-  background: var(--accent-soft);
-}
-
 .status-dot {
   width: 8px;
   height: 8px;
@@ -693,18 +682,6 @@ table.data tr:nth-child(even) td {
 
 .status-dot.gray {
   background: var(--ink-soft);
-}
-
-.platform-tag {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 2px 9px;
-  font-size: 11px;
-  font-weight: 600;
-  border: 1px solid var(--hairline);
-  background: var(--accent-soft);
-  color: var(--accent);
 }
 
 .pacing-bar {
@@ -1135,4 +1112,345 @@ table.data tr:nth-child(even) td {
 .demo-badge.inline {
   position: static;
   box-shadow: none;
+}
+
+/* ---------------------------------------------------------------------
+   Clients roster: a storefront style hero plus a card grid, replacing the
+   old .client-row list. Built entirely from theme tokens rather than fixed
+   darks: the app has a light/dark toggle and tenants can override the
+   palette, so a hardcoded near black would break light mode and re-create
+   the mixed palette problem the sidebar had. The premium dark look comes
+   from richer gradient and glow layers under the dark palette below.
+
+   Still identity only, no metrics. Leads, revenue, ROAS and budget pacing
+   deliberately live inside each client's own dashboard, not here.
+   --------------------------------------------------------------------- */
+
+.clients-page {
+  max-width: 1180px;
+}
+
+.clients-head {
+  align-items: flex-end;
+  margin-bottom: 4px;
+}
+
+/* Leans off --ink-soft toward --ink: plain --ink-soft on --card measures
+   4.34:1 in light mode, just under AA, and this is small uppercase text. */
+.clients-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--ink-soft) 78%, var(--ink));
+}
+
+/* Featured client. Surfaces the most recently rolled up account, which is
+   real data (agency_rollup pulled_at), not a computed "top performer". */
+.clients-hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 16px;
+  min-height: 250px;
+  padding: 38px 40px 34px;
+  border-radius: 20px;
+  border: 1px solid var(--hairline);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  overflow: hidden;
+  background:
+    radial-gradient(118% 130% at 8% 0%, color-mix(in srgb, var(--ch-meta) 20%, transparent), transparent 58%),
+    radial-gradient(96% 122% at 94% 6%, color-mix(in srgb, var(--ch-google) 17%, transparent), transparent 62%),
+    linear-gradient(152deg, color-mix(in srgb, var(--card) 90%, var(--ink)), var(--card));
+  transition: transform 260ms ease, box-shadow 260ms ease, border-color 260ms ease;
+}
+
+.clients-hero:hover,
+.clients-hero:focus-visible {
+  transform: scale(1.012);
+  border-color: color-mix(in srgb, var(--ch-meta) 42%, var(--hairline));
+  box-shadow:
+    0 26px 60px -26px color-mix(in srgb, var(--ch-meta) 55%, transparent),
+    var(--shadow-card);
+}
+
+/* Soft vignette so the title always sits on a settled ground no matter how
+   the gradient stops land. */
+.clients-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to top, color-mix(in srgb, var(--card) 42%, transparent), transparent 42%);
+}
+
+.clients-hero > * {
+  position: relative;
+  z-index: 1;
+}
+
+.clients-hero-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(34px, 5vw, 52px);
+  line-height: 1.04;
+  letter-spacing: -0.015em;
+  margin: 0;
+  color: var(--ink);
+}
+
+.clients-hero-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: color-mix(in srgb, var(--ink-soft) 78%, var(--ink));
+}
+
+.client-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(288px, 1fr));
+  gap: 20px;
+}
+
+/* Platform tint: Google leans blue, Meta purple, a client running both gets
+   the blend. Drives the top rule, the corner wash, and the hover glow. */
+.client-card {
+  --tile-tint: var(--ink-soft);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 178px;
+  padding: 26px 24px 22px;
+  border-radius: 16px;
+  border: 1px solid var(--hairline);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  overflow: hidden;
+  text-align: left;
+  background:
+    radial-gradient(124% 92% at 0% 0%, color-mix(in srgb, var(--tile-tint) 11%, transparent), transparent 62%),
+    var(--card);
+  transition: transform 240ms ease, box-shadow 240ms ease, border-color 240ms ease, background 240ms ease;
+}
+
+.client-card[data-tint='google'] { --tile-tint: var(--ch-google); }
+.client-card[data-tint='meta'] { --tile-tint: var(--ch-meta); }
+.client-card[data-tint='both'] { --tile-tint: color-mix(in srgb, var(--ch-google), var(--ch-meta)); }
+
+.client-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--tile-tint),
+    color-mix(in srgb, var(--tile-tint) 20%, transparent)
+  );
+}
+
+.client-card:hover,
+.client-card:focus-visible {
+  transform: scale(1.03);
+  border-color: color-mix(in srgb, var(--tile-tint) 52%, var(--hairline));
+  box-shadow:
+    0 20px 44px -20px color-mix(in srgb, var(--tile-tint) 58%, transparent),
+    var(--shadow-card);
+}
+
+.client-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+}
+
+.client-card-name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 21px;
+  line-height: 1.22;
+  letter-spacing: -0.01em;
+  margin: 0;
+  color: var(--ink);
+}
+
+.client-card-slug {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  margin-top: 3px;
+}
+
+/* Badges push to the bottom so cards of differing name lengths still line
+   their badge rows up across a row of the grid. Sized to keep platforms and
+   the plan on one line at the grid's narrowest column; a long client name
+   or a third platform still wraps gracefully rather than overflowing. */
+.client-card-badges {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+
+/* Platform and plan pills. The label stays mostly --ink and only leans
+   toward the tint, so contrast holds in both palettes; the tint carries in
+   the border, wash and icon instead. */
+.platform-badge {
+  --badge-tint: var(--ink-soft);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 29px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  white-space: nowrap;
+  border: 1px solid color-mix(in srgb, var(--badge-tint) 38%, transparent);
+  background: color-mix(in srgb, var(--badge-tint) 13%, var(--card));
+  color: color-mix(in srgb, var(--badge-tint) 30%, var(--ink));
+}
+
+.platform-badge[data-platform='google'] { --badge-tint: var(--ch-google); }
+.platform-badge[data-platform='meta'] { --badge-tint: var(--ch-meta); }
+
+.platform-badge img {
+  display: block;
+  height: 14px;
+  width: auto;
+}
+
+.plan-badge {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  height: 29px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  border: 1px dashed var(--hairline);
+  color: color-mix(in srgb, var(--ink-soft) 78%, var(--ink));
+  background: transparent;
+}
+
+/* Larger than the list version, with a halo so it reads as a status light
+   rather than a bullet. */
+.status-dot.lg {
+  width: 10px;
+  height: 10px;
+  margin-top: 7px;
+}
+
+.status-dot.lg.green {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--positive) 20%, transparent);
+}
+
+.status-dot.lg.gray {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ink-soft) 16%, transparent);
+}
+
+button.primary.action-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 46px;
+  padding: 0 20px;
+  font-size: 14.5px;
+  font-weight: 600;
+  box-shadow: 0 10px 24px -12px color-mix(in srgb, var(--accent) 75%, transparent);
+  transition: transform 200ms ease, box-shadow 200ms ease, background 200ms ease;
+}
+
+button.primary.action-cta:hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--accent) 88%, var(--ink));
+  box-shadow: 0 16px 32px -12px color-mix(in srgb, var(--accent) 88%, transparent);
+}
+
+.clients-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  padding: 64px 32px;
+  border-radius: 20px;
+  border: 1px dashed var(--hairline);
+  background:
+    radial-gradient(90% 120% at 50% 0%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 62%),
+    var(--card);
+}
+
+.client-card-skeleton {
+  min-height: 178px;
+  border-radius: 16px;
+}
+
+/* Dark palette: deepen the ground and let the platform tints glow, which is
+   where the storefront feel comes from. Light mode keeps the quieter wash
+   above, where heavy glows would just look muddy. */
+:root[data-theme='dark'] .clients-hero {
+  background:
+    radial-gradient(118% 130% at 8% 0%, color-mix(in srgb, var(--ch-meta) 34%, transparent), transparent 58%),
+    radial-gradient(96% 122% at 94% 6%, color-mix(in srgb, var(--ch-google) 26%, transparent), transparent 62%),
+    linear-gradient(152deg, color-mix(in srgb, var(--card) 58%, #000), var(--card));
+  border-color: color-mix(in srgb, var(--ch-meta) 26%, var(--hairline));
+}
+
+:root[data-theme='dark'] .client-card {
+  background:
+    radial-gradient(124% 92% at 0% 0%, color-mix(in srgb, var(--tile-tint) 20%, transparent), transparent 62%),
+    linear-gradient(158deg, color-mix(in srgb, var(--card) 74%, #000), var(--card));
+}
+
+/* "Brighten on hover" means lifting the card off the near black ground. */
+:root[data-theme='dark'] .client-card:hover,
+:root[data-theme='dark'] .client-card:focus-visible {
+  background:
+    radial-gradient(124% 92% at 0% 0%, color-mix(in srgb, var(--tile-tint) 30%, transparent), transparent 62%),
+    linear-gradient(158deg, color-mix(in srgb, var(--card) 88%, #fff), color-mix(in srgb, var(--card) 94%, #fff));
+}
+
+:root[data-theme='dark'] .platform-badge {
+  background: color-mix(in srgb, var(--badge-tint) 18%, var(--card));
+  color: color-mix(in srgb, var(--badge-tint) 42%, var(--ink));
+}
+
+@media (max-width: 700px) {
+  .clients-hero {
+    min-height: 200px;
+    padding: 28px 24px 26px;
+  }
+
+  .client-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Scale and lift are decoration; honor a reduced motion preference. */
+@media (prefers-reduced-motion: reduce) {
+  .clients-hero,
+  .client-card,
+  button.primary.action-cta {
+    transition: none;
+  }
+
+  .clients-hero:hover,
+  .clients-hero:focus-visible,
+  .client-card:hover,
+  .client-card:focus-visible,
+  button.primary.action-cta:hover {
+    transform: none;
+  }
 }
