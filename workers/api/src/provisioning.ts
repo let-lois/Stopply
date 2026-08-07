@@ -1,7 +1,6 @@
 import {
   DEFAULT_FUNNEL_LABELS,
   DEFAULT_LAYOUT,
-  LETLOIS_THEME,
   type FunnelLabels,
   type TenantRow,
 } from '@letlois/db';
@@ -199,7 +198,12 @@ export async function provisionTenant(env: Env, input: ProvisionInput): Promise<
         databaseId,
         dbName,
         schemaVersion,
-        input.themeJson ?? JSON.stringify(LETLOIS_THEME),
+        // No theme unless the caller supplied one. Stamping the light
+        // default here made every tenant look "branded" to the shell, which
+        // then applied a light palette inline over the dark chrome and left
+        // the sidebar nav unreadable in dark mode. An unbranded tenant
+        // follows the app palette, light and dark both.
+        input.themeJson ?? null,
         JSON.stringify(DEFAULT_LAYOUT),
         JSON.stringify(input.funnelLabels ?? DEFAULT_FUNNEL_LABELS),
         input.monthlyAdSpendBudget ?? null,

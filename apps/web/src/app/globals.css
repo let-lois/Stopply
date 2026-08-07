@@ -74,6 +74,20 @@
 :root { color-scheme: light; }
 :root[data-theme='dark'] { color-scheme: dark; }
 
+/* A branded tenant's theme_json lands as inline CSS variables on the app
+   container, which outranks everything here, including the dark palette.
+   That is intended, their branding wins. The trap is the tokens a theme
+   cannot set: --sidebar-bg is not part of ThemeTokens, so in dark mode it
+   stayed at the dark value while --ink-soft and --accent came from the
+   tenant's light theme, putting near black nav text on a near black
+   sidebar (about 2:1). Derive the sidebar from the tenant's own paper and
+   hairline instead, so the whole surface belongs to one palette. Scoped to
+   dark mode: in light mode both palettes already agree. */
+:root[data-theme='dark'] .tenant-themed {
+  --sidebar-bg: color-mix(in srgb, var(--paper) 65%, var(--hairline));
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.08), 0 8px 20px -10px rgba(0, 0, 0, 0.22);
+}
+
 * {
   box-sizing: border-box;
 }

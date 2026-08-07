@@ -131,6 +131,27 @@ export const LETLOIS_THEME: ThemeTokens = {
   fontMono: 'Spline Sans Mono',
 };
 
+// True when a stored theme is the untouched provisioning default, i.e. the
+// tenant has never actually been branded. This matters because a theme is
+// applied as inline CSS variables, which outrank the dark palette: a tenant
+// carrying this light default renders light ink over the dark chrome that
+// is not theme controlled (--sidebar-bg), and the nav goes unreadable. A
+// default theme is treated as no theme so those tenants follow the app
+// palette and dark mode works. Only the color tokens are compared; fonts
+// are theme independent and safe either way.
+export function isDefaultTheme(theme: Record<string, unknown> | null | undefined): boolean {
+  if (!theme) return false;
+  const colorKeys = (Object.keys(LETLOIS_THEME) as Array<keyof ThemeTokens>).filter(
+    (k) => k !== 'fontDisplay' && k !== 'fontBody' && k !== 'fontMono'
+  );
+  // customCss or a wordmark is deliberate branding even when every color is
+  // still the default, so such a theme is not "untouched".
+  if (theme.customCss || theme.wordmark) return false;
+  return colorKeys.every(
+    (k) => String(theme[k] ?? '').toUpperCase() === LETLOIS_THEME[k].toUpperCase()
+  );
+}
+
 export interface SessionRecord {
   userType: 'agency' | 'tenant';
   userId: string;

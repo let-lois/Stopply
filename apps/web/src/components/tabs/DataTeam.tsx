@@ -14,6 +14,19 @@ import { CodeBox } from '../CodeBox';
 import { applyThemeMode, getThemeMode, type ThemeMode } from '@/lib/theme';
 import { BudgetForm, type TenantCard } from '../AgencyOverview';
 
+// The palette a tenant starts from in the theme editor, and the base every
+// save is spread over so a partial edit still sends a complete theme (the
+// PUT schema requires every token). Mirrors LETLOIS_THEME in packages/db,
+// which apps/web cannot import: it is a Worker side package and the web app
+// does not depend on it. Keep the two in step if either changes.
+const DEFAULT_THEME_TOKENS: Record<string, string> = {
+  paper: '#F6F3EE', card: '#FFFFFF', ink: '#23201C', inkSoft: '#6F6A62', hairline: '#E7E1D8',
+  accent: '#3F5A52', accentSoft: '#E9EEEB', positive: '#3F5A52', negative: '#B0644F', amber: '#A98142',
+  verifiedGreen: '#4C7A5E', grayCheck: '#C9C3B8', redCheck: '#C0654E', channelGoogle: '#3F5A52',
+  channelMeta: '#A98142', channelWebsite: '#9A9389', fontDisplay: 'Fraunces', fontBody: 'Spline Sans',
+  fontMono: 'Spline Sans Mono',
+};
+
 interface TeamUser {
   id: string;
   email: string;
@@ -894,8 +907,14 @@ function SettingsSection({
   isAgency: boolean;
   refreshSettings: () => void;
 }) {
+  // An unbranded tenant reports no theme at all (see the settings route), so
+  // the editor seeds from the defaults it would otherwise be saving. Without
+  // this every swatch opens on black and one save would write that.
   const theme = settings.tenant.theme ?? {};
-  const [tokens, setTokens] = useState<Record<string, string>>(theme as Record<string, string>);
+  const [tokens, setTokens] = useState<Record<string, string>>({
+    ...DEFAULT_THEME_TOKENS,
+    ...(theme as Record<string, string>),
+  });
   const [labelDraft, setLabelDraft] = useState<FunnelLabels>(labels);
   const [mode, setMode] = useState<ThemeMode>('light');
   useEffect(() => setMode(getThemeMode()), []);
@@ -917,14 +936,7 @@ function SettingsSection({
   ];
 
   const saveTheme = async () => {
-    const full = {
-      paper: '#F6F3EE', card: '#FFFFFF', ink: '#23201C', inkSoft: '#6F6A62', hairline: '#E7E1D8',
-      accent: '#3F5A52', accentSoft: '#E9EEEB', positive: '#3F5A52', negative: '#B0644F', amber: '#A98142',
-      verifiedGreen: '#4C7A5E', grayCheck: '#C9C3B8', redCheck: '#C0654E', channelGoogle: '#3F5A52',
-      channelMeta: '#A98142', channelWebsite: '#9A9389', fontDisplay: 'Fraunces', fontBody: 'Spline Sans',
-      fontMono: 'Spline Sans Mono',
-      ...tokens,
-    };
+    const full = { ...DEFAULT_THEME_TOKENS, ...tokens };
     await api('/api/tenant/settings/theme', { method: 'PUT', json: full });
     toast('Theme saved');
     refreshSettings();

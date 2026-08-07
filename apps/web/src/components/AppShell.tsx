@@ -252,6 +252,16 @@ export function AppShell({
     return style as React.CSSProperties;
   }, [settings]);
 
+  // Whether the tenant overrode any color token. These land inline, which
+  // outranks the dark palette, so the neutrals the theme does not cover
+  // (--sidebar-bg) have to be pulled back onto the theme too, otherwise the
+  // two palettes mix and the sidebar nav goes unreadable. globals.css keys
+  // off this class to do that; see the .tenant-themed rule there.
+  const hasTenantTheme = useMemo(() => {
+    const theme = settings?.tenant.theme ?? {};
+    return Object.keys(TOKEN_TO_VAR).some((token) => !!theme[token]);
+  }, [settings]);
+
   if (hasTenant && error) {
     return (
       <div className="shell">
@@ -314,7 +324,7 @@ export function AppShell({
   const showOnboarding = !!settings && months.length === 0 && !isViewer;
 
   return (
-    <div style={themeStyle}>
+    <div className={hasTenantTheme ? 'tenant-themed' : undefined} style={themeStyle}>
       {settings?.tenant.theme?.customCss && (
         <style dangerouslySetInnerHTML={{ __html: `.tenant-app { ${''} } ${scopeCss(settings.tenant.theme.customCss)}` }} />
       )}

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { LETLOIS_THEME } from '@letlois/db';
 import { app } from '../src/index';
 import { FakeD1, FakeKV, makeEnv } from './helpers';
 import { clearResolverCache } from '../src/tenantResolver';
@@ -270,5 +271,71 @@ describe('login flow', () => {
       lastStatus = res.status;
     }
     expect(lastStatus).toBe(429);
+  });
+});
+
+// Provisioning used to stamp LETLOIS_THEME onto every tenant. A theme is
+// applied as inline CSS variables, which outrank the dark palette, so a
+// tenant carrying that light default rendered its dark ink over the dark
+// sidebar (not a theme token) and the nav was unreadable. GET /settings
+// reports an untouched default as no theme so the shell falls back to the
+// app palette; a real brand theme still comes through.
+describe('tenant settings theme', () => {
+  let env: ReturnType<typeof makeEnv>;
+
+  // Wires the tenant lookups directly rather than going through
+  // wireControlDb: FakeD1 runs the first handler whose pattern matches, so a
+  // later registration for the same query would never fire.
+  function wireWithTheme(themeJson: string | null) {
+    const row = { ...TENANT_ROW, theme_json: themeJson };
+    const db = env.CONTROL_DB as FakeD1;
+    db.on(/FROM tenants WHERE slug = \?/, (params) => ({ first: params[0] === 'beclinical' ? row : null }));
+    db.on(/FROM tenants WHERE id = \?/, (params) => ({ first: params[0] === 't_beclinical' ? row : null }));
+  }
+
+  async function getSettings() {
+    const { token } = await createSession(env as unknown as Env, {
+      userType: 'tenant',
+      userId: 'u_test',
+      role: 'account_admin',
+      tenantId: 't_beclinical',
+      assignedTenants: null,
+    });
+    const res = await request(
+      env,
+      '/api/tenant/settings',
+      { headers: { cookie: `lbi_session=${token}` } },
+      'beclinical.bi.letlois.com'
+    );
+    return (await res.json()) as { tenant: { theme: Record<string, string> | null } };
+  }
+
+  beforeEach(() => {
+    clearResolverCache();
+    env = makeEnv();
+  });
+
+  it('reports the untouched provisioning default as no theme', async () => {
+    wireWithTheme(JSON.stringify(LETLOIS_THEME));
+    const body = await getSettings();
+    expect(body.tenant.theme).toBeNull();
+  });
+
+  it('still reports a theme with a genuinely customized color', async () => {
+    wireWithTheme(JSON.stringify({ ...LETLOIS_THEME, accent: '#8A1538' }));
+    const body = await getSettings();
+    expect(body.tenant.theme?.accent).toBe('#8A1538');
+  });
+
+  it('treats default colors plus custom CSS as a real theme', async () => {
+    wireWithTheme(JSON.stringify({ ...LETLOIS_THEME, customCss: '.card { border-radius: 0 }' }));
+    const body = await getSettings();
+    expect(body.tenant.theme).not.toBeNull();
+  });
+
+  it('reports no theme when the tenant has none stored', async () => {
+    wireWithTheme(null);
+    const body = await getSettings();
+    expect(body.tenant.theme).toBeNull();
   });
 });
