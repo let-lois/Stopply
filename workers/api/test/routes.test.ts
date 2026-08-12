@@ -339,3 +339,99 @@ describe('tenant settings theme', () => {
     expect(body.tenant.theme).toBeNull();
   });
 });
+
+// Admin driven password reset. There is no email provider bound to the
+// Worker, so reset is something an admin performs on a user's behalf; these
+// pin the authorization boundary and the shown-once response.
+describe('password reset', () => {
+  let env: ReturnType<typeof makeEnv>;
+
+  beforeEach(() => {
+    clearResolverCache();
+    env = makeEnv();
+    wireControlDb(env.CONTROL_DB as FakeD1);
+  });
+
+  async function login(role: string, userType: string, tenantId: string | null) {
+    const { token, csrf } = await createSession(env as unknown as Env, {
+      userType: userType as 'agency' | 'tenant',
+      userId: 'u_test',
+      role: role as 'agency_admin',
+      tenantId,
+      assignedTenants: null,
+    });
+    return { cookie: `lbi_session=${token}`, csrf };
+  }
+
+  it('lets agency_admin reset an agency user and returns the password once', async () => {
+    const writes: unknown[][] = [];
+    (env.CONTROL_DB as FakeD1).on(/SELECT id, email FROM agency_users WHERE id = \?/, (params) => ({
+      first: params[0] === 'au_1' ? { id: 'au_1', email: 'staff@letlois.com' } : null,
+    }));
+    (env.CONTROL_DB as FakeD1).on(/UPDATE agency_users SET password_hash/, (params) => {
+      writes.push(params);
+      return {};
+    });
+    const { cookie, csrf } = await login('agency_admin', 'agency', null);
+    const res = await request(env, '/api/agency/users/au_1/reset-password', {
+      method: 'POST',
+      headers: { cookie, 'x-csrf-token': csrf, 'content-type': 'application/json' },
+      body: '{}',
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { email: string; tempPassword: string };
+    expect(body.email).toBe('staff@letlois.com');
+    expect(body.tempPassword).toBeTruthy();
+    // The stored value is a hash, never the password that was handed back.
+    expect(writes).toHaveLength(1);
+    expect(writes[0][0]).not.toBe(body.tempPassword);
+  });
+
+  it('403s agency_staff resetting an agency user (agency_admin only)', async () => {
+    const { cookie, csrf } = await login('agency_staff', 'agency', null);
+    const res = await request(env, '/api/agency/users/au_1/reset-password', {
+      method: 'POST',
+      headers: { cookie, 'x-csrf-token': csrf, 'content-type': 'application/json' },
+      body: '{}',
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('404s an unknown or deactivated agency user', async () => {
+    (env.CONTROL_DB as FakeD1).on(/SELECT id, email FROM agency_users WHERE id = \?/, () => ({
+      first: null,
+    }));
+    const { cookie, csrf } = await login('agency_admin', 'agency', null);
+    const res = await request(env, '/api/agency/users/au_missing/reset-password', {
+      method: 'POST',
+      headers: { cookie, 'x-csrf-token': csrf, 'content-type': 'application/json' },
+      body: '{}',
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('403s a viewer resetting a tenant user (tenantWrite required)', async () => {
+    const { cookie, csrf } = await login('viewer', 'tenant', 't_beclinical');
+    const res = await request(
+      env,
+      '/api/tenant/users/u_1/reset-password',
+      {
+        method: 'POST',
+        headers: { cookie, 'x-csrf-token': csrf, 'content-type': 'application/json' },
+        body: '{}',
+      },
+      'beclinical.bi.letlois.com'
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects a reset without a CSRF token', async () => {
+    const { cookie } = await login('agency_admin', 'agency', null);
+    const res = await request(env, '/api/agency/users/au_1/reset-password', {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: '{}',
+    });
+    expect(res.status).toBe(403);
+  });
+});

@@ -533,6 +533,9 @@ export function TeamSection({ currentUserId }: { currentUserId: string }) {
   const [tenants, setTenants] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [inviting, setInviting] = useState(false);
+  // Shown once after a reset, exactly like the invite result: the password
+  // is only ever returned in that one response, never stored in the clear.
+  const [reset, setReset] = useState<{ email: string; tempPassword: string } | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -563,6 +566,17 @@ export function TeamSection({ currentUserId }: { currentUserId: string }) {
     load();
   };
 
+  const resetPassword = async (u: AgencyUser) => {
+    if (!confirm(`Issue a new temporary password for ${u.name}? Their current one stops working.`)) {
+      return;
+    }
+    const res = await api<{ email: string; tempPassword: string }>(
+      `/api/agency/users/${u.id}/reset-password`,
+      { method: 'POST', json: {} }
+    );
+    setReset(res);
+  };
+
   return (
     <div className="stack" style={{ gap: 20 }}>
       <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -582,6 +596,21 @@ export function TeamSection({ currentUserId }: { currentUserId: string }) {
             load();
           }}
         />
+      )}
+
+      {reset && (
+        <div className="card stack">
+          <h3>New temporary password</h3>
+          <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+            Shown once. Pass it to {reset.email} over a channel you trust, then close this.
+          </p>
+          <p style={{ margin: 0 }}>
+            <code className="num">{reset.tempPassword}</code>
+          </p>
+          <button className="primary" style={{ alignSelf: 'flex-start' }} onClick={() => setReset(null)}>
+            Done
+          </button>
+        </div>
       )}
 
       <div className="card" style={{ overflowX: 'auto' }}>
@@ -633,6 +662,11 @@ export function TeamSection({ currentUserId }: { currentUserId: string }) {
                   </td>
                   <td>{u.active ? 'Active' : 'Deactivated'}</td>
                   <td>
+                    {u.active === 1 && (
+                      <button className="small" onClick={() => resetPassword(u)} style={{ marginRight: 6 }}>
+                        Reset password
+                      </button>
+                    )}
                     {u.active === 1 && u.id !== currentUserId && (
                       <button className="small" onClick={() => deactivate(u)}>
                         Deactivate

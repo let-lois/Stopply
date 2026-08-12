@@ -1622,3 +1622,32 @@ button.primary.action-cta:hover {
     padding-left: 24px;
   }
 }
+
+/* Text button that reads as a link. Stays a real <button> because it
+   toggles state rather than navigating, so it must not be an anchor with
+   no href. */
+.linklike {
+  align-self: flex-start;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.linklike:hover {
+  color: color-mix(in srgb, var(--accent) 80%, var(--ink));
+}
+
+.login-help {
+  border-radius: 10px;
+  border: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--accent-soft) 45%, transparent);
+  padding: 14px 16px;
+  font-size: 13.5px;
+  line-height: 1.55;
+}

@@ -291,6 +291,40 @@ agencyRoutes.put('/secrets/:key', async (c) => {
 });
 
 // User deletion is agency_admin only; agency_staff explicitly cannot.
+// Admin driven password reset. There is no email provider bound to this
+// Worker (see Env), so a self service "email me a link" flow is not
+// possible; an agency_admin resets on the user's behalf and hands the new
+// temp password over out of band. Same response shape as an invite: the
+// password is returned once and only its hash is stored.
+//
+// This does NOT end sessions the user already has. Sessions live in KV
+// keyed by token alone (session.ts), with no per user index to enumerate,
+// so an existing sign in survives until its own TTL expires. Fine for the
+// "I forgot my password" case this exists for; not sufficient on its own
+// for "revoke this person's access right now", which wants deactivation.
+agencyRoutes.post('/users/:id/reset-password', requireRole('agency_admin'), async (c) => {
+  const session = c.get('session')!;
+  const id = c.req.param('id');
+  const user = await c.env.CONTROL_DB.prepare(
+    `SELECT id, email FROM agency_users WHERE id = ? AND active = 1`
+  )
+    .bind(id)
+    .first<{ id: string; email: string }>();
+  if (!user) return c.json({ error: 'not found' }, 404);
+
+  const tempPassword = randomToken(9);
+  await c.env.CONTROL_DB.prepare(`UPDATE agency_users SET password_hash = ? WHERE id = ?`)
+    .bind(await hashPassword(tempPassword), id)
+    .run();
+  await writeAudit(c.env, {
+    actorType: 'agency',
+    actorId: session.userId,
+    action: 'agency_user.password_reset',
+    target: user.email,
+  });
+  return c.json({ id, email: user.email, tempPassword });
+});
+
 agencyRoutes.delete('/users/:id', requireRole('agency_admin'), async (c) => {
   const session = c.get('session')!;
   const id = c.req.param('id');

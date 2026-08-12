@@ -667,6 +667,25 @@ function TeamSection({ toast }: { toast: (s: string) => void }) {
     }
   };
 
+  // Nothing is emailed (the API Worker has no mail provider), so a reset
+  // hands the admin a new temp password to pass on themselves. Reuses the
+  // same shown-once panel as an invite.
+  const resetPassword = async (u: TeamUser) => {
+    if (!confirm(`Issue a new temporary password for ${u.name}? Their current one stops working.`)) {
+      return;
+    }
+    try {
+      const res = await api<{ tempPassword: string }>(`/api/tenant/users/${u.id}/reset-password`, {
+        method: 'POST',
+        json: {},
+      });
+      setTempPassword(res.tempPassword);
+      toast(`New password issued for ${u.email}`);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'reset failed');
+    }
+  };
+
   return (
     <section className="card stack">
       <h3>Team</h3>
@@ -687,10 +706,13 @@ function TeamSection({ toast }: { toast: (s: string) => void }) {
               <td>{u.role}</td>
               <td>
                 {u.role === 'viewer' && (
-                  <button className="small" onClick={() => setConfigFor(u)}>
+                  <button className="small" onClick={() => setConfigFor(u)} style={{ marginRight: 6 }}>
                     View config
                   </button>
                 )}
+                <button className="small" onClick={() => resetPassword(u)}>
+                  Reset password
+                </button>
               </td>
             </tr>
           ))}
