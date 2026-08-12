@@ -57,6 +57,10 @@ interface Props {
   // Jumps to the Data and Team section. Only used by the empty state, so
   // optional: callers that never render a data-less tenant can omit it.
   onOpenDataTeam?: () => void;
+  // True while the months request is still in flight. Without it an empty
+  // months array reads as "this client has no data" and the empty state
+  // flashes up before the real dashboard replaces it.
+  loading?: boolean;
   // Narrows every number on this tab to one ad platform. null/undefined
   // shows everything (the Main Dashboard recap); the Meta and Google
   // tabs each set this to their own channel.
@@ -102,9 +106,13 @@ function sumChannels(data: MonthData | undefined, field: 'leads' | 'scheduled' |
   return data.channels.reduce((acc, ch) => acc + Number(ch[field] ?? 0), 0);
 }
 
-export function PerformanceTab({ settings, labels, months, rangeStart, rangeEnd, sources, onOpenDataTeam, channelFilter, hideCampaigns, comparison, refreshSources }: Props) {
+export function PerformanceTab({ settings, labels, months, rangeStart, rangeEnd, sources, onOpenDataTeam, loading, channelFilter, hideCampaigns, comparison, refreshSources }: Props) {
   const canAdmin = settings.role !== 'viewer';
 
+  // Order matters: still loading is not the same as genuinely empty, and
+  // showing the empty state first made every client look unconfigured for a
+  // beat before its numbers appeared.
+  if (loading) return <DashboardSkeleton />;
   if (months.length === 0) {
     return <EmptyDashboard labels={labels} channelFilter={channelFilter ?? null} onOpenDataTeam={onOpenDataTeam} />;
   }
@@ -137,6 +145,25 @@ export function PerformanceTab({ settings, labels, months, rangeStart, rangeEnd,
       hideCampaigns={hideCampaigns}
       refreshSources={refreshSources}
     />
+  );
+}
+
+// Placeholder in the dashboard's own shape while the months request is in
+// flight. Same tile grid and table block as the loaded view, so nothing
+// jumps when the real numbers arrive.
+function DashboardSkeleton() {
+  return (
+    <div className="stack" style={{ gap: 16 }}>
+      <div className="kpi-grid">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div key={i} className="kpi">
+            <div className="skeleton" style={{ width: '55%' }} />
+            <div className="skeleton" style={{ width: '75%', marginTop: 10, minHeight: 28 }} />
+          </div>
+        ))}
+      </div>
+      <div className="skeleton" style={{ minHeight: 180, borderRadius: 12 }} />
+    </div>
   );
 }
 

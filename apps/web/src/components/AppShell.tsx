@@ -117,6 +117,11 @@ export function AppShell({
 }) {
   const [settings, setSettings] = useState<TenantSettings | null>(null);
   const [months, setMonths] = useState<string[]>([]);
+  // Distinct from months.length === 0, which is also true while the
+  // request is still in flight. Without this the dashboard rendered its
+  // "nothing imported yet" state for the second or two before the months
+  // arrived, so every client looked empty first and then filled in.
+  const [monthsLoaded, setMonthsLoaded] = useState(false);
   // Master date range: shared across Performance, WorkBackwards, Present,
   // and Planning, so switching the period once affects the whole client
   // dashboard instead of picking a month separately in every section.
@@ -194,7 +199,10 @@ export function AppShell({
           setRangeEnd(r.months[0]);
         }
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      // Settles on failure too: a client whose months could not be fetched
+      // should land on the empty state, not spin forever.
+      .finally(() => setMonthsLoaded(true));
     // Demo mode never touches the network. Demo clients that have a demo
     // logo asset configured (see demoData.ts) show it in the client
     // profile header via a static path instead of the real per-tenant
@@ -344,7 +352,7 @@ export function AppShell({
 
   const activeConsole = consoleView && consoleKeys.includes(consoleView) ? consoleView : consoleView ? 'clients' : null;
 
-  const showOnboarding = !!settings && months.length === 0 && !isViewer;
+  const showOnboarding = !!settings && monthsLoaded && months.length === 0 && !isViewer;
 
   return (
     <div className={hasTenantTheme ? 'tenant-themed' : undefined} style={themeStyle}>
@@ -525,6 +533,7 @@ export function AppShell({
                     <section id="section-performance" className="page-section stack" style={{ gap: 10 }}>
                       <h2 className="section-title">Main Dashboard</h2>
                       <PerformanceTab
+                        loading={!monthsLoaded}
                         onOpenDataTeam={() => openInternal('data-team')}
                         settings={settings}
                         labels={labels}
@@ -549,6 +558,7 @@ export function AppShell({
                         Meta
                       </h2>
                       <PerformanceTab
+                        loading={!monthsLoaded}
                         onOpenDataTeam={() => openInternal('data-team')}
                         settings={settings}
                         labels={labels}
@@ -569,6 +579,7 @@ export function AppShell({
                         Google Ads
                       </h2>
                       <PerformanceTab
+                        loading={!monthsLoaded}
                         onOpenDataTeam={() => openInternal('data-team')}
                         settings={settings}
                         labels={labels}
