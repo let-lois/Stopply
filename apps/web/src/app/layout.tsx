@@ -13,6 +13,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         {/* Apply the saved light/dark preference before first paint. */}
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        {/* Stamps which build is serving the page. Answering "is this fix
+            deployed?" had meant inferring it from whether a symptom moved,
+            which is slow and gets it wrong. window.STOPPLY_BUILD is also
+            readable from the console. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.STOPPLY_BUILD=${JSON.stringify({
+              sha: process.env.NEXT_PUBLIC_BUILD_SHA,
+              branch: process.env.NEXT_PUBLIC_BUILD_BRANCH,
+            })};console.info('Stopply build',window.STOPPLY_BUILD.sha,'('+window.STOPPLY_BUILD.branch+')');`,
+          }}
+        />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link

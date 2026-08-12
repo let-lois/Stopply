@@ -12,6 +12,10 @@
   const out = {};
   const root = document.documentElement;
 
+  // Which build is serving this page. Without it, "the fix is not deployed"
+  // and "the fix does not work" look the same from the outside.
+  out.build = window.STOPPLY_BUILD ?? '(no build stamp: this bundle predates it)';
+
   out.mode = {
     dataThemeAttribute: root.getAttribute('data-theme') ?? '(not set)',
     localStorage: (() => {
