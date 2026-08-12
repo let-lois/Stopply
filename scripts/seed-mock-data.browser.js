@@ -292,18 +292,26 @@
     csrf = switched.csrf;
     const slug = switched.tenant?.slug ?? t.id;
 
+    // Sources are keyed by a slug of their NAME, not by connector type, so
+    // the key to import against must come back from the API. Existing ones
+    // are matched on connector_type so a re-run reuses them.
     const { sources } = await call('/api/tenant/sources');
-    const have = new Set((sources ?? []).map((s) => s.key));
+    const byType = new Map();
+    for (const s of sources ?? []) {
+      if (s.connector_type && !byType.has(s.connector_type)) byType.set(s.connector_type, s.key);
+    }
+    const sourceKeys = {};
     for (const s of PROFILES[profile]) {
-      if (have.has(s.key)) continue;
-      await call('/api/tenant/sources', { method: 'POST', json: { name: s.name, connectorType: s.key } });
-      log('  + source ' + s.key);
+      if (byType.has(s.key)) { sourceKeys[s.key] = byType.get(s.key); continue; }
+      const created = await call('/api/tenant/sources', { method: 'POST', json: { name: s.name, connectorType: s.key } });
+      sourceKeys[s.key] = created.key;
+      log('  + source ' + s.key + ' as "' + created.key + '"');
     }
 
     for (const month of months) {
       for (const { key, csv } of buildCsvs(profile, month, slug)) {
         try {
-          const res = await call('/api/imports', { method: 'POST', json: { sourceKey: key, month, csv } });
+          const res = await call('/api/imports', { method: 'POST', json: { sourceKey: sourceKeys[key], month, csv } });
           log('  ' + month + ' ' + key + ': ' + res.rowCount + ' rows');
         } catch (err) {
           console.error('[seed]  ' + month + ' ' + key + ' FAILED', err.message);

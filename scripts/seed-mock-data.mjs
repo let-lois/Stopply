@@ -107,17 +107,30 @@ const PROFILES = {
   ],
 };
 
-async function ensureSources(needed) {
+// Sources are keyed by a slug of their NAME, not by connector type
+// (tenant.ts derives key = slugifyKey(name)), so the key to import against
+// has to come back from the API. Assuming key === connectorType 404s on
+// every import with "unknown source". Existing sources are matched by
+// connector_type so re-running reuses them instead of piling up duplicates.
+async function resolveSourceKeys(needed) {
   const { sources } = await call('/api/tenant/sources');
-  const have = new Set((sources ?? []).map((s) => s.key));
+  const byType = new Map();
+  for (const s of sources ?? []) {
+    if (s.connector_type && !byType.has(s.connector_type)) byType.set(s.connector_type, s.key);
+  }
+  const keys = {};
   for (const s of needed) {
-    if (have.has(s.key)) continue;
-    await call('/api/tenant/sources', {
+    if (byType.has(s.key)) {
+      keys[s.key] = byType.get(s.key);
+      continue;
+    }
+    const created = await call('/api/tenant/sources', {
       method: 'POST',
       json: { name: s.name, connectorType: s.key },
     });
-    console.log(`    + source ${s.key}`);
+    keys[s.key] = created.key;
   }
+  return keys;
 }
 
 function buildCsvs(profile, month, slug) {
@@ -149,14 +162,15 @@ async function seedTenant(tenant, profile) {
   csrf = switched.csrf;
   const slug = switched.tenant?.slug ?? tenant.id;
 
-  await ensureSources(PROFILES[profile]);
+  const sourceKeys = await resolveSourceKeys(PROFILES[profile]);
+  console.log('    sources: ' + Object.entries(sourceKeys).map(([t, k]) => t + '->' + k).join(', '));
 
   for (const month of months) {
     for (const { key, csv } of buildCsvs(profile, month, slug)) {
       try {
         const res = await call('/api/imports', {
           method: 'POST',
-          json: { sourceKey: key, month, csv },
+          json: { sourceKey: sourceKeys[key], month, csv },
         });
         console.log(`    ${month} ${key}: ${res.rowCount} rows (${res.kind})`);
       } catch (err) {
