@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { isDemoMode, shouldShowDemoBadge } from '@/lib/demoMode';
+import { getThemeMode, subscribeThemeMode, type ThemeMode } from '@/lib/theme';
 import { getActiveDemoClientLogoUrl } from '@/lib/demoData';
 import type { Comparison, SourceInfo, TenantSettings } from '@/lib/types';
 import { DEFAULT_LABELS } from '@/lib/types';
@@ -142,6 +143,13 @@ export function AppShell({
   const [logoSrc, setLogoSrc] = useState('/api/tenant/logo');
   const [error, setError] = useState<string | null>(null);
   const [canSecrets, setCanSecrets] = useState(false);
+  // Read after mount and then watched, since the mode lives as an attribute
+  // on <html> that React does not otherwise see change.
+  const [themeMode, setThemeMode] = useState<ThemeMode>('light');
+  useEffect(() => {
+    setThemeMode(getThemeMode());
+    return subscribeThemeMode(setThemeMode);
+  }, []);
 
   // Scroll the one-page dashboard to a client-facing section. If a console
   // or internal view is currently showing, the section is not mounted yet,
@@ -240,27 +248,42 @@ export function AppShell({
   }, [consoleView, internalView, settings]);
 
   // Apply the tenant theme as CSS variables on the app container.
+  //
+  // Colors only in light mode. A tenant's palette is a light one, and it
+  // lands inline, which outranks the dark palette, so opening a client used
+  // to flip the whole window (agency sidebar included) from dark to light
+  // for an agency user who had explicitly chosen dark. Choosing dark is a
+  // deliberate act by the person at the screen; a client's branding should
+  // not silently undo it while they browse between clients.
+  //
+  // This is also why it is decided here rather than server side: the API
+  // already reports an untouched default theme as absent, but that depends
+  // on the stored value matching the default exactly, and on the Worker
+  // having shipped. Gating on the viewer's own mode holds regardless.
+  //
+  // Fonts still apply in both modes; a typeface does not fight a palette.
   const themeStyle = useMemo(() => {
     const style: Record<string, string> = {};
     const theme = settings?.tenant.theme ?? {};
-    for (const [token, cssVar] of Object.entries(TOKEN_TO_VAR)) {
-      if (theme[token]) style[cssVar] = theme[token]!;
+    if (themeMode === 'light') {
+      for (const [token, cssVar] of Object.entries(TOKEN_TO_VAR)) {
+        if (theme[token]) style[cssVar] = theme[token]!;
+      }
     }
     if (theme.fontDisplay) style['--font-display'] = `'${theme.fontDisplay}', serif`;
     if (theme.fontBody) style['--font-body'] = `'${theme.fontBody}', sans-serif`;
     if (theme.fontMono) style['--font-mono'] = `'${theme.fontMono}', monospace`;
     return style as React.CSSProperties;
-  }, [settings]);
+  }, [settings, themeMode]);
 
-  // Whether the tenant overrode any color token. These land inline, which
-  // outranks the dark palette, so the neutrals the theme does not cover
-  // (--sidebar-bg) have to be pulled back onto the theme too, otherwise the
-  // two palettes mix and the sidebar nav goes unreadable. globals.css keys
-  // off this class to do that; see the .tenant-themed rule there.
+  // Whether a tenant palette is actually in effect, which now means light
+  // mode only. globals.css keys off this class for the neutrals a theme
+  // cannot set (--sidebar-bg); see the .tenant-themed rule there.
   const hasTenantTheme = useMemo(() => {
+    if (themeMode !== 'light') return false;
     const theme = settings?.tenant.theme ?? {};
     return Object.keys(TOKEN_TO_VAR).some((token) => !!theme[token]);
-  }, [settings]);
+  }, [settings, themeMode]);
 
   if (hasTenant && error) {
     return (

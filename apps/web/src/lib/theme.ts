@@ -31,6 +31,17 @@ export function applyThemeMode(mode: ThemeMode): void {
   }
 }
 
+// Watch for the mode changing. applyThemeMode writes an attribute on <html>,
+// which React does not observe, so anything that has to re-render on a theme
+// switch (AppShell decides whether to apply a tenant's palette) subscribes
+// here instead of reading the mode once at mount.
+export function subscribeThemeMode(onChange: (mode: ThemeMode) => void): () => void {
+  if (typeof document === 'undefined') return () => undefined;
+  const observer = new MutationObserver(() => onChange(getThemeMode()));
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  return () => observer.disconnect();
+}
+
 // Inlined into the document head so the correct theme is applied before the
 // first paint, avoiding a flash of the light theme for dark mode users.
 export const themeInitScript = `(function(){try{var m=localStorage.getItem('${KEY}');if(m==='dark'||m==='light'){document.documentElement.setAttribute('data-theme',m);}}catch(e){}})();`;
