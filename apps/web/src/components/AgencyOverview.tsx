@@ -164,15 +164,62 @@ function ViewToggle({ view, onChange }: { view: ClientsView; onChange: (v: Clien
   );
 }
 
-// The account to feature in the hero: whichever rolled up most recently.
-// Real data off agency_rollup, not a computed "top performer", which would
-// mean putting numbers back on this page (see the note below).
-function pickFeatured(tenants: TenantCard[]): TenantCard | null {
-  if (tenants.length === 0) return null;
-  const rolled = tenants.filter((t) => t.pulled_at);
-  if (rolled.length === 0) return tenants[0];
-  return rolled.reduce((best, t) => (t.pulled_at! > best.pulled_at! ? t : best));
+// The client this browser last opened. Kept locally like the view toggle
+// and the theme: whose work is in front of you is a property of the person
+// at the screen, not of the account, so it should not follow one agency
+// user's browsing into everyone else's hero.
+const LAST_CLIENT_KEY = 'lbi-last-client';
+
+function storedLastClientId(): string | null {
+  try {
+    return localStorage.getItem(LAST_CLIENT_KEY);
+  } catch {
+    return null;
+  }
 }
+
+function rememberLastClient(id: string): void {
+  try {
+    localStorage.setItem(LAST_CLIENT_KEY, id);
+  } catch {
+    /* ignore */
+  }
+}
+
+// What the hero features, and why, so the eyebrow can say which it is
+// rather than claiming "most recent activity" over something chosen on a
+// different basis.
+//
+// Whichever client you last opened wins: coming back to the roster, the one
+// you were working in is the one you most likely want again. Falls back to
+// the most recent rollup on a fresh browser, and to the first client when
+// nothing has rolled up at all. Rollup recency is real agency_rollup data,
+// not a computed "top performer", which would mean putting numbers back on
+// this page (see the note below).
+type FeaturedReason = 'opened' | 'rollup' | 'first';
+
+function pickFeatured(
+  tenants: TenantCard[],
+  lastOpenedId: string | null
+): { tenant: TenantCard; reason: FeaturedReason } | null {
+  if (tenants.length === 0) return null;
+  // A remembered client that has since been removed falls through rather
+  // than emptying the hero.
+  const lastOpened = lastOpenedId ? tenants.find((t) => t.id === lastOpenedId) : undefined;
+  if (lastOpened) return { tenant: lastOpened, reason: 'opened' };
+  const rolled = tenants.filter((t) => t.pulled_at);
+  if (rolled.length === 0) return { tenant: tenants[0]!, reason: 'first' };
+  return {
+    tenant: rolled.reduce((best, t) => (t.pulled_at! > best.pulled_at! ? t : best)),
+    reason: 'rollup',
+  };
+}
+
+const FEATURED_EYEBROW: Record<FeaturedReason, string> = {
+  opened: 'Last opened',
+  rollup: 'Most recent activity',
+  first: 'Featured client',
+};
 
 // A selection surface, not a dashboard. Every number that used to live on
 // each client (leads, revenue, ROAS, budget pacing, edit budget) now lives
@@ -194,7 +241,11 @@ export function ClientsSection({
   // the app is a static export, so reading localStorage during render would
   // not match the prerendered HTML.
   const [view, setView] = useState<ClientsView>('cards');
-  useEffect(() => setView(storedView()), []);
+  const [lastClientId, setLastClientId] = useState<string | null>(null);
+  useEffect(() => {
+    setView(storedView());
+    setLastClientId(storedLastClientId());
+  }, []);
 
   const chooseView = (v: ClientsView) => {
     setView(v);
@@ -220,10 +271,12 @@ export function ClientsSection({
       { method: 'POST', json: { tenantId: t.id } }
     );
     setCsrf(res.csrf);
+    rememberLastClient(t.id);
     onEnterTenant(res.tenant);
   };
 
-  const featured = pickFeatured(tenants);
+  const featuredPick = pickFeatured(tenants, lastClientId);
+  const featured = featuredPick?.tenant ?? null;
   const rest = tenants.filter((t) => t.id !== featured?.id);
 
   const card = (t: TenantCard) => {
@@ -353,9 +406,7 @@ export function ClientsSection({
           onClick={() => enter(featured)}
           onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && enter(featured)}
         >
-          <span className="clients-eyebrow">
-            {featured.pulled_at ? 'Most recent activity' : 'Featured client'}
-          </span>
+          <span className="clients-eyebrow">{FEATURED_EYEBROW[featuredPick!.reason]}</span>
           <h2 className="clients-hero-title">{featured.name}</h2>
           <div className="clients-hero-meta">
             <span
