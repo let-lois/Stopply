@@ -11,7 +11,8 @@
     "migrate:tenants": "node scripts/migrate-tenants.mjs",
     "seed": "node scripts/seed.mjs",
     "provision:tenant": "node scripts/provision-tenant.mjs",
-    "seed:mock": "node scripts/seed-mock-data.mjs"
+    "seed:mock": "node scripts/seed-mock-data.mjs",
+    "seed:mock:browser": "node scripts/build-browser-seeder.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.0",
