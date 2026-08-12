@@ -66,6 +66,25 @@ const DEMO_CLIENTS: DemoClient[] = [
     google: 3000,
     logoUrl: null,
   },
+  // Single platform on purpose: the other three all run Meta and Google, so
+  // nothing in the demo exercised the roster's per-platform treatment (a
+  // Google-only client reads blue, Meta-only purple, both a blend). Also the
+  // only client without hand-authored campaign rows, so it exercises the
+  // monthData fallback above.
+  {
+    id: 'allstar',
+    slug: 'allstar',
+    name: 'Allstar',
+    plan: 'pro',
+    timezone: 'America/Phoenix',
+    platforms: ['google'],
+    monthlyBudget: 9000,
+    platformBudgets: { google: 9000 },
+    months: ['2026-06'],
+    meta: 0,
+    google: 6400,
+    logoUrl: null,
+  },
 ];
 
 const DEFAULT_CLIENT = DEMO_CLIENTS[0];
@@ -184,11 +203,10 @@ export function getDemoSources(): SourceInfo[] {
 }
 
 // Fallback for a client/month with no entry in DEFAULT_CAMPAIGN_ROWS
-// and no saved edits either. Not reachable today - every current demo
-// client/month has hand-authored rows - it only guards a future client
-// added without them. Spend is the one real input (a client's
-// configured budget); everything else has no underlying data to sum,
-// so it is 0 rather than a plausible-looking invented number.
+// and no saved edits either. Allstar takes this path; the other demo
+// clients all have hand-authored rows. Spend is the one real input (a
+// client's configured budget); everything else has no underlying data to
+// sum, so it is 0 rather than a plausible-looking invented number.
 function monthData(month: string, meta: number, google: number): MonthData {
   const channels: ChannelMetrics[] = [];
   if (meta > 0) {
