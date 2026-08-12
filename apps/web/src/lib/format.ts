@@ -10,10 +10,39 @@ export function fmtPct(n: number): string {
   return `${(n * 100).toFixed(1)}%`;
 }
 
+// A tenant's timezone reaches these formatters straight from the database,
+// where it was free text until the API started validating it, so values
+// like "California" exist. Intl throws a RangeError on a zone it cannot
+// resolve, and since these run inside the dashboard's render path, one bad
+// row took the entire client page down with "This page couldn't load"
+// rather than mislabelling a date.
+//
+// Returns undefined for anything unusable, letting each caller keep its own
+// existing default. Results are cached because this runs per rendered date.
+const tzCache = new Map<string, string | undefined>();
+
+export function safeTimeZone(timezone: string | null | undefined): string | undefined {
+  if (!timezone) return undefined;
+  if (tzCache.has(timezone)) return tzCache.get(timezone);
+  let resolved: string | undefined;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone });
+    resolved = timezone;
+  } catch {
+    resolved = undefined;
+  }
+  tzCache.set(timezone, resolved);
+  return resolved;
+}
+
 export function monthLabel(month: string, timezone?: string): string {
   const [y, m] = month.split('-').map(Number);
   const d = new Date(Date.UTC(y ?? 2000, (m ?? 1) - 1, 15));
-  return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: timezone ?? 'UTC' });
+  return d.toLocaleDateString('en-US', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: safeTimeZone(timezone) ?? 'UTC',
+  });
 }
 
 export function fmtStamp(iso: string | null, timezone?: string): string {
@@ -23,7 +52,9 @@ export function fmtStamp(iso: string | null, timezone?: string): string {
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
-    timeZone: timezone,
+    // Undefined here means the viewer's own zone, which is what this did
+    // before when no timezone was passed.
+    timeZone: safeTimeZone(timezone),
   });
 }
 

@@ -435,3 +435,91 @@ describe('password reset', () => {
     expect(res.status).toBe(403);
   });
 });
+
+// A tenant's timezone was free text, so "California" reached the database
+// and every date formatter in the dashboard threw a RangeError on it,
+// taking the whole client page down. Both write paths now reject a zone
+// Intl cannot resolve.
+describe('timezone validation', () => {
+  let env: ReturnType<typeof makeEnv>;
+
+  beforeEach(() => {
+    clearResolverCache();
+    env = makeEnv();
+    wireControlDb(env.CONTROL_DB as FakeD1);
+  });
+
+  async function agencyLogin() {
+    const { token, csrf } = await createSession(env as unknown as Env, {
+      userType: 'agency',
+      userId: 'u_test',
+      role: 'agency_admin',
+      tenantId: null,
+      assignedTenants: null,
+    });
+    return { cookie: `lbi_session=${token}`, csrf };
+  }
+
+  async function tenantLogin() {
+    const { token, csrf } = await createSession(env as unknown as Env, {
+      userType: 'tenant',
+      userId: 'u_test',
+      role: 'account_admin',
+      tenantId: 't_beclinical',
+      assignedTenants: null,
+    });
+    return { cookie: `lbi_session=${token}`, csrf };
+  }
+
+  it('rejects provisioning a tenant with an unresolvable timezone', async () => {
+    const { cookie, csrf } = await agencyLogin();
+    const res = await request(env, '/api/agency/tenants', {
+      method: 'POST',
+      headers: { cookie, 'x-csrf-token': csrf, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        slug: 'newclient',
+        name: 'New Client',
+        adminEmail: 'a@b.com',
+        adminName: 'A',
+        timezone: 'California',
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects an unresolvable timezone on the settings route', async () => {
+    const { cookie, csrf } = await tenantLogin();
+    const res = await request(
+      env,
+      '/api/tenant/settings/timezone',
+      {
+        method: 'PUT',
+        headers: { cookie, 'x-csrf-token': csrf, 'content-type': 'application/json' },
+        body: JSON.stringify({ timezone: 'California' }),
+      },
+      'beclinical.bi.letlois.com'
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('accepts a real IANA zone and stores it', async () => {
+    const writes: unknown[][] = [];
+    (env.CONTROL_DB as FakeD1).on(/UPDATE tenants SET timezone/, (params) => {
+      writes.push(params);
+      return {};
+    });
+    const { cookie, csrf } = await tenantLogin();
+    const res = await request(
+      env,
+      '/api/tenant/settings/timezone',
+      {
+        method: 'PUT',
+        headers: { cookie, 'x-csrf-token': csrf, 'content-type': 'application/json' },
+        body: JSON.stringify({ timezone: 'America/Los_Angeles' }),
+      },
+      'beclinical.bi.letlois.com'
+    );
+    expect(res.status).toBe(200);
+    expect(writes).toEqual([['America/Los_Angeles', 't_beclinical']]);
+  });
+});

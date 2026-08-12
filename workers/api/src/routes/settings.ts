@@ -98,6 +98,49 @@ settingsRoutes.put('/funnel-labels', tenantWrite, async (c) => {
   return c.json({ ok: true });
 });
 
+// Timezone was set once at provisioning with no way to correct it after,
+// which mattered because the field was free text: a tenant stored as
+// "California" formatted every date against a zone Intl cannot resolve.
+// Provisioning now rejects those, and this fixes the ones already stored.
+const timezoneSchema = z
+  .object({
+    timezone: z
+      .string()
+      .max(64)
+      .refine(
+        (tz) => {
+          try {
+            new Intl.DateTimeFormat('en-US', { timeZone: tz });
+            return true;
+          } catch {
+            return false;
+          }
+        },
+        { message: 'not a recognized timezone, use an IANA name such as America/Los_Angeles' }
+      ),
+  })
+  .strict();
+
+settingsRoutes.put('/timezone', tenantWrite, async (c) => {
+  const tenant = c.get('tenant')!;
+  const session = c.get('session')!;
+  const body = timezoneSchema.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: 'invalid timezone', details: body.error.flatten() }, 400);
+  await c.env.CONTROL_DB.prepare(`UPDATE tenants SET timezone = ? WHERE id = ?`)
+    .bind(body.data.timezone, tenant.id)
+    .run();
+  clearResolverCache();
+  await writeAudit(c.env, {
+    actorType: session.userType,
+    actorId: session.userId,
+    tenantId: tenant.id,
+    action: 'timezone.update',
+    before: { timezone: tenant.timezone },
+    after: { timezone: body.data.timezone },
+  });
+  return c.json({ ok: true, timezone: body.data.timezone });
+});
+
 // Logo upload to R2. The body is the raw image; content type restricted.
 settingsRoutes.put('/logo', tenantWrite, async (c) => {
   const tenant = c.get('tenant')!;

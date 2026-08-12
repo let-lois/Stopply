@@ -940,6 +940,7 @@ function SettingsSection({
     ...(theme as Record<string, string>),
   });
   const [labelDraft, setLabelDraft] = useState<FunnelLabels>(labels);
+  const [tzDraft, setTzDraft] = useState(settings.tenant.timezone);
   const [mode, setMode] = useState<ThemeMode>('light');
   useEffect(() => setMode(getThemeMode()), []);
   const setThemeMode = (m: ThemeMode) => {
@@ -970,6 +971,25 @@ function SettingsSection({
     await api('/api/tenant/settings/funnel-labels', { method: 'PUT', json: labelDraft });
     toast('Funnel labels saved');
     refreshSettings();
+  };
+
+  const saveTimezone = async () => {
+    try {
+      await api('/api/tenant/settings/timezone', { method: 'PUT', json: { timezone: tzDraft.trim() } });
+      toast('Timezone saved');
+      refreshSettings();
+    } catch (err) {
+      // The API's 400 body names why it was rejected; the bare message is
+      // just "invalid timezone", which does not help anyone fix it.
+      const detail =
+        err instanceof ApiError
+          ? ((err.body.details as { fieldErrors?: Record<string, string[]> } | undefined)?.fieldErrors
+              ?.timezone?.[0] ?? err.message)
+          : err instanceof Error
+            ? err.message
+            : 'save failed';
+      toast(detail);
+    }
   };
 
   // The api helper does not handle binary bodies; the logo goes raw.
@@ -1070,6 +1090,39 @@ function SettingsSection({
         <button className="primary" style={{ alignSelf: 'flex-start' }} onClick={saveTheme}>
           Save theme
         </button>
+      </div>
+
+      {/* Dates across this client's dashboard are formatted in this zone. It
+          is validated on save: an unresolvable value used to be accepted and
+          then crashed every page that rendered a date. */}
+      <div className="stack">
+        <h3 style={{ fontSize: 16 }}>Timezone</h3>
+        <div className="row" style={{ alignItems: 'flex-end' }}>
+          <label style={{ flex: 1 }}>
+            IANA name
+            <input
+              value={tzDraft}
+              list="tz-suggestions"
+              placeholder="America/Los_Angeles"
+              onChange={(e) => setTzDraft(e.target.value)}
+            />
+          </label>
+          <button className="primary" onClick={saveTimezone}>
+            Save timezone
+          </button>
+        </div>
+        <datalist id="tz-suggestions">
+          {[
+            'America/Los_Angeles',
+            'America/Denver',
+            'America/Phoenix',
+            'America/Chicago',
+            'America/New_York',
+            'UTC',
+          ].map((tz) => (
+            <option key={tz} value={tz} />
+          ))}
+        </datalist>
       </div>
 
       <div className="stack">

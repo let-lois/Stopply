@@ -11,11 +11,32 @@ import { listAgencySettings, setAgencySetting, isManagedKey, canManageSecrets } 
 export const agencyRoutes = new Hono<AppContext>();
 agencyRoutes.use('*', agencyOnly);
 
+// The New client form takes the timezone as free text, so "California" got
+// stored and every date formatter downstream threw a RangeError on it,
+// taking that client's whole dashboard down. Reject anything Intl cannot
+// resolve at the point it is written; asking Intl is the only accurate
+// check, since the valid set is the host's IANA database, not a pattern.
+function isResolvableTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const timezoneField = z
+  .string()
+  .max(64)
+  .refine(isResolvableTimeZone, {
+    message: 'not a recognized timezone, use an IANA name such as America/Los_Angeles',
+  });
+
 const provisionSchema = z
   .object({
     slug: z.string().min(2).max(40).regex(/^[a-z0-9-]+$/),
     name: z.string().min(1).max(120),
-    timezone: z.string().max(64).optional(),
+    timezone: timezoneField.optional(),
     plan: z.enum(['starter', 'pro', 'whitelabel']).optional(),
     adminEmail: z.string().email().max(254),
     adminName: z.string().min(1).max(120),
