@@ -10,7 +10,8 @@
     "migrate:control": "node scripts/migrate-control.mjs",
     "migrate:tenants": "node scripts/migrate-tenants.mjs",
     "seed": "node scripts/seed.mjs",
-    "provision:tenant": "node scripts/provision-tenant.mjs"
+    "provision:tenant": "node scripts/provision-tenant.mjs",
+    "seed:mock": "node scripts/seed-mock-data.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.0",
