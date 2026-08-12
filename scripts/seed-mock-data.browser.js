@@ -285,9 +285,15 @@
   log('months:', months.join(', '));
   log('clients:', targets.map((t) => t.name).join(', '));
 
-  for (const t of targets) {
+  let okCount = 0;
+  let failCount = 0;
+  const failedClients = [];
+
+  for (let ti = 0; ti < targets.length; ti++) {
+    const t = targets[ti];
     const profile = window.SEED_PROFILE ?? (/solar|roof|d2d|door/i.test((t.name ?? '') + ' ' + (t.slug ?? '')) ? 'd2d' : 'ads');
-    log(t.name + ' (' + profile + ')');
+    log('[' + (ti + 1) + '/' + targets.length + '] ' + t.name + ' (' + profile + ')');
+    try {
     const switched = await call('/api/auth/switch-tenant', { method: 'POST', json: { tenantId: t.id } });
     csrf = switched.csrf;
     const slug = switched.tenant?.slug ?? t.id;
@@ -312,15 +318,27 @@
       for (const { key, csv } of buildCsvs(profile, month, slug)) {
         try {
           const res = await call('/api/imports', { method: 'POST', json: { sourceKey: sourceKeys[key], month, csv } });
+          okCount++;
           log('  ' + month + ' ' + key + ': ' + res.rowCount + ' rows');
         } catch (err) {
+          failCount++;
           console.error('[seed]  ' + month + ' ' + key + ' FAILED', err.message);
         }
       }
     }
+    // Anything outside the import loop (switch-tenant, listing or creating
+    // sources) used to throw straight past every remaining client, so one
+    // bad tenant silently ended the run. Contain it per client instead.
+    } catch (err) {
+      failCount++;
+      failedClients.push(t.name);
+      console.error('[seed] ' + t.name + ' ABORTED, moving to the next client:', err.message);
+    }
   }
 
-  log('done. Reload the page, then open a client to see its dashboard.');
+  log('done. ' + okCount + ' imports succeeded, ' + failCount + ' failed.');
+  if (failedClients.length) log('clients that aborted: ' + failedClients.join(', '));
+  log('Reload the page, then open a client to see its dashboard.');
   log('The Clients roster totals come from agency_rollup, written by the sync');
   log('worker on its own schedule, so that list can lag behind by a cycle.');
 
