@@ -54,6 +54,9 @@ interface Props {
   rangeStart: string;
   rangeEnd: string;
   sources: SourceInfo[];
+  // Jumps to the Data and Team section. Only used by the empty state, so
+  // optional: callers that never render a data-less tenant can omit it.
+  onOpenDataTeam?: () => void;
   // Narrows every number on this tab to one ad platform. null/undefined
   // shows everything (the Main Dashboard recap); the Meta and Google
   // tabs each set this to their own channel.
@@ -99,18 +102,11 @@ function sumChannels(data: MonthData | undefined, field: 'leads' | 'scheduled' |
   return data.channels.reduce((acc, ch) => acc + Number(ch[field] ?? 0), 0);
 }
 
-export function PerformanceTab({ settings, labels, months, rangeStart, rangeEnd, sources, channelFilter, hideCampaigns, comparison, refreshSources }: Props) {
+export function PerformanceTab({ settings, labels, months, rangeStart, rangeEnd, sources, onOpenDataTeam, channelFilter, hideCampaigns, comparison, refreshSources }: Props) {
   const canAdmin = settings.role !== 'viewer';
 
   if (months.length === 0) {
-    return (
-      <div className="card stack">
-        <h3>No data yet</h3>
-        <p className="muted">
-          Connect a source or upload a CSV from Data and Team to light up this dashboard.
-        </p>
-      </div>
-    );
+    return <EmptyDashboard labels={labels} channelFilter={channelFilter ?? null} onOpenDataTeam={onOpenDataTeam} />;
   }
 
   const selectedMonths = monthsInRange(months, rangeStart, rangeEnd);
@@ -141,6 +137,71 @@ export function PerformanceTab({ settings, labels, months, rangeStart, rangeEnd,
       hideCampaigns={hideCampaigns}
       refreshSources={refreshSources}
     />
+  );
+}
+
+// A client with nothing imported yet still shows the dashboard's shape,
+// with its own funnel labels on the tiles, rather than a bare "no data"
+// card. A new account should read as the product it is about to be, not as
+// a setup wizard that happens to live at the same URL.
+//
+// Every figure is "-", never 0. A zero here would assert a measurement
+// nobody took, which is the same reason the fabricated numbers were pulled
+// out of this dashboard earlier. "-" is already how the live table renders
+// a ratio it cannot compute, so it reads consistently.
+function EmptyDashboard({
+  labels,
+  channelFilter,
+  onOpenDataTeam,
+}: {
+  labels: FunnelLabels;
+  channelFilter: 'meta' | 'google' | null;
+  onOpenDataTeam?: () => void;
+}) {
+  const tiles = [
+    { key: 'spend', label: 'Spend' },
+    { key: 'leads', label: labels.lead },
+    { key: 'scheduled', label: labels.scheduled },
+    { key: 'completed', label: labels.completed },
+    { key: 'revenue', label: 'Revenue' },
+  ];
+  return (
+    <div className="stack" style={{ gap: 16 }}>
+      <div className="kpi-grid">
+        {tiles.map((t) => (
+          <div className={`kpi kpi-${t.key} kpi-awaiting`} key={t.key}>
+            <div className="label">{t.label}</div>
+            <div className="value num">-</div>
+          </div>
+        ))}
+      </div>
+
+      {/* The Meta and Google sections sit on the same page as the recap, so
+          only the recap carries the full explanation. Repeating it three
+          times read as three separate problems rather than one empty
+          client. */}
+      {channelFilter ? (
+        <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+          No {channelFilter === 'meta' ? 'Meta' : 'Google Ads'} data imported yet.
+        </p>
+      ) : (
+        <div className="stack" style={{ gap: 8 }}>
+          <h3>Channels (in period)</h3>
+          <div className="card stack empty-panel" style={{ gap: 10 }}>
+            <strong>Nothing imported yet</strong>
+            <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+              Upload a CSV from Data and Team and these tiles fill in for the months it covers. Channels,
+              campaigns and the lead cohort appear here as soon as there is data behind them.
+            </p>
+            {onOpenDataTeam && (
+              <button className="small primary" style={{ alignSelf: 'flex-start' }} onClick={onOpenDataTeam}>
+                Open Data and Team
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

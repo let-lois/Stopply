@@ -496,6 +496,7 @@ export function AppShell({
                     <section id="section-performance" className="page-section stack" style={{ gap: 10 }}>
                       <h2 className="section-title">Main Dashboard</h2>
                       <PerformanceTab
+                        onOpenDataTeam={() => openInternal('data-team')}
                         settings={settings}
                         labels={labels}
                         months={months}
@@ -519,6 +520,7 @@ export function AppShell({
                         Meta
                       </h2>
                       <PerformanceTab
+                        onOpenDataTeam={() => openInternal('data-team')}
                         settings={settings}
                         labels={labels}
                         months={months}
@@ -538,6 +540,7 @@ export function AppShell({
                         Google Ads
                       </h2>
                       <PerformanceTab
+                        onOpenDataTeam={() => openInternal('data-team')}
                         settings={settings}
                         labels={labels}
                         months={months}
@@ -633,7 +636,7 @@ const SYSTEM_PRESETS: Array<{ id: string; name: string; connectorType: string; n
   { id: 'boulevard', name: 'Boulevard', connectorType: 'auto', note: 'Appointments / sales CSV' },
   { id: 'jobber', name: 'Jobber', connectorType: 'auto', note: 'Jobs / clients CSV' },
   { id: 'housecall', name: 'Housecall Pro', connectorType: 'auto', note: 'Jobs / invoices CSV' },
-  { id: 'custom', name: 'Something else', connectorType: 'auto', note: 'Any CSV — we figure out the columns' },
+  { id: 'custom', name: 'Something else', connectorType: 'auto', note: 'Any CSV, we figure out the columns' },
 ];
 
 function OnboardingChecklist({
@@ -679,13 +682,28 @@ function OnboardingChecklist({
     { label: 'Invite your team', done: false },
   ];
 
+  const remaining = items.filter((i) => !i.done).length;
+
+  // Foldable, and sitting above a dashboard that now renders its own shape
+  // even with nothing imported. Previously this was the whole page for a new
+  // client, which made the product read as a setup wizard. Open by default,
+  // because a fresh tenant genuinely does need to do this first.
   return (
-    <div className="card stack" style={{ gap: 18 }}>
+    <details className="onboarding-panel card" open>
+      <summary>
+        <span>
+          <strong>Finish setting up this client</strong>
+          <span className="muted" style={{ marginLeft: 8, fontSize: 13 }}>
+            {remaining} of {items.length} steps left
+          </span>
+        </span>
+      </summary>
+
+      <div className="stack" style={{ gap: 18, marginTop: 16 }}>
       <div className="stack" style={{ gap: 4 }}>
-        <h3>Welcome. Let&apos;s get your first data in.</h3>
-        <p className="muted" style={{ fontSize: 13 }}>
+        <p className="muted" style={{ fontSize: 13, margin: 0 }}>
           Which systems do you use? Pick any that apply. Everything imports by CSV for now, so you stay in
-          control of your data — no API keys needed to get started.
+          control of your data, no API keys needed to get started.
         </p>
       </div>
 
@@ -711,7 +729,7 @@ function OnboardingChecklist({
           {busy ? 'Adding…' : `Add ${selected.length || ''} as CSV source${selected.length === 1 ? '' : 's'}`}
         </button>
         <button className="small" onClick={() => onOpenDataTeam()}>
-          Skip — set up sources myself
+          Skip, set up sources myself
         </button>
       </div>
 
@@ -721,7 +739,7 @@ function OnboardingChecklist({
         </span>
         <CodeBox
           label="Website tracking script"
-          hint="Optional — paste into your site, or hand to your developer."
+          hint="Optional. Paste into your site, or hand to your developer."
           code={`<script async src="${origin}/t.js"></script>`}
           language="html"
         />
@@ -742,6 +760,7 @@ function OnboardingChecklist({
           </div>
         ))}
       </div>
-    </div>
+      </div>
+    </details>
   );
 }

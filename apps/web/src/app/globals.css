@@ -1661,3 +1661,58 @@ button.primary.action-cta:hover {
   align-items: center;
   white-space: nowrap;
 }
+
+/* Onboarding, as a foldable panel rather than the entire page. A brand new
+   client still needs these steps, so it opens by default, but the dashboard
+   below now renders its own shape and can be reached by folding this away. */
+.onboarding-panel > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.onboarding-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Disclosure caret, rotating when open. Drawn here because the native
+   marker is suppressed above to keep the summary on one line. */
+.onboarding-panel > summary::before {
+  content: '';
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--ink-soft);
+  border-bottom: 2px solid var(--ink-soft);
+  transform: rotate(-45deg);
+  transition: transform 200ms ease;
+}
+
+.onboarding-panel[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+/* Tiles for a client with nothing imported: the dashboard's real shape,
+   dimmed, so it reads as awaiting data rather than as measured zeros. */
+.kpi-awaiting {
+  border-top-color: var(--hairline);
+  background: color-mix(in srgb, var(--card) 82%, transparent);
+}
+
+.kpi-awaiting .value {
+  color: var(--ink-soft);
+}
+
+.empty-panel {
+  border: 1px dashed var(--hairline);
+  box-shadow: none;
+  background: color-mix(in srgb, var(--card) 70%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-panel > summary::before {
+    transition: none;
+  }
+}
