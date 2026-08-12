@@ -348,7 +348,13 @@ export function AppShell({
 
   return (
     <div className={hasTenantTheme ? 'tenant-themed' : undefined} style={themeStyle}>
-      {settings?.tenant.theme?.customCss && (
+      {/* Gated on light mode for the same reason the palette above is. A
+          tenant's custom CSS is written against their light branding, so in
+          dark mode it painted light surfaces while the text kept the dark
+          palette's near white ink: backgrounds flipped, words vanished.
+          Suppressing the variables alone was not enough, because this can
+          set backgrounds directly and bypasses them entirely. */}
+      {themeMode === 'light' && settings?.tenant.theme?.customCss && (
         <style dangerouslySetInnerHTML={{ __html: `.tenant-app { ${''} } ${scopeCss(settings.tenant.theme.customCss)}` }} />
       )}
       <div className="tenant-app app-layout">
