@@ -705,14 +705,16 @@ function TeamSection({ toast }: { toast: (s: string) => void }) {
               <td>{u.email}</td>
               <td>{u.role}</td>
               <td>
-                {u.role === 'viewer' && (
-                  <button className="small" onClick={() => setConfigFor(u)} style={{ marginRight: 6 }}>
-                    View config
+                <div className="row-actions">
+                  {u.role === 'viewer' && (
+                    <button className="small" onClick={() => setConfigFor(u)}>
+                      View config
+                    </button>
+                  )}
+                  <button className="small" onClick={() => resetPassword(u)}>
+                    Reset password
                   </button>
-                )}
-                <button className="small" onClick={() => resetPassword(u)}>
-                  Reset password
-                </button>
+                </div>
               </td>
             </tr>
           ))}

@@ -662,16 +662,18 @@ export function TeamSection({ currentUserId }: { currentUserId: string }) {
                   </td>
                   <td>{u.active ? 'Active' : 'Deactivated'}</td>
                   <td>
-                    {u.active === 1 && (
-                      <button className="small" onClick={() => resetPassword(u)} style={{ marginRight: 6 }}>
-                        Reset password
-                      </button>
-                    )}
-                    {u.active === 1 && u.id !== currentUserId && (
-                      <button className="small" onClick={() => deactivate(u)}>
-                        Deactivate
-                      </button>
-                    )}
+                    <div className="row-actions">
+                      {u.active === 1 && (
+                        <button className="small" onClick={() => resetPassword(u)}>
+                          Reset password
+                        </button>
+                      )}
+                      {u.active === 1 && u.id !== currentUserId && (
+                        <button className="small" onClick={() => deactivate(u)}>
+                          Deactivate
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );

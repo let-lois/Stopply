@@ -1651,3 +1651,13 @@ button.primary.action-cta:hover {
   font-size: 13.5px;
   line-height: 1.55;
 }
+
+/* Row actions in the team tables sit side by side rather than stacking
+   when the column gets tight. The card already scrolls horizontally, so
+   holding them on one line costs nothing. */
+.row-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  white-space: nowrap;
+}
