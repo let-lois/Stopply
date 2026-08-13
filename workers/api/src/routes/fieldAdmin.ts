@@ -23,7 +23,7 @@ import { tenantScope, tenantWrite } from '../middleware';
 import { tenantD1Client } from '../provisioning';
 import { hashPassword, randomToken } from '../crypto';
 import { writeAudit } from '../audit';
-import { listVisitFacts, listVisits, loadDispositions } from '../field/repo';
+import { isMissingFieldTables, listVisitFacts, listVisits, loadDispositions } from '../field/repo';
 
 export const fieldAdminRoutes = new Hono<AppContext>();
 fieldAdminRoutes.use('*', tenantScope);
@@ -65,13 +65,33 @@ fieldAdminRoutes.get('/overview', async (c) => {
   const timezone = tenantTimezone(c);
   const window = range(c, timezone);
   const d1 = tenantD1Client(c.env);
-  const [dispositions, facts] = await Promise.all([
-    loadDispositions(d1, dbId(c)),
-    listVisitFacts(d1, dbId(c), { from: window.from, to: window.to }),
-  ]);
+
+  let dispositions;
+  let facts;
+  try {
+    [dispositions, facts] = await Promise.all([
+      loadDispositions(d1, dbId(c)),
+      listVisitFacts(d1, dbId(c), { from: window.from, to: window.to }),
+    ]);
+  } catch (err) {
+    if (!isMissingFieldTables(err)) throw err;
+    // ready:false is the difference between "this client has knocked no
+    // doors" and "this client's database cannot record a door yet". They
+    // need different words on screen, so they are different answers here.
+    return c.json({
+      ready: false,
+      range: { from: window.fromDay, to: window.toDay },
+      timezone,
+      totals: summarize([], new Map()),
+      reps: [],
+      dispositions: [],
+      daily: [],
+    });
+  }
   const index = dispositionIndex(dispositions);
 
   return c.json({
+    ready: true,
     range: { from: window.fromDay, to: window.toDay },
     timezone,
     totals: summarize(facts, index),
@@ -93,6 +113,9 @@ fieldAdminRoutes.get('/visits', async (c) => {
     repId: c.req.query('repId') || undefined,
     disposition: c.req.query('disposition') || undefined,
     limit,
+  }).catch((err) => {
+    if (isMissingFieldTables(err)) return [];
+    throw err;
   });
   return c.json({
     visits: visits.map((v) => ({
@@ -138,6 +161,9 @@ fieldAdminRoutes.get('/visits.csv', async (c) => {
     repId: c.req.query('repId') || undefined,
     disposition: c.req.query('disposition') || undefined,
     limit: 20000,
+  }).catch((err) => {
+    if (isMissingFieldTables(err)) return [];
+    throw err;
   });
   const header = [
     'occurred_at',
@@ -188,27 +214,32 @@ fieldAdminRoutes.get('/addresses', async (c) => {
   const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 200), 1), 500);
   const onlyDnk = c.req.query('doNotKnock') === '1';
   const d1 = tenantD1Client(c.env);
-  const { results } = await d1.query<{
-    id: string;
-    street: string;
-    unit: string | null;
-    city: string | null;
-    state: string | null;
-    postal_code: string | null;
-    lat: number | null;
-    lng: number | null;
-    last_disposition: string | null;
-    last_visited_at: string | null;
-    visit_count: number;
-    do_not_knock: number;
-  }>(
-    dbId(c),
-    `SELECT id, street, unit, city, state, postal_code, lat, lng, last_disposition,
-       last_visited_at, visit_count, do_not_knock
-     FROM field_addresses ${onlyDnk ? 'WHERE do_not_knock = 1' : ''}
-     ORDER BY last_visited_at DESC LIMIT ?`,
-    [limit]
-  );
+  const { results } = await d1
+    .query<{
+      id: string;
+      street: string;
+      unit: string | null;
+      city: string | null;
+      state: string | null;
+      postal_code: string | null;
+      lat: number | null;
+      lng: number | null;
+      last_disposition: string | null;
+      last_visited_at: string | null;
+      visit_count: number;
+      do_not_knock: number;
+    }>(
+      dbId(c),
+      `SELECT id, street, unit, city, state, postal_code, lat, lng, last_disposition,
+         last_visited_at, visit_count, do_not_knock
+       FROM field_addresses ${onlyDnk ? 'WHERE do_not_knock = 1' : ''}
+       ORDER BY last_visited_at DESC LIMIT ?`,
+      [limit]
+    )
+    .catch((err) => {
+      if (isMissingFieldTables(err)) return { results: [] };
+      throw err;
+    });
   return c.json({
     addresses: results.map((a) => ({
       id: a.id,
@@ -242,12 +273,18 @@ function fieldAppUrl(c: { get: (k: 'tenant') => { slug: string; custom_hostname:
 // Roster.
 fieldAdminRoutes.get('/reps', async (c) => {
   const d1 = tenantD1Client(c.env);
-  const { results } = await d1.query<Omit<FieldRepRow, 'password_hash'>>(
-    dbId(c),
-    `SELECT id, email, name, phone, role, team, active, last_login_at, created_at
-     FROM field_reps ORDER BY active DESC, name`
-  );
-  return c.json({ reps: results, fieldAppUrl: fieldAppUrl(c) });
+  const rows = await d1
+    .query<Omit<FieldRepRow, 'password_hash'>>(
+      dbId(c),
+      `SELECT id, email, name, phone, role, team, active, last_login_at, created_at
+       FROM field_reps ORDER BY active DESC, name`
+    )
+    .catch((err) => {
+      if (isMissingFieldTables(err)) return null;
+      throw err;
+    });
+  if (!rows) return c.json({ reps: [], ready: false, fieldAppUrl: fieldAppUrl(c) });
+  return c.json({ reps: rows.results, ready: true, fieldAppUrl: fieldAppUrl(c) });
 });
 
 const createRepSchema = z
@@ -271,7 +308,15 @@ fieldAdminRoutes.post('/reps', tenantWrite, async (c) => {
   const email = body.data.email.toLowerCase().trim();
 
   const d1 = tenantD1Client(c.env);
-  const existing = await d1.query(dbId(c), `SELECT id FROM field_reps WHERE email = ?`, [email]);
+  const existing = await d1
+    .query(dbId(c), `SELECT id FROM field_reps WHERE email = ?`, [email])
+    .catch((err) => {
+      if (isMissingFieldTables(err)) return null;
+      throw err;
+    });
+  if (!existing) {
+    return c.json({ error: 'field tracking is not set up on this client yet' }, 503);
+  }
   if (existing.results.length > 0) return c.json({ error: 'email already exists' }, 409);
 
   const tempPassword = randomToken(6);
@@ -380,7 +425,11 @@ fieldAdminRoutes.post('/reps/:id/reset-password', tenantWrite, async (c) => {
 // the funnel.
 fieldAdminRoutes.get('/dispositions', async (c) => {
   const d1 = tenantD1Client(c.env);
-  return c.json({ dispositions: await loadDispositions(d1, dbId(c)) });
+  const dispositions = await loadDispositions(d1, dbId(c)).catch((err) => {
+    if (isMissingFieldTables(err)) return [];
+    throw err;
+  });
+  return c.json({ dispositions });
 });
 
 const dispositionSchema = z

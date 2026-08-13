@@ -20,7 +20,13 @@ import {
   destroySession,
 } from '../session';
 import { LIMITS, rateLimit } from '../ratelimit';
-import { listVisitFacts, listVisits, loadDispositions, recordVisit } from '../field/repo';
+import {
+  isMissingFieldTables,
+  listVisitFacts,
+  listVisits,
+  loadDispositions,
+  recordVisit,
+} from '../field/repo';
 
 export const fieldRoutes = new Hono<AppContext>();
 
@@ -56,12 +62,24 @@ fieldRoutes.post('/login', async (c) => {
   if (presented) await destroySession(c.env, presented);
 
   const d1 = tenantD1Client(c.env);
-  const { results } = await d1.query<FieldRepRow>(
-    tenant.d1_database_id,
-    `SELECT * FROM field_reps WHERE email = ? AND active = 1`,
-    [email]
-  );
-  const rep = results[0] ?? null;
+  const found = await d1
+    .query<FieldRepRow>(
+      tenant.d1_database_id,
+      `SELECT * FROM field_reps WHERE email = ? AND active = 1`,
+      [email]
+    )
+    .catch((err) => {
+      if (isMissingFieldTables(err)) return null;
+      throw err;
+    });
+  // This client's database has not had the field migration applied, so
+  // there is no roster to check against. Saying so is better than a bare
+  // failure: a rep standing at a door needs to know it is not their
+  // password that is wrong.
+  if (!found) {
+    return c.json({ error: 'field tracking is not set up for this client yet' }, 503);
+  }
+  const rep = found.results[0] ?? null;
   // Derived even for an unknown email so timing does not reveal who is on
   // the roster.
   const ok = await verifyPassword(body.data.password, rep?.password_hash ?? null);
