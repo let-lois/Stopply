@@ -54,8 +54,8 @@ export function ClientConfigDialog({
               className={[
                 'rounded-xl px-3 py-2 text-sm transition',
                 tab === id
-                  ? 'bg-white/10 font-medium text-[var(--color-ink)]'
-                  : 'text-[var(--color-ink-soft)] hover:bg-white/6',
+                  ? 'bg-fill font-medium text-[var(--color-ink)]'
+                  : 'text-[var(--color-ink-soft)] hover:bg-fill-subtle',
               ].join(' ')}
             >
               {TAB_LABEL[id]}

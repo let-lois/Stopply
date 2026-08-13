@@ -111,7 +111,7 @@ export function lastRepByProperty(
  * Returns null where there is no canvas to draw on, which is the test
  * environment; callers fall back to circles rather than failing.
  */
-export function tackImage(color: string, pixelRatio = 2): ImageData | null {
+export function tackImage(color: string, rim: string, pixelRatio = 2): ImageData | null {
   const w = 18;
   const h = 24;
   const canvas = document.createElement('canvas');
@@ -135,14 +135,17 @@ export function tackImage(color: string, pixelRatio = 2): ImageData | null {
 
   ctx.fillStyle = color;
   ctx.fill();
-  // A dark rim, because two adjacent tacks of similar hue merge into one blob
-  // without it.
-  ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+  // A rim, because two adjacent tacks of similar hue merge into one blob
+  // without it. Passed in rather than fixed: it was a hardcoded black, which
+  // separates tacks beautifully on a dark basemap and disappears into the
+  // streets on a light one.
+  ctx.strokeStyle = rim;
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
   // The hole in the head, which is what makes it read as a pin rather than a
-  // balloon.
+  // balloon. Always dark: it is a hole, and a hole is a shadow whatever the
+  // ground around the pin happens to be.
   ctx.beginPath();
   ctx.arc(cx, cy, r * 0.38, 0, Math.PI * 2);
   ctx.fillStyle = 'rgba(0,0,0,0.55)';

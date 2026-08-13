@@ -35,7 +35,7 @@ export default function FieldLogin() {
   };
 
   const field =
-    'min-h-14 w-full rounded-2xl border-2 border-[var(--color-hairline)] bg-black/30 px-4 text-base ' +
+    'min-h-14 w-full rounded-2xl border-2 border-[var(--color-hairline)] bg-well px-4 text-base ' +
     'text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-accent-indigo)]';
 
   return (
@@ -90,7 +90,7 @@ export default function FieldLogin() {
           <button
             type="submit"
             disabled={!email || !password || !token || submitting}
-            className="min-h-14 rounded-2xl bg-[var(--color-accent-indigo)] text-base font-semibold text-white disabled:opacity-50"
+            className="min-h-14 rounded-2xl bg-[var(--color-primary)] text-base font-semibold text-[var(--color-on-accent)] disabled:opacity-50"
           >
             {submitting ? 'Signing in…' : 'Sign in'}
           </button>

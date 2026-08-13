@@ -12,7 +12,8 @@ import {
   repColors,
   UNWORKED_COLOR,
 } from '@/modules/field-sales/repColors';
-import { DISPOSITION_HEX } from '@/modules/field-sales/dispositionColors';
+import { dispositionHexFor } from '@/modules/field-sales/dispositionColors';
+import { useTheme } from '@/lib/theme/ThemeProvider';
 import type { Property } from '@/modules/field-sales/types';
 import { Skeleton } from '@/components/ui';
 
@@ -86,6 +87,12 @@ export default function FieldSalesCanvass() {
   const reps = useMemo(() => data?.reps ?? [], [data]);
   const colorByRep = useMemo(() => repColors(reps), [reps]);
 
+  // Outcome colours for the theme actually on screen. Near-white for "do not
+  // knock" is the one that forces this: it is the right answer on a dark
+  // basemap and an invisible door on a light one.
+  const { resolved: theme } = useTheme();
+  const dispositionHex = useMemo(() => dispositionHexFor(theme), [theme]);
+
   // Who last knocked each door. The latest visit wins, so a door shows
   // whoever worked it most recently rather than whoever got there first.
   const repByProperty = useMemo(
@@ -95,13 +102,16 @@ export default function FieldSalesCanvass() {
 
   const colorFor = useCallback(
     (property: Property) => {
-      if (colorBy === 'outcome') return DISPOSITION_HEX[property.disposition];
+      if (colorBy === 'outcome') return dispositionHex[property.disposition];
       const repId = repByProperty.get(property.id);
       // Grey for a door nobody has knocked. It has no rep to be coloured by,
       // and inventing one would be the map claiming knowledge it does not have.
       return repId ? (colorByRep.get(repId) ?? UNWORKED_COLOR) : UNWORKED_COLOR;
     },
-    [colorBy, repByProperty, colorByRep]
+    // dispositionHex is a dependency on purpose: a new identity is what tells
+    // the map to recolour every door when the theme changes. Left out, the
+    // doors would keep the old theme's colours until something else moved.
+    [colorBy, repByProperty, colorByRep, dispositionHex]
   );
 
   const visible = useMemo(() => {
@@ -170,7 +180,7 @@ export default function FieldSalesCanvass() {
             value={colorBy}
             onChange={(e) => setColorBy(e.target.value === 'rep' ? 'rep' : 'outcome')}
             aria-label="Colour doors by"
-            className="ml-auto min-h-10 rounded-xl border border-[var(--color-hairline)] bg-white/6 px-3 text-sm"
+            className="ml-auto min-h-10 rounded-xl border border-[var(--color-hairline)] bg-fill-subtle px-3 text-sm"
           >
             <option value="outcome">Colour by outcome</option>
             <option value="rep">Colour by rep</option>
@@ -180,7 +190,7 @@ export default function FieldSalesCanvass() {
             value={repFilter}
             onChange={(e) => setRepFilter(e.target.value)}
             aria-label="Rep"
-            className="min-h-10 rounded-xl border border-[var(--color-hairline)] bg-white/6 px-3 text-sm"
+            className="min-h-10 rounded-xl border border-[var(--color-hairline)] bg-fill-subtle px-3 text-sm"
           >
             <option value="all">All reps</option>
             {reps.map((rep) => (
@@ -194,7 +204,7 @@ export default function FieldSalesCanvass() {
             value={activeTerritoryId}
             onChange={(e) => setTerritoryId(e.target.value)}
             aria-label="Territory"
-            className="min-h-10 rounded-xl border border-[var(--color-hairline)] bg-white/6 px-3 text-sm"
+            className="min-h-10 rounded-xl border border-[var(--color-hairline)] bg-fill-subtle px-3 text-sm"
           >
             <option value="all">All territories</option>
             {data?.territories.map((t) => (
@@ -242,7 +252,7 @@ export default function FieldSalesCanvass() {
                     <span key={f.id} className="flex items-center gap-1.5">
                       <span
                         className="size-2.5 rounded-full"
-                        style={{ background: DISPOSITION_HEX[f.id as PropertyDisposition] }}
+                        style={{ background: dispositionHex[f.id as PropertyDisposition] }}
                         aria-hidden="true"
                       />
                       <span className="text-[var(--color-ink-soft)]">{f.label}</span>

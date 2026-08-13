@@ -203,7 +203,7 @@ export default function FieldSalesTerritories() {
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Territory name"
                   aria-label="Territory name"
-                  className="min-h-10 rounded-xl border border-[var(--color-hairline)] bg-white/6 px-3 text-sm"
+                  className="min-h-10 rounded-xl border border-[var(--color-hairline)] bg-fill-subtle px-3 text-sm"
                 />
                 <span className="text-sm text-[var(--color-ink-soft)]">
                   {draft.length === 0
@@ -270,7 +270,7 @@ export default function FieldSalesTerritories() {
                   <p className="text-xs text-[var(--color-ink-faint)]">
                     {t.worked.toLocaleString()} of {t.doors.toLocaleString()} doors worked
                   </p>
-                  <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/8" role="presentation">
+                  <div className="mt-4 h-2 overflow-hidden rounded-full bg-fill" role="presentation">
                     <div
                       className="h-full rounded-full bg-[var(--color-accent-amber)]"
                       style={{ width: `${pct * 100}%` }}
@@ -315,7 +315,7 @@ export default function FieldSalesTerritories() {
                     disabled={busy}
                     aria-label={`Territory for ${rep.name}`}
                     onChange={(e) => void assign(rep.id, e.target.value || null)}
-                    className="min-h-10 rounded-xl border border-[var(--color-hairline)] bg-white/6 px-3 text-sm"
+                    className="min-h-10 rounded-xl border border-[var(--color-hairline)] bg-fill-subtle px-3 text-sm"
                   >
                     {/* A rep with no territory sees their whole client's doors
                         rather than none, so this is a real choice and not an

@@ -32,14 +32,21 @@ export function Switch({ checked, onChange, label, hideLabel, disabled, hint }: 
         onClick={() => onChange(!checked)}
         className={[
           'relative h-6 w-11 shrink-0 rounded-full transition-colors',
-          checked ? 'bg-[var(--color-accent-indigo)]' : 'bg-white/15',
+          checked ? 'bg-[var(--color-accent-indigo)]' : 'bg-fill-strong',
           disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
         ].join(' ')}
       >
         <span
           aria-hidden="true"
           className={[
-            'absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform',
+            'absolute top-0.5 h-5 w-5 rounded-full transition-transform',
+            // The knob was white, which is a knob you cannot see once it is
+            // off and sitting on a pale track. It takes the colour that reads
+            // on a filled accent when on, and the panel behind it when off, so
+            // it is a disc in both positions and in both themes.
+            checked
+              ? 'bg-[var(--color-on-accent)]'
+              : 'bg-[var(--color-surface-raised)] ring-1 ring-[var(--color-hairline)]',
             checked ? 'translate-x-5.5' : 'translate-x-0.5',
           ].join(' ')}
         />

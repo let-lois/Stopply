@@ -53,7 +53,7 @@ export default function AnalyticsOverview() {
                       <span>{source.name}</span>
                       <span className="numeric-display">{source.sessions.toLocaleString()}</span>
                     </div>
-                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/8">
+                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-fill">
                       <div
                         className="h-full rounded-full bg-[var(--color-accent-rose)]"
                         style={{ width: `${share * 100}%` }}

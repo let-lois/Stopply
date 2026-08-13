@@ -15,6 +15,7 @@ import { ChevronDown } from 'lucide-react';
 import { LogOut } from 'lucide-react';
 import type { PlatformUser } from '@/types';
 import { useSessionActions } from '@/lib/auth/SessionProvider';
+import { ThemeToggle } from '@/components/ui';
 
 const ROLE_LABEL: Record<PlatformUser['role'], string> = {
   super_admin: 'Super admin',
@@ -57,7 +58,7 @@ export function AccountMenu({ currentUser }: { currentUser: PlatformUser }) {
         aria-expanded={open}
         aria-haspopup="menu"
         aria-controls={open ? menuId : undefined}
-        className="flex items-center gap-2 rounded-xl border border-[var(--color-hairline)] bg-white/6 px-3 py-2 text-left text-sm"
+        className="flex items-center gap-2 rounded-xl border border-[var(--color-hairline)] bg-fill-subtle px-3 py-2 text-left text-sm"
       >
         <span>
           <span className="block leading-tight">{currentUser.name}</span>
@@ -75,6 +76,14 @@ export function AccountMenu({ currentUser }: { currentUser: PlatformUser }) {
               {currentUser.clientName ? ` · ${currentUser.clientName}` : ' · platform wide'}
             </p>
           </div>
+          {/* Only where the header has no room for it, so the control is
+              never on screen twice at once with two sets of checked states to
+              keep in step. */}
+          <div className="border-t border-[var(--color-hairline)] px-3 py-3 sm:hidden">
+            <p className="micro-label mb-2">Theme</p>
+            <ThemeToggle size="touch" />
+          </div>
+
           <button
             type="button"
             role="menuitem"
@@ -82,7 +91,7 @@ export function AccountMenu({ currentUser }: { currentUser: PlatformUser }) {
               setOpen(false);
               void signOut();
             }}
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-white/8"
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-fill"
           >
             <LogOut size={16} aria-hidden="true" />
             Sign out

@@ -26,7 +26,8 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import type { FeatureCollection } from 'geojson';
 import type { Ring } from '@/modules/field-sales/polygon';
 import { boundsOf } from '@/modules/field-sales/polygon';
-import { DEFAULT_BASEMAP, DEFAULT_CENTER, MAP_STYLE_URL } from '@/modules/field-sales/mapConfig';
+import { basemapFor, DEFAULT_CENTER, mapInkFor } from '@/modules/field-sales/mapConfig';
+import { useTheme } from '@/lib/theme/ThemeProvider';
 
 setWorkerUrl(workerUrl);
 
@@ -119,10 +120,21 @@ export function TerritoryMap({
   // would throw away wherever the manager had panned to.
   const onSelectRef = useRef(onSelect);
   const onAddPointRef = useRef(onAddPoint);
+  const selectedIdRef = useRef(selectedId);
+  const { resolved: theme } = useTheme();
+  // Seeded at construction, which is what the map's first style reads, and
+  // kept current from the effect below for the restyle after that.
+  const themeRef = useRef(theme);
   useEffect(() => {
     onSelectRef.current = onSelect;
     onAddPointRef.current = onAddPoint;
-  }, [onSelect, onAddPoint]);
+    selectedIdRef.current = selectedId;
+    themeRef.current = theme;
+  }, [onSelect, onAddPoint, selectedId, theme]);
+
+  // What a restyle has to replay: setStyle drops every source and layer the
+  // application added, so without this a theme switch leaves an empty map.
+  const replayRef = useRef<() => void>(() => {});
 
   const whenReady = useCallback((run: (map: MapLibreMap) => void) => {
     const map = mapRef.current;
@@ -138,7 +150,7 @@ export function TerritoryMap({
 
     const map = new MapLibreMap({
       container: containerRef.current,
-      style: MAP_STYLE_URL ?? DEFAULT_BASEMAP,
+      style: basemapFor(themeRef.current),
       center: DEFAULT_CENTER,
       zoom: 12,
       attributionControl: false,
@@ -149,7 +161,11 @@ export function TerritoryMap({
     map.addControl(new ScaleControl({ unit: 'imperial' }), 'bottom-left');
     map.addControl(new AttributionControl({ compact: true }), 'bottom-right');
 
+    // `on`, not `once`: switching theme calls setStyle and takes these with
+    // it, so they have to be rebuilt every time a style lands.
     map.on('style.load', () => {
+      const ink = mapInkFor(themeRef.current);
+
       map.addSource(TERRITORY_SRC, { type: 'geojson', data: territoryFeatures([]) });
       map.addSource(DRAFT_SRC, { type: 'geojson', data: draftFeatures(null) });
 
@@ -170,7 +186,9 @@ export function TerritoryMap({
         type: 'line',
         source: TERRITORY_SRC,
         filter: ['==', ['get', 'id'], ''],
-        paint: { 'line-color': '#ffffff', 'line-width': 3 },
+        // The selected outline has to be the opposite of the ground, or it
+        // reads as one more territory rather than as the chosen one.
+        paint: { 'line-color': ink.halo, 'line-width': 3 },
       });
       map.addLayer({
         id: 'territory-label',
@@ -184,7 +202,7 @@ export function TerritoryMap({
           'text-field': ['get', 'name'],
           'text-size': 12,
         },
-        paint: { 'text-color': '#ffffff' },
+        paint: { 'text-color': ink.label, 'text-halo-color': ink.rim, 'text-halo-width': 1.2 },
       });
 
       map.addLayer({
@@ -192,13 +210,13 @@ export function TerritoryMap({
         type: 'fill',
         source: DRAFT_SRC,
         filter: ['==', ['geometry-type'], 'Polygon'],
-        paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.12 },
+        paint: { 'fill-color': ink.halo, 'fill-opacity': 0.12 },
       });
       map.addLayer({
         id: 'draft-line',
         type: 'line',
         source: DRAFT_SRC,
-        paint: { 'line-color': '#ffffff', 'line-width': 2, 'line-dasharray': [2, 2] },
+        paint: { 'line-color': ink.halo, 'line-width': 2, 'line-dasharray': [2, 2] },
       });
       map.addLayer({
         id: 'draft-points',
@@ -207,13 +225,17 @@ export function TerritoryMap({
         filter: ['==', ['geometry-type'], 'Point'],
         paint: {
           'circle-radius': 5,
-          'circle-color': '#ffffff',
+          // A corner the manager tapped: the ink of the theme, ringed in the
+          // ground of it, so it stays a distinct dot on any basemap.
+          'circle-color': ink.halo,
           'circle-stroke-width': 2,
-          'circle-stroke-color': '#0f1115',
+          'circle-stroke-color': ink.ground,
         },
       });
 
       readyRef.current = true;
+      // The territories and the draft ring, which the new style dropped.
+      replayRef.current();
     });
 
     map.on('click', (event: MapLayerMouseEvent) => {
@@ -237,20 +259,39 @@ export function TerritoryMap({
   }, []);
 
   useEffect(() => {
-    whenReady((map) => {
-      const source: GeoJSONSource | undefined = map.getSource(TERRITORY_SRC);
-      void source?.setData(territoryFeatures(territories));
-    });
-  }, [territories, whenReady]);
+    // Both sources and the selection filter in one pass, so a restyle can
+    // replay the whole picture rather than the half of it that happens to
+    // change most often.
+    const apply = (map: MapLibreMap) => {
+      const territorySource: GeoJSONSource | undefined = map.getSource(TERRITORY_SRC);
+      void territorySource?.setData(territoryFeatures(territories));
 
-  useEffect(() => {
-    whenReady((map) => {
-      const source: GeoJSONSource | undefined = map.getSource(DRAFT_SRC);
-      void source?.setData(draftFeatures(draft));
+      const draftSource: GeoJSONSource | undefined = map.getSource(DRAFT_SRC);
+      void draftSource?.setData(draftFeatures(draft));
       // A crosshair is the only affordance saying the map is now a canvas.
       map.getCanvas().style.cursor = draft ? 'crosshair' : '';
-    });
-  }, [draft, whenReady]);
+
+      if (map.getLayer('territory-selected')) {
+        map.setFilter('territory-selected', ['==', ['get', 'id'], selectedIdRef.current ?? '']);
+      }
+    };
+
+    replayRef.current = () => {
+      const map = mapRef.current;
+      if (map) apply(map);
+    };
+    whenReady(apply);
+  }, [territories, draft, whenReady]);
+
+  // Swap the basemap when the theme changes, without rebuilding the map: a
+  // rebuild would throw away wherever the manager had panned to, and a
+  // half-drawn territory with it.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    readyRef.current = false;
+    map.setStyle(basemapFor(theme));
+  }, [theme]);
 
   useEffect(() => {
     whenReady((map) => {

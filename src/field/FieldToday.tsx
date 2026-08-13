@@ -11,6 +11,7 @@ import { useField, useFieldActions, type Door } from '@/lib/field/FieldSessionPr
 import { distanceM, formatDistance, getFix, type Fix, type GeoState } from '@/lib/field/geo';
 import { DISPOSITION_LABELS } from '@/modules/field-sales/selectors';
 import { KnockSheet } from '@/field/KnockSheet';
+import { ThemeToggle } from '@/components/ui';
 
 // Bright enough to read on a screen angled at the sky. The dashboard's
 // muted variants of these wash out completely outdoors.
@@ -190,6 +191,17 @@ export default function FieldToday() {
           </li>
         ))}
       </ul>
+
+      {/* Below the doors, not in the header.
+
+          The header already holds refresh and sign out, and a rep's thumb
+          needs that space for the two things they press all day. This is a
+          set-once setting, so it lives past the end of the list where nothing
+          competes with it. */}
+      <div className="border-t border-[var(--color-hairline)] p-4">
+        <p className="micro-label mb-2">Theme</p>
+        <ThemeToggle size="touch" />
+      </div>
 
       {selectedDoor && (
         <KnockSheet door={selectedDoor} onClose={() => setSelected(null)} />

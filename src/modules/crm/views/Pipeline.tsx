@@ -66,7 +66,7 @@ export default function CrmPipeline() {
                 {column.deals.slice(0, 5).map((deal) => (
                   <li
                     key={deal.id}
-                    className="rounded-xl border border-[var(--color-hairline)] bg-white/4 p-3 text-sm"
+                    className="rounded-xl border border-[var(--color-hairline)] bg-fill-subtle p-3 text-sm"
                   >
                     <span className="block font-medium">{deal.company}</span>
                     <span className="text-xs text-[var(--color-ink-faint)]">

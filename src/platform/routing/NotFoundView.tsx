@@ -12,7 +12,7 @@ export function NotFoundView({ title, body }: { title?: string; body?: string })
       action={
         <Link
           to={routes.clients()}
-          className="rounded-xl bg-[var(--color-accent-indigo)] px-4 py-2 text-sm font-medium text-white"
+          className="rounded-xl bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-[var(--color-on-accent)]"
         >
           Back to clients
         </Link>

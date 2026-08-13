@@ -3,7 +3,7 @@ export function Skeleton({ className = '' }: { className?: string }) {
     <div
       role="status"
       aria-label="Loading"
-      className={`animate-pulse rounded-2xl bg-white/6 ${className}`}
+      className={`animate-pulse rounded-2xl bg-fill-subtle ${className}`}
     />
   );
 }

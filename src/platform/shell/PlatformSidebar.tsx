@@ -20,8 +20,8 @@ function linkClass({ isActive }: { isActive: boolean }): string {
   return [
     'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition',
     isActive
-      ? 'bg-white/10 text-[var(--color-ink)] font-medium'
-      : 'text-[var(--color-ink-soft)] hover:bg-white/6 hover:text-[var(--color-ink)]',
+      ? 'bg-fill text-[var(--color-ink)] font-medium'
+      : 'text-[var(--color-ink-soft)] hover:bg-fill-subtle hover:text-[var(--color-ink)]',
   ].join(' ');
 }
 

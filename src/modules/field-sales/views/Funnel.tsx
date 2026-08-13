@@ -125,7 +125,7 @@ export default function FieldSalesFunnel() {
                 onClick={() => setDays(range.days)}
                 className={`min-h-9 rounded-lg px-3 text-sm font-medium ${
                   days === range.days
-                    ? 'bg-white/10 text-[var(--color-ink)]'
+                    ? 'bg-fill text-[var(--color-ink)]'
                     : 'text-[var(--color-ink-soft)]'
                 }`}
               >
@@ -194,7 +194,7 @@ export default function FieldSalesFunnel() {
                     <span className="numeric-display">{step.doors.toLocaleString()}</span>
                   </span>
                 </div>
-                <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-white/6">
+                <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-fill-subtle">
                   <div
                     className="h-full rounded-full"
                     // Width against the widest step, so the bars are a shape
@@ -226,7 +226,9 @@ export default function FieldSalesFunnel() {
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartRows}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                {/* The hairline token, not a fixed white at 6%. A white grid
+                    on a white card is no grid at all. */}
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-hairline)" />
                 <XAxis dataKey="label" stroke="var(--color-ink-faint)" fontSize={12} />
                 <YAxis stroke="var(--color-ink-faint)" fontSize={12} allowDecimals={false} />
                 <Tooltip
@@ -236,7 +238,14 @@ export default function FieldSalesFunnel() {
                     borderRadius: '0.75rem',
                   }}
                 />
-                <Legend />
+                {/* The label in ink, not in the series colour, which is what
+                    Recharts does by default. An amber word on a white card is
+                    2:1, and the swatch beside it already carries the colour. */}
+                <Legend
+                  formatter={(value: string) => (
+                    <span style={{ color: 'var(--color-ink-soft)' }}>{value}</span>
+                  )}
+                />
                 <Bar dataKey="knocked" name="Knocked" fill="#f59e0b" radius={[3, 3, 0, 0]} />
                 <Bar dataKey="booked" name="Booked" fill="#a855f7" radius={[3, 3, 0, 0]} />
                 <Bar dataKey="showed" name="Showed" fill="#6366f1" radius={[3, 3, 0, 0]} />
@@ -312,7 +321,7 @@ export default function FieldSalesFunnel() {
                           </span>
                         </span>
                       </div>
-                      <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-white/6">
+                      <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-fill-subtle">
                         <div
                           className="h-full rounded-full"
                           style={{

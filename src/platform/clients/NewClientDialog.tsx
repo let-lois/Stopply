@@ -95,7 +95,7 @@ export function NewClientDialog({ open, onClose }: { open: boolean; onClose: () 
             onChange={(e) => setName(e.target.value)}
             required
             autoFocus
-            className="rounded-xl border border-[var(--color-hairline)] bg-white/6 px-3 py-2"
+            className="rounded-xl border border-[var(--color-hairline)] bg-fill-subtle px-3 py-2"
           />
         </label>
 
@@ -104,7 +104,7 @@ export function NewClientDialog({ open, onClose }: { open: boolean; onClose: () 
           <input
             value={industry}
             onChange={(e) => setIndustry(e.target.value)}
-            className="rounded-xl border border-[var(--color-hairline)] bg-white/6 px-3 py-2"
+            className="rounded-xl border border-[var(--color-hairline)] bg-fill-subtle px-3 py-2"
           />
         </label>
 
@@ -114,7 +114,7 @@ export function NewClientDialog({ open, onClose }: { open: boolean; onClose: () 
             <input
               value={contactName}
               onChange={(e) => setContactName(e.target.value)}
-              className="rounded-xl border border-[var(--color-hairline)] bg-white/6 px-3 py-2"
+              className="rounded-xl border border-[var(--color-hairline)] bg-fill-subtle px-3 py-2"
             />
           </label>
           <label className="flex flex-col gap-1.5 text-sm">
@@ -123,7 +123,7 @@ export function NewClientDialog({ open, onClose }: { open: boolean; onClose: () 
               type="email"
               value={contactEmail}
               onChange={(e) => setContactEmail(e.target.value)}
-              className="rounded-xl border border-[var(--color-hairline)] bg-white/6 px-3 py-2"
+              className="rounded-xl border border-[var(--color-hairline)] bg-fill-subtle px-3 py-2"
             />
           </label>
         </div>

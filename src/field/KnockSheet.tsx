@@ -181,7 +181,7 @@ export function KnockSheet({ door, onClose }: { door: Door; onClose: () => void 
             onChange={(e) => setNotes(e.target.value)}
             rows={2}
             placeholder="Anything worth remembering"
-            className="mt-2 w-full rounded-2xl border-2 border-[var(--color-hairline)] bg-black/30 p-3 text-base outline-none focus-visible:border-[var(--color-accent-indigo)]"
+            className="mt-2 w-full rounded-2xl border-2 border-[var(--color-hairline)] bg-well p-3 text-base outline-none focus-visible:border-[var(--color-accent-indigo)]"
           />
         </label>
 
@@ -201,7 +201,7 @@ export function KnockSheet({ door, onClose }: { door: Door; onClose: () => void 
                   type="button"
                   disabled={saving !== null}
                   onClick={() => void save(outcome.id)}
-                  className={`min-h-16 rounded-2xl px-3 text-base font-semibold text-black disabled:opacity-40 ${outcome.tone}`}
+                  className={`min-h-16 rounded-2xl px-3 text-base font-semibold text-[var(--color-on-accent-bright)] disabled:opacity-40 ${outcome.tone}`}
                 >
                   {saving === outcome.id ? 'Saving…' : DISPOSITION_LABELS[outcome.id]}
                 </button>
@@ -217,7 +217,7 @@ export function KnockSheet({ door, onClose }: { door: Door; onClose: () => void 
               type="button"
               disabled={saving !== null}
               onClick={() => void save(outcome.id)}
-              className={`min-h-16 rounded-2xl px-3 text-base font-semibold text-black disabled:opacity-40 ${outcome.tone}`}
+              className={`min-h-16 rounded-2xl px-3 text-base font-semibold text-[var(--color-on-accent-bright)] disabled:opacity-40 ${outcome.tone}`}
             >
               {saving === outcome.id ? 'Saving…' : DISPOSITION_LABELS[outcome.id]}
             </button>
@@ -243,7 +243,7 @@ export function KnockSheet({ door, onClose }: { door: Door; onClose: () => void 
                   type="button"
                   disabled={saving !== null}
                   onClick={() => void save('do_not_knock')}
-                  className="min-h-14 flex-1 rounded-2xl bg-[var(--color-negative)] text-base font-semibold text-white disabled:opacity-40"
+                  className="min-h-14 flex-1 rounded-2xl bg-[var(--color-negative)] text-base font-semibold text-[var(--color-on-accent)] disabled:opacity-40"
                 >
                   {saving === 'do_not_knock' ? 'Saving…' : 'Yes, do not knock'}
                 </button>

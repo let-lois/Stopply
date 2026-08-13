@@ -4,11 +4,11 @@ type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 
 const VARIANTS: Record<Variant, string> = {
   primary:
-    'bg-[var(--color-accent-indigo)] text-white hover:brightness-110 disabled:brightness-75',
+    'bg-[var(--color-primary)] text-[var(--color-on-accent)] hover:brightness-110 disabled:brightness-75',
   secondary:
-    'bg-white/8 text-[var(--color-ink)] hover:bg-white/12 border border-[var(--color-hairline)]',
-  ghost: 'text-[var(--color-ink-soft)] hover:bg-white/6 hover:text-[var(--color-ink)]',
-  danger: 'bg-[var(--color-negative)] text-white hover:brightness-110',
+    'bg-fill text-[var(--color-ink)] hover:bg-fill-strong border border-[var(--color-hairline)]',
+  ghost: 'text-[var(--color-ink-soft)] hover:bg-fill-subtle hover:text-[var(--color-ink)]',
+  danger: 'bg-[var(--color-negative)] text-[var(--color-on-accent)] hover:brightness-110',
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

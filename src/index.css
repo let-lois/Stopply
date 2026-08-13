@@ -2,43 +2,86 @@
 
 /* Stopply's visual identity, tokenized.
 
-   Dark slate ground, indigo primary, glass panels with a wide corner radius,
-   tight uppercase micro-labels, heavy numeric displays. The look is carried
-   over unchanged; what changes is that it lives here as tokens instead of as
-   literal class strings repeated across twenty files. */
+   Indigo primary, glass panels with a wide corner radius, tight uppercase
+   micro-labels, heavy numeric displays. The look is carried over unchanged;
+   what changes is that it lives here as tokens instead of as literal class
+   strings repeated across twenty files.
 
-@theme {
+   HOW THEMING WORKS HERE
+
+   Two layers, and the separation is the whole trick.
+
+   `@theme inline` below maps every Tailwind colour utility onto a plain CSS
+   variable rather than onto a literal. `inline` is what makes this work: it
+   tells Tailwind to emit `var(--surface-base)` into the utility instead of
+   resolving it at build time, so `bg-[var(--color-surface-base)]` and
+   `bg-surface-base` both read whatever that variable holds *at paint*.
+
+   The palettes below then set those variables. Switching a theme sets one
+   attribute on <html> and every colour in the application follows, with no
+   class churn, no re-render, and no component knowing a theme exists.
+
+   Adding a colour means adding it in three places: the `@theme inline` map,
+   the dark palette and the light palette. A colour defined in only one palette
+   is a colour that disappears in the other theme, which is exactly the bug
+   this structure is meant to make obvious. */
+
+@theme inline {
   /* Ground and surfaces. */
-  --color-surface-base: oklch(0.19 0.02 265);
-  --color-surface-raised: oklch(0.24 0.022 265);
-  --color-surface-glass: oklch(0.28 0.025 265 / 0.55);
-  --color-hairline: oklch(0.38 0.025 265 / 0.6);
+  --color-surface-base: var(--surface-base);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-glass: var(--surface-glass);
+  --color-hairline: var(--hairline);
 
   /* Ink. */
-  --color-ink: oklch(0.97 0.005 265);
-  --color-ink-soft: oklch(0.72 0.02 265);
-  --color-ink-faint: oklch(0.58 0.02 265);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+
+  /* Fills.
+
+     These replace the `bg-white/6` idiom, which was not a colour so much as an
+     instruction to lighten whatever is underneath. That instruction is correct
+     on a dark ground and backwards on a light one, where a raised control has
+     to darken instead. Naming the intent rather than the mechanism is what lets
+     one class serve both. */
+  --color-fill-subtle: var(--fill-subtle);
+  --color-fill: var(--fill);
+  --color-fill-strong: var(--fill-strong);
+  /* A recessed field, the opposite direction from a fill. */
+  --color-well: var(--well);
 
   /* Accents. One per module, assigned by the registry and nowhere else.
      Every accent has a literal utility class mapping in @/types/accent so
      no class name is ever built by string interpolation, which Tailwind's
      static extractor cannot see. */
-  --color-accent-slate: oklch(0.65 0.03 265);
-  --color-accent-indigo: oklch(0.62 0.18 275);
-  --color-accent-emerald: oklch(0.7 0.16 165);
-  --color-accent-amber: oklch(0.78 0.15 75);
-  --color-accent-rose: oklch(0.68 0.19 15);
-  --color-accent-sky: oklch(0.72 0.14 235);
-  --color-accent-purple: oklch(0.65 0.19 300);
+  --color-accent-slate: var(--accent-slate);
+  --color-accent-indigo: var(--accent-indigo);
+  --color-accent-emerald: var(--accent-emerald);
+  --color-accent-amber: var(--accent-amber);
+  --color-accent-rose: var(--accent-rose);
+  --color-accent-sky: var(--accent-sky);
+  --color-accent-purple: var(--accent-purple);
+
+  /* A fill that carries white text. Not the same as --color-accent-indigo
+     even though it is the same hue: see the palette for why one token cannot
+     be both an ink and a fill. */
+  --color-primary: var(--primary);
+
+  /* What text sits on a filled accent. Black on a bright chip, white on a
+     saturated one, and it is not the same answer in both themes because the
+     accents themselves darken. */
+  --color-on-accent: var(--on-accent);
+  --color-on-accent-bright: var(--on-accent-bright);
 
   /* The mark's pink. Identity, not interaction: it belongs to the logo and
      the rare deliberate highlight, never to a button. */
-  --color-brand: oklch(0.68 0.2 12);
+  --color-brand: var(--brand);
 
   /* Status. */
-  --color-positive: oklch(0.7 0.16 165);
-  --color-caution: oklch(0.78 0.15 75);
-  --color-negative: oklch(0.65 0.19 25);
+  --color-positive: var(--positive);
+  --color-caution: var(--caution);
+  --color-negative: var(--negative);
 
   /* The shell's one magic number. The prototype hardcoded 5rem in three
      places that had to be kept in sync by hand; the grid layout below now
@@ -46,6 +89,201 @@
   --spacing-header: 5rem;
 
   --radius-panel: 2rem;
+}
+
+/* The two palettes, each written once.
+
+   Every value lives here and nowhere else. The blocks after this one only
+   alias, never redefine, because a light colour written out twice is a light
+   colour that will eventually differ between the toggle and the OS preference,
+   and nobody would find that by looking.
+
+   `light-dark()` would collapse all of this into one line per token and is
+   deliberately not used. It landed in browsers in 2024, and if a rep's phone
+   does not have it every token becomes invalid at once, which is not a theme
+   bug but a colourless application. The indirection below degrades to dark. */
+:root {
+  /* Dark. The product's own look, and what everybody already sees. */
+  --d-surface-base: oklch(0.19 0.02 265);
+  --d-surface-raised: oklch(0.24 0.022 265);
+  --d-surface-glass: oklch(0.28 0.025 265 / 0.55);
+  --d-hairline: oklch(0.38 0.025 265 / 0.6);
+  --d-ink: oklch(0.97 0.005 265);
+  --d-ink-soft: oklch(0.8 0.02 265);
+  /* 0.58 read at 3.8:1 on the raised surface, under the 4.5:1 floor for small
+     text, and micro-labels are all small text. Measured, not eyeballed: it is
+     what qa/theme-qa.mjs found on fourteen separate elements. Soft moves up
+     with it to keep the two distinguishable. */
+  --d-ink-faint: oklch(0.68 0.02 265);
+  --d-fill-subtle: oklch(1 0 0 / 0.06);
+  --d-fill: oklch(1 0 0 / 0.1);
+  --d-fill-strong: oklch(1 0 0 / 0.16);
+  --d-well: oklch(0 0 0 / 0.3);
+  --d-accent-slate: oklch(0.65 0.03 265);
+  /* Lightened once --d-primary took over the button fill. As ink and as a
+     chip behind dark text, indigo wants to be light on a dark ground; it was
+     held down by having to carry white text as well. */
+  --d-accent-indigo: oklch(0.68 0.16 275);
+  --d-accent-emerald: oklch(0.7 0.16 165);
+  --d-accent-amber: oklch(0.78 0.15 75);
+  --d-accent-rose: oklch(0.68 0.19 15);
+  --d-accent-sky: oklch(0.72 0.14 235);
+  --d-accent-purple: oklch(0.72 0.17 300);
+  /* The primary button's fill, which is not the same thing as the indigo
+     accent even though it is the same hue. The accent is used as ink, so it
+     has to be light on a dark ground; a fill carrying white text has to be
+     dark enough for the white. One token cannot be both, and trying made the
+     button's own label fail at 3.8:1. */
+  --d-primary: oklch(0.52 0.19 275);
+  --d-on-accent: oklch(1 0 0);
+  /* Dark ink on a bright chip: amber and emerald are light enough here that
+     white on them is unreadable. */
+  --d-on-accent-bright: oklch(0.16 0.02 265);
+  --d-brand: oklch(0.68 0.2 12);
+  --d-positive: oklch(0.7 0.16 165);
+  --d-caution: oklch(0.78 0.15 75);
+  --d-negative: oklch(0.65 0.19 25);
+
+  /* Light. Not the dark palette inverted.
+
+     Lightness flips, but chroma has to come down on the surfaces or a pale
+     indigo ground reads as a tint rather than as paper. The accents move the
+     other way from what inversion would suggest: they get *darker*, because a
+     0.78 amber that glows on a dark ground is invisible on white. Each one
+     below is the darkest version that still reads as the same colour. */
+  --l-surface-base: oklch(0.97 0.004 265);
+  --l-surface-raised: oklch(1 0 0);
+  --l-surface-glass: oklch(1 0 0 / 0.72);
+  --l-hairline: oklch(0.55 0.02 265 / 0.28);
+  --l-ink: oklch(0.22 0.02 265);
+  --l-ink-soft: oklch(0.44 0.02 265);
+  --l-ink-faint: oklch(0.5 0.02 265);
+  --l-fill-subtle: oklch(0.45 0.03 265 / 0.07);
+  --l-fill: oklch(0.45 0.03 265 / 0.11);
+  --l-fill-strong: oklch(0.45 0.03 265 / 0.18);
+  --l-well: oklch(0.45 0.03 265 / 0.06);
+  --l-accent-slate: oklch(0.48 0.03 265);
+  --l-accent-indigo: oklch(0.5 0.19 275);
+  --l-accent-emerald: oklch(0.48 0.13 165);
+  --l-accent-amber: oklch(0.5 0.12 65);
+  --l-accent-rose: oklch(0.51 0.19 15);
+  --l-accent-sky: oklch(0.53 0.14 235);
+  --l-accent-purple: oklch(0.52 0.2 300);
+  /* White on every accent here, because every accent here is dark enough to
+     carry it. That is why there is one value and not two. */
+  --l-primary: oklch(0.48 0.19 275);
+  --l-on-accent: oklch(1 0 0);
+  --l-on-accent-bright: oklch(1 0 0);
+  --l-brand: oklch(0.58 0.21 12);
+  --l-positive: oklch(0.48 0.13 165);
+  --l-caution: oklch(0.5 0.12 65);
+  --l-negative: oklch(0.53 0.2 25);
+}
+
+/* Dark is what arrives when nothing has been chosen.
+
+   Bare :root rather than a media query, deliberately. Dark is what this
+   product looks like and what everybody using it already sees, so nobody gets
+   a different application than the one they had yesterday without asking for
+   it. The toggle offers Light and System for anyone who wants otherwise. */
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --surface-base: var(--d-surface-base);
+  --surface-raised: var(--d-surface-raised);
+  --surface-glass: var(--d-surface-glass);
+  --hairline: var(--d-hairline);
+  --ink: var(--d-ink);
+  --ink-soft: var(--d-ink-soft);
+  --ink-faint: var(--d-ink-faint);
+  --fill-subtle: var(--d-fill-subtle);
+  --fill: var(--d-fill);
+  --fill-strong: var(--d-fill-strong);
+  --well: var(--d-well);
+  --accent-slate: var(--d-accent-slate);
+  --accent-indigo: var(--d-accent-indigo);
+  --accent-emerald: var(--d-accent-emerald);
+  --accent-amber: var(--d-accent-amber);
+  --accent-rose: var(--d-accent-rose);
+  --accent-sky: var(--d-accent-sky);
+  --accent-purple: var(--d-accent-purple);
+  --primary: var(--d-primary);
+  --on-accent: var(--d-on-accent);
+  --on-accent-bright: var(--d-on-accent-bright);
+  --brand: var(--d-brand);
+  --positive: var(--d-positive);
+  --caution: var(--d-caution);
+  --negative: var(--d-negative);
+}
+
+/* Light, chosen explicitly. */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --surface-base: var(--l-surface-base);
+  --surface-raised: var(--l-surface-raised);
+  --surface-glass: var(--l-surface-glass);
+  --hairline: var(--l-hairline);
+  --ink: var(--l-ink);
+  --ink-soft: var(--l-ink-soft);
+  --ink-faint: var(--l-ink-faint);
+  --fill-subtle: var(--l-fill-subtle);
+  --fill: var(--l-fill);
+  --fill-strong: var(--l-fill-strong);
+  --well: var(--l-well);
+  --accent-slate: var(--l-accent-slate);
+  --accent-indigo: var(--l-accent-indigo);
+  --accent-emerald: var(--l-accent-emerald);
+  --accent-amber: var(--l-accent-amber);
+  --accent-rose: var(--l-accent-rose);
+  --accent-sky: var(--l-accent-sky);
+  --accent-purple: var(--l-accent-purple);
+  --primary: var(--l-primary);
+  --on-accent: var(--l-on-accent);
+  --on-accent-bright: var(--l-on-accent-bright);
+  --brand: var(--l-brand);
+  --positive: var(--l-positive);
+  --caution: var(--l-caution);
+  --negative: var(--l-negative);
+}
+
+/* System, resolving to light.
+
+   `[data-theme='system']` and not a bare `:root`, so that the OS preference
+   only applies to somebody who asked for it. Without that, the moment this
+   shipped every user on a light machine would have opened the tool to an
+   application they did not recognise and had not chosen. */
+@media (prefers-color-scheme: light) {
+  :root[data-theme='system'] {
+    color-scheme: light;
+
+    --surface-base: var(--l-surface-base);
+    --surface-raised: var(--l-surface-raised);
+    --surface-glass: var(--l-surface-glass);
+    --hairline: var(--l-hairline);
+    --ink: var(--l-ink);
+    --ink-soft: var(--l-ink-soft);
+    --ink-faint: var(--l-ink-faint);
+    --fill-subtle: var(--l-fill-subtle);
+    --fill: var(--l-fill);
+    --fill-strong: var(--l-fill-strong);
+    --well: var(--l-well);
+    --accent-slate: var(--l-accent-slate);
+    --accent-indigo: var(--l-accent-indigo);
+    --accent-emerald: var(--l-accent-emerald);
+    --accent-amber: var(--l-accent-amber);
+    --accent-rose: var(--l-accent-rose);
+    --accent-sky: var(--l-accent-sky);
+    --accent-purple: var(--l-accent-purple);
+    --primary: var(--l-primary);
+  --on-accent: var(--l-on-accent);
+    --on-accent-bright: var(--l-on-accent-bright);
+    --brand: var(--l-brand);
+    --positive: var(--l-positive);
+    --caution: var(--l-caution);
+    --negative: var(--l-negative);
+  }
 }
 
 /* The app owns the viewport. One scroll model, defined in AppShell:

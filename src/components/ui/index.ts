@@ -7,3 +7,4 @@ export { ErrorState } from '@/components/ui/ErrorState';
 export { Skeleton } from '@/components/ui/Skeleton';
 export { Stat } from '@/components/ui/Stat';
 export { Switch } from '@/components/ui/Switch';
+export { ThemeToggle } from '@/components/ui/ThemeToggle';

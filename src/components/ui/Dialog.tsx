@@ -95,7 +95,7 @@ export function Dialog({ open, onClose, title, description, children, footer }: 
               type="button"
               onClick={onClose}
               aria-label="Close dialog"
-              className="rounded-full p-2 text-[var(--color-ink-faint)] transition-colors hover:bg-white/5 hover:text-[var(--color-ink)]"
+              className="rounded-full p-2 text-[var(--color-ink-faint)] transition-colors hover:bg-fill-subtle hover:text-[var(--color-ink)]"
             >
               <X size={18} aria-hidden="true" />
             </button>

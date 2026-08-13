@@ -13,7 +13,12 @@ export function Badge({ children, accent = 'slate', solid = false }: BadgeProps)
     <span
       className={[
         'micro-label inline-flex items-center rounded-full px-2.5 py-1',
-        solid ? `${a.solid} text-black/80` : `${a.soft} ${a.text} border ${a.border}`,
+        // A solid badge carries the ink that reads on a filled accent, which
+        // is dark in the dark theme, where the accents are bright, and light
+        // in the light theme, where they are not. It was a literal black.
+        solid
+          ? `${a.solid} text-[var(--color-on-accent-bright)]`
+          : `${a.soft} ${a.text} border ${a.border}`,
       ].join(' ')}
     >
       {children}

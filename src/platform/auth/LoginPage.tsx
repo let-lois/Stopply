@@ -69,7 +69,7 @@ export default function LoginPage() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="rounded-xl border border-[var(--color-hairline)] bg-black/20 px-3 py-2 text-sm outline-none focus-visible:border-[var(--color-accent-indigo)]"
+              className="rounded-xl border border-[var(--color-hairline)] bg-well px-3 py-2 text-sm outline-none focus-visible:border-[var(--color-accent-indigo)]"
             />
           </label>
 
@@ -81,7 +81,7 @@ export default function LoginPage() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="rounded-xl border border-[var(--color-hairline)] bg-black/20 px-3 py-2 text-sm outline-none focus-visible:border-[var(--color-accent-indigo)]"
+              className="rounded-xl border border-[var(--color-hairline)] bg-well px-3 py-2 text-sm outline-none focus-visible:border-[var(--color-accent-indigo)]"
             />
           </label>
 

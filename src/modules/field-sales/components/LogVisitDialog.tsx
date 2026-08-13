@@ -99,7 +99,7 @@ export function LogVisitDialog({
           <select
             value={repId}
             onChange={(e) => setRepId(e.target.value)}
-            className="min-h-10 rounded-xl border border-[var(--color-hairline)] bg-white/6 px-3"
+            className="min-h-10 rounded-xl border border-[var(--color-hairline)] bg-fill-subtle px-3"
           >
             {reps.map((rep) => (
               <option key={rep.id} value={rep.id}>
@@ -116,7 +116,7 @@ export function LogVisitDialog({
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
             placeholder="Anything worth remembering next time"
-            className="rounded-xl border border-[var(--color-hairline)] bg-white/6 px-3 py-2"
+            className="rounded-xl border border-[var(--color-hairline)] bg-fill-subtle px-3 py-2"
           />
         </label>
       </form>

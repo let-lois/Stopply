@@ -8,17 +8,19 @@ import {
   selectRepPerformance,
 } from '@/modules/field-sales/selectors';
 import { accentClasses } from '@/types/accent';
-import { DISPOSITION_HEX } from '@/modules/field-sales/dispositionColors';
+import { dispositionHexFor } from '@/modules/field-sales/dispositionColors';
+import { useTheme } from '@/lib/theme/ThemeProvider';
 
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 
-// The map's colours, not a second set that has to be kept in step with them.
-// This was a Record<string, string> of CSS variables, which meant a new
-// outcome compiled cleanly and rendered as undefined in the chart.
-const DISPOSITION_COLOR = DISPOSITION_HEX;
 
 export default function FieldSalesDashboard() {
   const { data, mode, isLoading, error } = useModuleData('field_sales');
+  // The map's colours, not a second set that has to be kept in step with them.
+  // This was a Record<string, string> of CSS variables, which meant a new
+  // outcome compiled cleanly and rendered as undefined in the chart.
+  const { resolved: theme } = useTheme();
+  const DISPOSITION_COLOR = dispositionHexFor(theme);
 
   const kpis = useMemo(
     () => (data ? selectKpis(data.properties, data.visits) : null),
@@ -74,7 +76,7 @@ export default function FieldSalesDashboard() {
           <div className="grid gap-6 lg:grid-cols-2">
             <Card>
               <p className="micro-label mb-4">Outcomes</p>
-              <div className="flex h-3 overflow-hidden rounded-full bg-white/8">
+              <div className="flex h-3 overflow-hidden rounded-full bg-fill">
                 {breakdown.map((slice) => (
                   <span
                     key={slice.disposition}

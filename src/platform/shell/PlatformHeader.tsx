@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { usePlatform } from '@/lib/state/PlatformProvider';
 import { routes } from '@/types/routes';
 import { AccountMenu } from '@/platform/shell/AccountMenu';
+import { ThemeToggle } from '@/components/ui';
 
 export function PlatformHeader({
   navOpen,
@@ -21,7 +22,7 @@ export function PlatformHeader({
         onClick={onToggleNav}
         aria-label={navOpen ? 'Close navigation' : 'Open navigation'}
         aria-expanded={navOpen}
-        className="rounded-xl p-2 text-[var(--color-ink-soft)] hover:bg-white/6 md:hidden"
+        className="rounded-xl p-2 text-[var(--color-ink-soft)] hover:bg-fill-subtle md:hidden"
       >
         {navOpen ? <X size={20} aria-hidden="true" /> : <Menu size={20} aria-hidden="true" />}
       </button>
@@ -38,7 +39,13 @@ export function PlatformHeader({
       </div>
 
       <div className="flex shrink-0 items-center gap-3">
-
+        {/* Hidden below sm, where the header has the workspace name, a nav
+            button and an account menu competing for 390px. It is in the
+            account menu on those screens instead, which is where a setting
+            belongs anyway. */}
+        <span className="hidden sm:inline-flex">
+          <ThemeToggle />
+        </span>
         {currentUser && <AccountMenu currentUser={currentUser} />}
       </div>
     </header>

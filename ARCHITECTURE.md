@@ -401,6 +401,100 @@ cannot reach it.
 - **The app must be opened once with a connection** before it works without
   one, which is what installs the worker and its cache.
 
+## Light and dark
+
+Three settings, Light, Dark and System, in the header on a desktop and in the
+account menu and at the foot of the rep app on a phone.
+
+**Dark is the default, not System.** Defaulting to the machine would mean that
+the day this shipped, every user on a light laptop opened the tool to an
+application they did not recognise and had not asked for. System is one click
+away. This is why the CSS scopes the `prefers-color-scheme` block to
+`[data-theme='system']` rather than to a bare `:root`.
+
+**Two layers.** `@theme inline` in `src/index.css` maps every Tailwind colour
+utility onto a plain CSS variable instead of a literal; `inline` is what makes
+that work, because it emits `var(--surface-base)` into the utility rather than
+resolving the colour at build time. The palettes then set those variables.
+Switching a theme sets one attribute on `<html>` and every colour follows, with
+no class churn, no re-render, and no component knowing a theme exists.
+
+Each palette is written once and the theme blocks only alias it. A light colour
+written out twice is a light colour that will eventually differ between the
+toggle and the OS preference, and nobody would find that by looking.
+
+**`light-dark()` is deliberately not used.** It would collapse each token to one
+line, and it landed in browsers in 2024. If a rep's phone does not have it,
+every token becomes invalid at once: not a theme bug, a colourless application.
+The indirection degrades to dark instead.
+
+**The theme is applied in `main.tsx`, before React.** Doing it in a component
+paints the default first and corrects it a frame later, which is a dark flash
+on every load for anyone who chose light, and no amount of CSS fixes it once
+the decision lives in a component.
+
+### What did not simply invert
+
+- **Fills.** `bg-white/6` was not a colour, it was an instruction to lighten
+  what is underneath. Correct on a dark ground, backwards on a light one.
+  These are now `--color-fill-subtle` / `-fill` / `-fill-strong` and `--color-well`
+  for a recessed input, named for intent rather than mechanism.
+- **Accents get *darker* in light, not lighter.** A 0.78 amber that glows on
+  slate is invisible on white.
+- **`--color-primary` is separate from `--color-accent-indigo`,** same hue and
+  different jobs. The accent is used as ink, so on a dark ground it must be
+  light; a fill carrying white text must be dark enough for the white. One
+  token cannot be both, and trying made the primary button's own label fail at
+  3.8:1.
+- **The map's rim does not flip.** `halo` and `label` are read against the
+  ground and invert; `rim` outlines a coloured mark so two pastels do not merge,
+  and a dark outline does that on either basemap. Flipping it put a pale ring
+  around a pale tack on pale streets.
+- **One disposition colour genuinely breaks.** `do_not_knock` is near-white so
+  that it stands apart from every hue, which is invisible on a light basemap.
+  `dispositionHexFor()` overrides that one and two others, as a partial map: the
+  other seven are mid-tone hues that read on both, and duplicating them would
+  only create seven more chances to drift.
+- **Recharts colours its legend labels with the series colour.** An amber word
+  on a white card is 2:1. The label is now ink and the swatch beside it carries
+  the colour.
+
+### The map restyles rather than rebuilds
+
+`map.setStyle()`, not a new `MapLibreMap`. A rebuild throws away wherever the
+reader had panned to, which on a city of doors means finding their street again
+every time they touch the toggle.
+
+The cost is that `setStyle` drops every source, layer and image the application
+added, because none of them are in the new style. So the `style.load` handler is
+registered with `on` rather than `once` and rebuilds them, and the last data
+application is held in a ref and replayed. Event handlers are bound once behind
+a flag: re-binding them alongside the layers would stack a second click handler
+on every theme change, and a door would report being tapped twice.
+
+### Contrast is measured, not eyeballed
+
+`qa/theme-qa.mjs` walks nine dashboard views and the rep app in both themes and
+computes the WCAG ratio of every text node against what is actually painted
+behind it, plus a check for marks painted the same colour as their background.
+
+Two things that harness got wrong first, both worth knowing:
+
+- **The palette is oklch, and `getComputedStyle` returns it verbatim.** Pulling
+  the numbers out with a regex reads lightness as red and hue as blue. The first
+  version reported every element in both themes at 1:1, which is not a contrast
+  failure, it is a measurement failure. Colours are now resolved by painting
+  them on a 1x1 canvas, which composites translucency for free.
+- **Text sits on its own element's background,** not its parent's. Measuring a
+  filled button's label against the page behind the button reported white on
+  white.
+
+Once it measured correctly it found twenty-one distinct failures in the **dark**
+theme, which had been there since long before any of this: `--ink-faint` at 3.8:1
+on fourteen elements, three accents used as text on their own tint, and the
+primary button's own label. Those tokens moved. Both themes now pass at 4.5:1
+for small text and 3:1 for large.
+
 ## Brand assets
 
 `public/stopply-logo-mark.png` and `stopply-logo-wordmark.png` are the real
@@ -440,8 +534,9 @@ node qa/turnstile-stub.mjs &          # this sandbox cannot reach Cloudflare's
 npx wrangler pages dev dist --port 8788 &
 
 node qa/api-qa.mjs                    # 35 checks against a real workerd
-node qa/manual-qa.mjs                 # 19 browser checks
+node qa/manual-qa.mjs                 # 24 browser checks
 node qa/login-qa.mjs                  # 10 sign-in checks
+node qa/theme-qa.mjs                  # 16 checks, both themes, contrast measured
 ```
 
 `.dev.vars` holds the local secrets and is gitignored. Deployed secrets are set

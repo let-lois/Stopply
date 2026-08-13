@@ -8,6 +8,7 @@ import { Navigate, RouterProvider, createBrowserRouter } from 'react-router-dom'
 import type { RouteObject } from 'react-router-dom';
 import { PlatformProvider } from '@/lib/state/PlatformProvider';
 import { SessionProvider } from '@/lib/auth/SessionProvider';
+import { ThemeProvider } from '@/lib/theme/ThemeProvider';
 import { RequireSession } from '@/platform/auth/RequireSession';
 import { AppShell } from '@/platform/shell/AppShell';
 import { ModuleGuard, WorkspaceIndexRedirect } from '@/platform/routing/ModuleGuard';
@@ -101,12 +102,18 @@ const router = createBrowserRouter([
 
 export default function App() {
   return (
-    // Session outermost: what the platform may load depends on who is asking,
-    // so there is nothing for PlatformProvider to fetch until that is known.
-    <SessionProvider>
-      <PlatformProvider>
-        <RouterProvider router={router} />
-      </PlatformProvider>
-    </SessionProvider>
+    // Theme outermost, and outside the session on purpose: the sign-in page
+    // and the rep app both need it, and neither has a dashboard session. It
+    // wraps rather than sits beside because the toggle appears in both trees.
+    <ThemeProvider>
+      {/* Session next: what the platform may load depends on who is asking,
+          so there is nothing for PlatformProvider to fetch until that is
+          known. */}
+      <SessionProvider>
+        <PlatformProvider>
+          <RouterProvider router={router} />
+        </PlatformProvider>
+      </SessionProvider>
+    </ThemeProvider>
   );
 }

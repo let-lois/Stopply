@@ -42,7 +42,7 @@ export default function FieldSalesProperties() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Address or owner"
-            className="mt-2 block w-full max-w-sm rounded-xl border border-[var(--color-hairline)] bg-white/6 px-3 py-2 text-sm normal-case tracking-normal text-[var(--color-ink)]"
+            className="mt-2 block w-full max-w-sm rounded-xl border border-[var(--color-hairline)] bg-fill-subtle px-3 py-2 text-sm normal-case tracking-normal text-[var(--color-ink)]"
           />
         </label>
 
