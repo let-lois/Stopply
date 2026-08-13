@@ -46,6 +46,19 @@ interface AddressRow {
   do_not_knock: number;
 }
 
+// True when a query failed because this tenant's database predates the
+// field tracking migration.
+//
+// Tenant migrations are applied by an ops command, not by deploying the
+// Worker, so there is always a window where the code is live and a given
+// client's database has not caught up. During that window every field
+// route would otherwise answer 500, and the dashboard would show a client
+// "internal error" for a feature they simply have not had switched on yet.
+// Reporting reports the truth instead: nothing here yet.
+export function isMissingFieldTables(err: unknown): boolean {
+  return err instanceof Error && /no such table/i.test(err.message);
+}
+
 export async function loadDispositions(d1: TenantD1, dbId: string): Promise<Disposition[]> {
   const { results } = await d1.query<Parameters<typeof dispositionFromRow>[0]>(
     dbId,

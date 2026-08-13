@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { fmtNum, fmtPct, fmtStamp } from '@/lib/format';
 import { useToast } from '../Toasts';
+import { CodeBox } from '../CodeBox';
 
 interface Totals {
   visits: number;
@@ -48,6 +49,10 @@ interface DayPoint {
 }
 
 interface Overview {
+  // False when this client's database has not had the field tracking
+  // migration applied yet. Distinct from "no activity": one is waiting on
+  // an ops step, the other is waiting on a rep.
+  ready?: boolean;
   range: { from: string; to: string };
   timezone: string;
   totals: Totals;
@@ -136,9 +141,31 @@ export function FieldActivityTab({ canWrite, timezone }: { canWrite: boolean; ti
 
   useEffect(loadReps, [loadReps]);
 
-  if (error) return <p className="delta-down">{error}</p>;
-
   const t = overview?.totals;
+
+  // This client's database predates the field tables. Nothing here can work
+  // until the tenant migration runs, and saying so beats a bare error: the
+  // person reading this is the one who can get it run.
+  if (overview && overview.ready === false) {
+    return (
+      <div className="card stack">
+        <h3 className="section-title">Not set up on this client yet</h3>
+        <p className="muted" style={{ margin: 0, maxWidth: 640 }}>
+          Door to door tracking is deployed, but this client&apos;s database has not had the
+          field tables created yet. That is a one time migration an agency admin runs, after
+          which reps can be added here.
+        </p>
+        <CodeBox
+          code="CONTROL_DB_ID=... CF_API_TOKEN=... CF_ACCOUNT_ID=... pnpm migrate:tenants"
+          label="Migration to run"
+          hint="Applies pending tenant migrations to every client database."
+          defaultOpen
+        />
+      </div>
+    );
+  }
+
+  if (error) return <p className="delta-down">{error}</p>;
 
   // No crew yet. Rather than an empty funnel of zeros, this explains what
   // the section is and gives the one action that starts it. Reporting has

@@ -362,3 +362,95 @@ describe('field app address', () => {
     expect(body.fieldAppUrl).toBe('https://dash.allstar.com/field');
   });
 });
+
+// The window between deploying the Worker and running the tenant
+// migration. Tenant migrations are an ops command, not part of a deploy,
+// so every client sits here for a while. Answering 500 through that window
+// put "internal error" on a client's dashboard for a feature that was
+// simply not switched on yet.
+describe('a client whose database predates the field tables', () => {
+  let env: ReturnType<typeof makeEnv>;
+  let tenantDb: SqliteTenantD1;
+  let headers: Record<string, string>;
+
+  beforeEach(async () => {
+    clearResolverCache();
+    tenantDb = new SqliteTenantD1();
+    // Roll the tenant back to before migration 0006.
+    for (const table of ['field_visits', 'field_addresses', 'field_dispositions', 'field_reps']) {
+      await tenantDb.query('db-allstar', `DROP TABLE IF EXISTS ${table}`);
+    }
+    env = makeEnv({ __tenantD1: tenantDb });
+    (env.CONTROL_DB as FakeD1)
+      .on(/FROM tenants WHERE slug = \?/, (params) => ({
+        first: params[0] === 'all-star' ? TENANT_ROW : null,
+      }))
+      .on(/FROM tenants WHERE custom_hostname = \?/, () => ({ first: null }))
+      .on(/INSERT INTO audit_log/, () => ({}));
+    const { token, csrf } = await createSession(env as unknown as Env, {
+      userType: 'tenant',
+      userId: 'u_admin',
+      role: 'account_admin',
+      tenantId: 't_allstar',
+      assignedTenants: null,
+    });
+    headers = { cookie: `lbi_session=${token}`, 'x-csrf-token': csrf, 'content-type': 'application/json' };
+  });
+
+  it('reports the overview as not ready instead of failing', async () => {
+    const res = await app.request(
+      `${HOST}/api/tenant/field/overview`,
+      { headers },
+      env as unknown as Env
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ready: boolean; totals: { visits: number } };
+    expect(body.ready).toBe(false);
+    expect(body.totals.visits).toBe(0);
+  });
+
+  it('reports an empty roster as not ready rather than as an empty crew', async () => {
+    // The difference matters on screen: one says "add your first rep", the
+    // other says "this still needs a migration". Adding a rep would fail.
+    const res = await app.request(`${HOST}/api/tenant/field/reps`, { headers }, env as unknown as Env);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ready: boolean; reps: unknown[] };
+    expect(body.ready).toBe(false);
+    expect(body.reps).toEqual([]);
+  });
+
+  it('serves an empty visit log rather than failing', async () => {
+    const res = await app.request(`${HOST}/api/tenant/field/visits`, { headers }, env as unknown as Env);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { visits: unknown[] }).visits).toEqual([]);
+  });
+
+  it('still surfaces a genuine database failure rather than swallowing it', async () => {
+    // The guard must be narrow. A broken tenant database is a real problem
+    // and has to keep reporting itself as one.
+    const broken = {
+      query: async () => {
+        throw new Error('D1 HTTP 500');
+      },
+      batch: async () => [],
+    };
+    const brokenEnv = makeEnv({ __tenantD1: broken });
+    (brokenEnv.CONTROL_DB as FakeD1)
+      .on(/FROM tenants WHERE slug = \?/, () => ({ first: TENANT_ROW }))
+      .on(/FROM tenants WHERE custom_hostname = \?/, () => ({ first: null }));
+    clearResolverCache();
+    const { token } = await createSession(brokenEnv as unknown as Env, {
+      userType: 'tenant',
+      userId: 'u_admin',
+      role: 'account_admin',
+      tenantId: 't_allstar',
+      assignedTenants: null,
+    });
+    const res = await app.request(
+      `${HOST}/api/tenant/field/overview`,
+      { headers: { cookie: `lbi_session=${token}` } },
+      brokenEnv as unknown as Env
+    );
+    expect(res.status).toBe(500);
+  });
+});
