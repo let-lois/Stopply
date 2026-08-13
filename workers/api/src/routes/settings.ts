@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { AppContext } from '../env';
 import { tenantScope, tenantWrite } from '../middleware';
 import { writeAudit } from '../audit';
+import { DASHBOARD_SECTIONS, parseSections } from '@letlois/db';
 import { clearResolverCache } from '../tenantResolver';
 import { LIMITS, rateLimit } from '../ratelimit';
 
@@ -314,4 +315,39 @@ settingsRoutes.get('/custom-domain', async (c) => {
     cnameTarget: record.cname_target,
     txt: record.txt_name ? { name: record.txt_name, value: record.txt_value } : null,
   });
+});
+
+// Which sections this client's dashboard shows.
+//
+// The platform began as marketing attribution, so every client inherited an
+// ads shaped dashboard. That is the wrong product for a client whose work
+// is knocking doors: spend, channels, Meta and Google describe a business
+// they do not run, and a Door to Door section is invisible to a client who
+// only buys ads. This is the switch between them.
+const sectionsSchema = z
+  .object({ sections: z.array(z.enum(DASHBOARD_SECTIONS)).min(1).max(DASHBOARD_SECTIONS.length) })
+  .strict();
+
+settingsRoutes.put('/sections', tenantWrite, async (c) => {
+  const tenant = c.get('tenant')!;
+  const session = c.get('session')!;
+  const body = sectionsSchema.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: 'invalid request', details: body.error.flatten() }, 400);
+
+  // Deduplicated and stored in canonical page order, so the nav does not
+  // depend on the order somebody happened to tick the boxes in.
+  const chosen = DASHBOARD_SECTIONS.filter((s) => body.data.sections.includes(s));
+  await c.env.CONTROL_DB.prepare(`UPDATE tenants SET sections_json = ? WHERE id = ?`)
+    .bind(JSON.stringify(chosen), tenant.id)
+    .run();
+  clearResolverCache();
+  await writeAudit(c.env, {
+    actorType: session.userType,
+    actorId: session.userId,
+    tenantId: tenant.id,
+    action: 'sections.update',
+    before: { sections: parseSections(tenant.sections_json) },
+    after: { sections: chosen },
+  });
+  return c.json({ ok: true, sections: chosen });
 });

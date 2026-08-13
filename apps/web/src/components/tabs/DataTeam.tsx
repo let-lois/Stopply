@@ -13,7 +13,7 @@ import { useToast } from '../Toasts';
 import { CodeBox } from '../CodeBox';
 import { applyThemeMode, getThemeMode, type ThemeMode } from '@/lib/theme';
 import { BudgetForm, type TenantCard } from '../AgencyOverview';
-import { FieldRepsSection } from './FieldActivity';
+import { FieldRepsSection, SampleDataControls } from './FieldActivity';
 
 // The palette a tenant starts from in the theme editor, and the base every
 // save is spread over so a partial edit still sends a complete theme (the
@@ -84,7 +84,9 @@ export function DataTeamTab({
       <SourcesSection sources={sources} tz={tz} refreshSources={refreshSources} toast={toast} />
       <ImportsSection tz={tz} />
       <TeamSection toast={toast} />
+      <SectionsSection settings={settings} toast={toast} refreshSettings={refreshSettings} />
       <FieldRepsSection onRosterChanged={refreshFieldRoster} />
+      <SampleDataControls onChanged={refreshFieldRoster} />
       <TargetsSection labels={labels} toast={toast} />
       {settings.role === 'agency_admin' && <ClientBudgetSection tenantId={settings.tenant.id} />}
       <SettingsSection settings={settings} labels={labels} toast={toast} isAgency={isAgency} refreshSettings={refreshSettings} />
@@ -826,6 +828,111 @@ function ViewConfigEditor({ user, onClose, toast }: { user: TeamUser; onClose: (
         <button onClick={onClose}>Cancel</button>
       </div>
     </div>
+  );
+}
+
+// What this client's dashboard is for.
+//
+// The platform started as marketing attribution, so every client inherited
+// spend, channels, Meta and Google. A door to door client runs none of
+// that: showing them an empty Meta section and a spend KPI of zero
+// describes somebody else's business. This is the switch.
+const SECTION_CHOICES: Array<{ key: string; label: string; note: string }> = [
+  { key: 'performance', label: 'Main Dashboard', note: 'Spend, leads and revenue across channels' },
+  { key: 'field', label: 'Door to Door', note: 'Knocks, outcomes and rep leaderboard' },
+  { key: 'meta', label: 'Meta', note: 'Meta campaigns and ads' },
+  { key: 'google', label: 'Google Ads', note: 'Google campaigns and ads' },
+  { key: 'present', label: 'Present', note: 'Internal, client presentation view' },
+];
+
+const PRESETS: Array<{ label: string; sections: string[] }> = [
+  { label: 'Ads client', sections: ['performance', 'meta', 'google', 'present', 'data-team'] },
+  { label: 'Door to door client', sections: ['field', 'present', 'data-team'] },
+  { label: 'Both', sections: ['performance', 'field', 'meta', 'google', 'present', 'data-team'] },
+];
+
+function SectionsSection({
+  settings,
+  toast,
+  refreshSettings,
+}: {
+  settings: TenantSettings;
+  toast: (s: string) => void;
+  refreshSettings: () => void;
+}) {
+  const [chosen, setChosen] = useState<string[]>(
+    settings.tenant.sections ?? ['performance', 'meta', 'google', 'present', 'data-team']
+  );
+  const [busy, setBusy] = useState(false);
+
+  const toggle = (key: string) =>
+    setChosen((current) =>
+      current.includes(key) ? current.filter((k) => k !== key) : [...current, key]
+    );
+
+  const save = async (sections: string[]) => {
+    setBusy(true);
+    try {
+      // Data and Team is always reachable, since it is where this very
+      // setting lives. Sending it keeps the stored list honest about what
+      // the client actually has.
+      const payload = sections.includes('data-team') ? sections : [...sections, 'data-team'];
+      await api('/api/tenant/settings/sections', { method: 'PUT', json: { sections: payload } });
+      setChosen(payload);
+      toast('Dashboard sections saved');
+      refreshSettings();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'could not save');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="card stack">
+      <h3>What this client&apos;s dashboard shows</h3>
+      <p className="muted" style={{ margin: 0, maxWidth: 640 }}>
+        Hide the sections this client does not run. A door to door client has no ad accounts, so
+        spend and channel reporting describe a business that is not theirs.
+      </p>
+
+      <div className="type-filters">
+        {PRESETS.map((p) => (
+          <button key={p.label} disabled={busy} onClick={() => void save(p.sections)}>
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="stack" style={{ gap: 8 }}>
+        {SECTION_CHOICES.map((choice) => (
+          <label key={choice.key} className="row" style={{ gap: 10, alignItems: 'flex-start' }}>
+            <input
+              type="checkbox"
+              style={{ width: 18, minHeight: 18, marginTop: 3 }}
+              checked={chosen.includes(choice.key)}
+              onChange={() => toggle(choice.key)}
+            />
+            <span>
+              <strong>{choice.label}</strong>
+              <br />
+              <span className="muted" style={{ fontSize: 12.5 }}>
+                {choice.note}
+              </span>
+            </span>
+          </label>
+        ))}
+      </div>
+
+      <button
+        className="primary"
+        style={{ alignSelf: 'flex-start' }}
+        disabled={busy || chosen.length === 0}
+        onClick={() => void save(chosen)}
+      >
+        {busy ? 'Saving' : 'Save sections'}
+      </button>
+    </section>
   );
 }
 
