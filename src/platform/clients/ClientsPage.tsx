@@ -1,14 +1,19 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePlatform } from '@/lib/state/PlatformProvider';
 import { MODULE_ORDER, MODULE_REGISTRY, defaultViewFor } from '@/modules/registry';
 import { routes } from '@/types/routes';
-import { Badge, CardButton, EmptyState } from '@/components/ui';
+import { Badge, Button, CardButton, EmptyState } from '@/components/ui';
+import { NewClientDialog } from '@/platform/clients/NewClientDialog';
+import { useCan } from '@/lib/auth/useCan';
 import { relativeTime } from '@/lib/format/datetime';
 import { accentClasses } from '@/types/accent';
 
 export default function ClientsPage() {
   const { clients } = usePlatform();
   const navigate = useNavigate();
+  const can = useCan();
+  const [creating, setCreating] = useState(false);
 
   // One implementation of "which view does this client land on", called from
   // one place. The prototype had the same six-branch chain here and in an
@@ -21,16 +26,23 @@ export default function ClientsPage() {
     );
   };
 
-  if (clients.length === 0) {
-    return <EmptyState title="No clients yet" body="Create a client workspace to get started." />;
-  }
-
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Clients</h1>
-        <p className="micro-label mt-1">{clients.length} workspaces</p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Clients</h1>
+          <p className="micro-label mt-1">{clients.length} workspaces</p>
+        </div>
+        {can('client.create') && (
+          <Button variant="primary" onClick={() => setCreating(true)}>
+            New client
+          </Button>
+        )}
       </div>
+
+      {clients.length === 0 && (
+        <EmptyState title="No clients yet" body="Create a client workspace to get started." />
+      )}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {clients.map((client) => (
@@ -74,6 +86,10 @@ export default function ClientsPage() {
           </CardButton>
         ))}
       </div>
+
+      {/* Mounted only while open, so the next client cannot inherit this
+          one's module selection. */}
+      {creating && <NewClientDialog open onClose={() => setCreating(false)} />}
     </div>
   );
 }

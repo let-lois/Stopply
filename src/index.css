@@ -31,6 +31,10 @@
   --color-accent-sky: oklch(0.72 0.14 235);
   --color-accent-purple: oklch(0.65 0.19 300);
 
+  /* The mark's pink. Identity, not interaction: it belongs to the logo and
+     the rare deliberate highlight, never to a button. */
+  --color-brand: oklch(0.68 0.2 12);
+
   /* Status. */
   --color-positive: oklch(0.7 0.16 165);
   --color-caution: oklch(0.78 0.15 75);

@@ -27,8 +27,8 @@ export default function AuditLogPage() {
             kept only for this build. Saying otherwise would be a claim the
             software cannot honour. */}
         <p className="mt-1 text-sm text-[var(--color-ink-soft)]">
-          Actions taken in this browser. Stored locally for now, so it is not a
-          audit trail of record until the backend keeps it.
+          Actions taken in this browser, kept locally. It becomes a record of what
+          happened across the platform once the backend stores it.
         </p>
       </div>
 

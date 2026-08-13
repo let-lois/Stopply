@@ -104,3 +104,29 @@ Phase 1 stores nothing on a server and authenticates nobody. In particular:
 - Credentials are references only. No code path accepts, stores, transmits,
   or displays a secret value, and none will before the backend exists.
 - Nothing is encrypted, and no copy in the interface says otherwise.
+
+## Brand assets
+
+`public/stopply-logo-mark.png` and `stopply-logo-wordmark.png` are the real
+brand files, carried over from the production platform rather than traced
+from a screenshot.
+
+The square icons (`icon-32`, `icon-180`, `icon-192`, `icon-512`) are generated
+from the mark, which is 223x256. They use `fit: contain` onto a transparent
+square, so the rounded tile is padded rather than stretched: resizing it to a
+square directly would distort the corner radius. To regenerate after a logo
+change:
+
+```sh
+npm i -D sharp
+node -e "const s=require('sharp');for(const n of [32,180,192,512])s('public/stopply-logo-mark.png').resize(n,n,{fit:'contain',background:{r:0,g:0,b:0,alpha:0}}).png().toFile('public/icon-'+n+'.png')"
+npm remove sharp
+```
+
+sharp is removed again afterwards because the icons are committed and nothing
+in the application imports it.
+
+The mark's pink is available as `--color-brand`. It is identity, not
+interaction: it belongs to the logo and the occasional deliberate highlight,
+never to a button. The interactive accent stays indigo, so a control's colour
+continues to mean something.
