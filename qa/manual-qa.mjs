@@ -5,12 +5,15 @@
 // a real Chromium against a real production build, so what it reports is
 // what a person would see.
 //
-// Run: npx vite preview --port 4173 & node qa/manual-qa.mjs
+// Run: npx wrangler pages dev dist --port 8788 & node qa/manual-qa.mjs
+//
+// It runs against the Functions rather than a static preview, because every
+// page now needs a session and the session comes from the server.
 
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 
-const BASE = 'http://localhost:4173';
+const BASE = process.env.QA_BASE ?? 'http://localhost:8788';
 const SHOTS = 'qa/screenshots';
 mkdirSync(SHOTS, { recursive: true });
 
@@ -35,7 +38,26 @@ page.on('console', (m) => {
 });
 page.on('pageerror', (e) => consoleErrors.push(String(e)));
 
+// Sign in first. Everything below is behind a session, which is the point.
+await page.goto(`${BASE}/login`, { waitUntil: 'networkidle' });
+const SEED_PASSWORD = process.env.SEED_PASSWORD ?? 'stopply-demo-password';
+const loginStatus = await page.evaluate(async (password) => {
+  const response = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({
+      email: 'admin@letlois.example.invalid',
+      password,
+      turnstileToken: 'XXXX.DUMMY.TOKEN.XXXX',
+    }),
+  });
+  return response.status;
+}, SEED_PASSWORD);
+check('the QA account signs in', loginStatus === 200, `status ${loginStatus}`);
+
 await page.goto(`${BASE}/clients`, { waitUntil: 'networkidle' });
+await page.waitForTimeout(600);
 await page.screenshot({ path: `${SHOTS}/01-clients.png`, fullPage: true });
 
 check('clients page renders the roster', (await page.getByText('Blue Cactus Power Washing').count()) > 0);
@@ -58,20 +80,30 @@ await page.screenshot({ path: `${SHOTS}/03-not-enabled.png`, fullPage: true });
 check('QA4 an unbought module is refused explicitly', notEnabled > 0);
 
 // QA 2: live mode is honest.
-await page.goto(`${BASE}/c/cl_allstar/settings`, { waitUntil: 'networkidle' });
+//
+// Advertising is the right module to prove this on. Its data would come from
+// Meta and Google Ads, neither of which is connected, so live mode has to say
+// so rather than keep showing demo numbers behind a LIVE badge. That exact
+// failure is what this check exists for.
+await page.goto(`${BASE}/c/cl_roguesolar/settings`, { waitUntil: 'networkidle' });
+await page.waitForTimeout(500);
 await page.getByRole('switch', { name: /Live mode/ }).click();
-await page.goto(`${BASE}/c/cl_allstar/field-sales/dashboard`, { waitUntil: 'networkidle' });
-await page.waitForTimeout(400);
+await page.waitForTimeout(500);
+await page.goto(`${BASE}/c/cl_roguesolar/advertising/dashboard`, { waitUntil: 'networkidle' });
+await page.waitForTimeout(600);
 const liveHonest = await page.getByText(/Live data is not connected/).count();
 await page.screenshot({ path: `${SHOTS}/04-live-mode.png`, fullPage: true });
 check('QA2 live mode says so rather than showing demo data', liveHonest > 0);
 
 // Back to demo for the remaining checks.
-await page.goto(`${BASE}/c/cl_allstar/settings`, { waitUntil: 'networkidle' });
+await page.goto(`${BASE}/c/cl_roguesolar/settings`, { waitUntil: 'networkidle' });
+await page.waitForTimeout(500);
 await page.getByRole('switch', { name: /Live mode/ }).click();
+await page.waitForTimeout(500);
 
-// QA 8: filtering the canvass must not move a pin.
-await page.goto(`${BASE}/c/cl_allstar/field-sales/canvass`, { waitUntil: 'networkidle' });
+// QA 8: filtering the canvass must not move a pin. Rogue Solar is on demo
+// data, so the canvass here is the generated dataset rather than D1.
+await page.goto(`${BASE}/c/cl_roguesolar/field-sales/canvass`, { waitUntil: 'networkidle' });
 await page.waitForTimeout(500);
 const pinBefore = await page.locator('button[aria-label*="Appointment set"]').first().boundingBox();
 await page.getByRole('button', { name: 'Appointment set', exact: true }).click();
@@ -169,7 +201,17 @@ check(
 );
 
 // Mobile.
-const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true });
+// Same browser *context*, not just the same browser: browser.newPage()
+// creates its own context with its own cookie jar, so a page opened that way
+// is signed out and every check below would be measuring the login screen.
+// That is exactly what happened the first time this ran.
+// Reuse the signed-in page and shrink it, rather than opening a second one.
+// browser.newPage() creates its own context with its own cookie jar, so a
+// page opened that way is signed out and every check below would be
+// measuring the login screen. That is exactly what happened the first time
+// this ran, and it passed three checks while doing it.
+const mobile = page;
+await mobile.setViewportSize({ width: 390, height: 844 });
 await mobile.goto(`${BASE}/c/cl_allstar/field-sales/dashboard`, { waitUntil: 'networkidle' });
 await mobile.waitForTimeout(500);
 const overflows = await mobile.evaluate(
@@ -211,7 +253,23 @@ check(
 );
 await mobile.screenshot({ path: `${SHOTS}/10-mobile-after-nav.png`, fullPage: true });
 
-check('no console errors during the pass', consoleErrors.length === 0, consoleErrors.slice(0, 2).join(' | '));
+// Two errors are expected and are not findings.
+//
+// The 401 is the boot session check running on /login before anyone has
+// signed in; a visitor is supposed to get one, and treating it as an error
+// would mean the app had to ask "am I signed in" some other way.
+//
+// The tunnel failure is Turnstile's script: this sandbox cannot reach
+// challenges.cloudflare.com. On a real deployment it loads. Note that the
+// consequence of it not loading is a disabled sign-in button, never a
+// bypass: the server refuses a request with no token.
+const EXPECTED = [/401 \(Unauthorized\)/, /ERR_TUNNEL_CONNECTION_FAILED/, /challenges\.cloudflare\.com/];
+const unexpected = consoleErrors.filter((e) => !EXPECTED.some((p) => p.test(e)));
+check(
+  'no unexpected console errors during the pass',
+  unexpected.length === 0,
+  unexpected.slice(0, 2).join(' | ')
+);
 
 await browser.close();
 

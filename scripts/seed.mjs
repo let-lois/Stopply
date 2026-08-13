@@ -40,8 +40,14 @@ const clients = [
 ];
 
 for (const [id, code, name, industry, plan, modules] of clients) {
+  // Allstar reads live, because field sales is the one module with a real
+  // source behind it. The others stay on demo data: their numbers would come
+  // from Meta, Google Ads, Shopify and a carrier API, and none of those
+  // integrations exists, so live mode for them would mean an honest empty
+  // state rather than a dashboard.
+  const dataMode = id === 'cl_allstar' ? 'live' : 'demo';
   lines.push(
-    `INSERT INTO clients (id, code, name, industry, status, plan, data_mode, contact_name, contact_email, created_at, last_active) VALUES (${q(id)}, ${q(code)}, ${q(name)}, ${q(industry)}, 'active', ${q(plan)}, 'live', ${q('Operations')}, ${q(`ops@${code.toLowerCase()}.example.invalid`)}, ${q(iso(now))}, ${q(iso(now))});`
+    `INSERT INTO clients (id, code, name, industry, status, plan, data_mode, contact_name, contact_email, created_at, last_active) VALUES (${q(id)}, ${q(code)}, ${q(name)}, ${q(industry)}, 'active', ${q(plan)}, ${q(dataMode)}, ${q('Operations')}, ${q(`ops@${code.toLowerCase()}.example.invalid`)}, ${q(iso(now))}, ${q(iso(now))});`
   );
   for (const m of modules) {
     lines.push(

@@ -22,6 +22,7 @@ export const ROUTE_PATTERNS = {
   settings: '/settings',
   workspace: '/c/:clientId',
   workspaceSettings: '/c/:clientId/settings',
+  login: '/login',
   workspaceModule: '/c/:clientId/:moduleId',
   workspaceView: '/c/:clientId/:moduleId/:viewId',
 } as const;
@@ -70,6 +71,7 @@ export function moduleIdFromSlug(slug: string): ModuleId | undefined {
 
 export const routes = {
   root: () => '/',
+  login: () => '/login',
   clients: () => '/clients',
   team: () => '/team',
   audit: () => '/audit',

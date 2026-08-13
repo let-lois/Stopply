@@ -68,10 +68,14 @@ export function useCan(): (permission: Permission, options?: CanOptions) => bool
 
 /** Pure, so it can be tested without a provider. */
 export function can(
-  user: PlatformUser,
+  user: PlatformUser | null,
   permission: Permission,
   options?: CanOptions
 ): boolean {
+  // No session, no permissions. This is reachable for the moment between the
+  // shell mounting and the session request returning, and answering "yes"
+  // there would flash controls the user cannot use.
+  if (!user) return false;
   if (!GRANTS[user.role].has(permission)) return false;
 
   // A client-scoped user may only act on their own workspace. The prototype

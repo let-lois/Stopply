@@ -14,6 +14,8 @@ const ACTION_ACCENT: Record<AuditAction, 'emerald' | 'rose' | 'indigo' | 'amber'
   INTEGRATION_DATA_MODE: 'amber',
   LOG_VISIT: 'slate',
   ADD_PROPERTY: 'slate',
+  ADD_CREDENTIAL: 'indigo',
+  REMOVE_CREDENTIAL: 'rose',
 };
 
 export default function AuditLogPage() {

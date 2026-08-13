@@ -10,6 +10,8 @@ import userEvent from '@testing-library/user-event';
 import { RouterProvider, createMemoryRouter } from 'react-router-dom';
 import type { RouteObject } from 'react-router-dom';
 import { PlatformProvider } from '@/lib/state/PlatformProvider';
+import { SessionProvider } from '@/lib/auth/SessionProvider';
+import { installApiFixture } from '@/test/apiFixture';
 import { ModuleGuard, WorkspaceIndexRedirect } from '@/platform/routing/ModuleGuard';
 import { NotFoundView } from '@/platform/routing/NotFoundView';
 import { MODULE_ORDER, MODULE_REGISTRY } from '@/modules/registry';
@@ -53,14 +55,24 @@ function renderAt(path: string) {
     { initialEntries: [path] }
   );
   return render(
-    <PlatformProvider>
-      <RouterProvider router={router} />
-    </PlatformProvider>
+    <SessionProvider>
+      <PlatformProvider>
+        <RouterProvider router={router} />
+      </PlatformProvider>
+    </SessionProvider>
   );
 }
 
 beforeEach(() => {
   window.localStorage.clear();
+  // The providers fetch everything they hold, so the tests need a server.
+  // Stubbing the network rather than the provider keeps the real seam and
+  // the real response validation in the path under test.
+  installApiFixture();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe('ModuleGuard', () => {

@@ -10,6 +10,8 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RouterProvider, createMemoryRouter } from 'react-router-dom';
 import { PlatformProvider } from '@/lib/state/PlatformProvider';
+import { SessionProvider } from '@/lib/auth/SessionProvider';
+import { installApiFixture, testClients, visitPosts } from '@/test/apiFixture';
 import { FieldSalesProvider } from '@/lib/state/FieldSalesProvider';
 import { useModuleData } from '@/lib/data/useModuleData';
 import { useFieldSalesActions } from '@/lib/state/FieldSalesProvider';
@@ -19,7 +21,7 @@ import { selectKpis } from '@/modules/field-sales/selectors';
 // A harness that shows the numbers a dashboard shows, plus a control that
 // logs a knock, so the assertions are about what a rep would actually see.
 function Harness() {
-  const { data } = useModuleData('field_sales');
+  const { data, mode } = useModuleData('field_sales');
   const { logVisit } = useFieldSalesActions();
   const { auditLog } = usePlatform();
 
@@ -31,6 +33,7 @@ function Harness() {
 
   return (
     <div>
+      <p data-testid="mode">{mode}</p>
       <p data-testid="visits">{kpis.visitsLogged}</p>
       <p data-testid="doors">{kpis.propertiesVisited}</p>
       <p data-testid="sales">{kpis.salesClosed}</p>
@@ -68,14 +71,24 @@ function renderHarness() {
     { initialEntries: ['/c/cl_allstar'] }
   );
   return render(
-    <PlatformProvider>
-      <RouterProvider router={router} />
-    </PlatformProvider>
+    <SessionProvider>
+      <PlatformProvider>
+        <RouterProvider router={router} />
+      </PlatformProvider>
+    </SessionProvider>
   );
 }
 
 beforeEach(() => {
   window.localStorage.clear();
+  // The providers fetch everything they hold, so the tests need a server.
+  // Stubbing the network rather than the provider keeps the real seam and
+  // the real response validation in the path under test.
+  installApiFixture();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe('logging a visit', () => {
@@ -137,27 +150,50 @@ describe('logging a visit', () => {
     expect(Number(screen.getByTestId('sales').textContent)).toBe(salesAfterClose - 1);
   });
 
-  it('writes exactly one audit entry per knock under StrictMode', async () => {
-    // QA item 7. The prototype logged from inside a setState updater, which
-    // StrictMode double-invokes, so development wrote two entries and
-    // production one and the two trails disagreed by construction.
+  it('sends exactly one request per knock under StrictMode', async () => {
+    // QA item 7, moved to where the property now lives.
+    //
+    // The prototype logged from inside a setState updater, which StrictMode
+    // double-invokes, so development recorded two entries and production one
+    // and the two trails disagreed by construction. The trail is the
+    // server's now, so the equivalent defect would be two POSTs for one
+    // knock. The call sits in the action body, after the setters return,
+    // which is the only place that produces exactly one.
     const user = userEvent.setup();
+    const live = testClients.map((c) =>
+      c.id === 'cl_allstar' ? { ...c, dataMode: 'live' as const } : c
+    );
+    vi.restoreAllMocks();
+    installApiFixture(live);
+
     const router = createMemoryRouter(
       [{ path: '/c/:clientId', element: <FieldSalesProvider><Harness /></FieldSalesProvider> }],
       { initialEntries: ['/c/cl_allstar'] }
     );
     render(
       <StrictMode>
-        <PlatformProvider>
-          <RouterProvider router={router} />
-        </PlatformProvider>
+        <SessionProvider>
+          <PlatformProvider>
+            <RouterProvider router={router} />
+          </PlatformProvider>
+        </SessionProvider>
       </StrictMode>
     );
 
-    await user.click(screen.getByRole('button', { name: 'Log sale' }));
+    // Wait for the workspace to actually be in live mode. Clicking before the
+    // client list arrives would take the demo path and prove nothing.
     await waitFor(() => {
-      expect(screen.getByTestId('audit-log-visits')).toHaveTextContent('1');
+      expect(screen.getByTestId('mode')).toHaveTextContent('live');
     });
+
+    await user.click(screen.getByRole('button', { name: 'Log sale' }));
+
+    await waitFor(() => {
+      expect(visitPosts()).toBe(1);
+    });
+    // Settle, then confirm StrictMode's second pass did not add another.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(visitPosts()).toBe(1);
   });
 
   it('survives a remount, which is what a refresh looks like', async () => {
@@ -196,9 +232,11 @@ describe('logging a visit', () => {
       { initialEntries: ['/c/cl_roguesolar'] }
     );
     render(
-      <PlatformProvider>
-        <RouterProvider router={otherRouter} />
-      </PlatformProvider>
+      <SessionProvider>
+        <PlatformProvider>
+          <RouterProvider router={otherRouter} />
+        </PlatformProvider>
+      </SessionProvider>
     );
 
     await waitFor(() => {

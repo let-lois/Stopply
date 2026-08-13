@@ -47,7 +47,7 @@ export default function WorkspaceSettingsPage() {
                   checked={enabled}
                   hideLabel
                   label={`${enabled ? 'Disable' : 'Enable'} ${def.name}`}
-                  onChange={(next) => setModuleEnabled(client.id, id, next)}
+                  onChange={(next) => void setModuleEnabled(client.id, id, next)}
                 />
               </div>
             );
@@ -65,8 +65,8 @@ export default function WorkspaceSettingsPage() {
         <Switch
           checked={client.dataMode === 'live'}
           label="Live mode"
-          hint={client.dataMode === 'live' ? 'No live source is connected' : 'Showing demo data'}
-          onChange={(next) => setClientDataMode(client.id, next ? 'live' : 'demo')}
+          hint={client.dataMode === 'live' ? 'Reading from the server' : 'Showing demo data'}
+          onChange={(next) => void setClientDataMode(client.id, next ? 'live' : 'demo')}
         />
       </Card>
     </div>

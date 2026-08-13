@@ -12,7 +12,14 @@
 
 import { createRouter, route } from '@server/router';
 import { login, logout, session } from '@server/routes/auth';
-import { listAudit, listClients, listTeam, setClientModule } from '@server/routes/clients';
+import {
+  createClient,
+  listAudit,
+  listClients,
+  listTeam,
+  setClientDataMode,
+  setClientModule,
+} from '@server/routes/clients';
 import { createCredential, deleteCredential, listCredentials } from '@server/routes/credentials';
 import { getFieldSalesData, logVisit } from '@server/routes/fieldSales';
 
@@ -22,7 +29,9 @@ export const routes = [
   route('GET', '/api/auth/session', session),
 
   route('GET', '/api/clients', listClients),
+  route('POST', '/api/clients', createClient),
   route('PATCH', '/api/clients/:clientId/modules', setClientModule),
+  route('PATCH', '/api/clients/:clientId/data-mode', setClientDataMode),
 
   route('GET', '/api/team', listTeam),
   route('GET', '/api/audit', listAudit),

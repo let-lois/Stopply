@@ -1,21 +1,35 @@
 import type { ModuleId } from '@/types';
 import type { ModuleDataMap } from '@/lib/data/moduleDataMap';
 import { LiveModeNotAvailableError } from '@/lib/data/errors';
+import { fetchFieldSalesLive } from '@/lib/data/live/fieldSales';
 
 /**
- * Live adapters. Phase 1 has none, and says so rather than pretending.
+ * Live adapters, dispatched by module.
  *
- * Phase 2 replaces this with real fetches. field_sales binds to the D1 field
- * schema already running in production (field_reps, field_addresses,
- * field_visits, field_dispositions) rather than defining a second home for
- * the same knocks; see ARCHITECTURE.md. The other five are new work.
+ * field_sales is connected: the platform stores doors, knocks, territories
+ * and reps itself, so there is a real source to read.
  *
- * Views need no change when that happens. That is the whole return on
- * routing every module through one seam.
+ * The other five are not, and this rejects for them rather than quietly
+ * serving demo numbers under a live badge. Their data would come from Meta,
+ * Google Ads, Shopify, Stripe and a carrier API, and none of those
+ * integrations exists yet. "Live data is not connected" is the honest answer
+ * and the one §10 requires: no interface copy may describe a capability that
+ * is not there.
+ *
+ * Each becomes a case here when its integration is built, and no view changes
+ * on that day. That is the whole return on routing every module through one
+ * seam.
  */
 export function fetchLiveData<M extends ModuleId>(
   moduleId: M,
-  _clientId: string
+  clientId: string,
+  signal?: AbortSignal
 ): Promise<ModuleDataMap[M]> {
+  if (moduleId === 'field_sales') {
+    // Narrowing a generic to one member is past what the compiler tracks
+    // through this signature, so the assertion is contained here rather than
+    // pushed onto the seam or onto every view.
+    return fetchFieldSalesLive(clientId, signal) as Promise<ModuleDataMap[M]>;
+  }
   return Promise.reject(new LiveModeNotAvailableError(moduleId));
 }

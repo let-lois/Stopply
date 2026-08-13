@@ -76,19 +76,23 @@ export function useModuleData<M extends ModuleId>(moduleId: M): ModuleDataResult
   useEffect(() => {
     if (!requestKey || !clientId) return;
 
-    let cancelled = false;
-    fetchLiveData(moduleId, clientId)
+    // Aborted rather than merely ignored. Switching client twice quickly used
+    // to leave the first request in flight, holding a connection and arriving
+    // to be discarded; now it is cancelled at the network.
+    const controller = new AbortController();
+
+    fetchLiveData(moduleId, clientId, controller.signal)
       .then((data) => {
-        if (!cancelled) setLiveResult({ key: requestKey, data, error: null });
+        if (!controller.signal.aborted) setLiveResult({ key: requestKey, data, error: null });
       })
       .catch((cause: unknown) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         const error = cause instanceof Error ? cause : new LiveModeNotAvailableError(moduleId);
         setLiveResult({ key: requestKey, data: undefined, error });
       });
 
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [requestKey, clientId, moduleId]);
 

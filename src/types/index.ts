@@ -97,7 +97,22 @@ export type AuditAction =
   | 'SWITCH_DATA_MODE'
   | 'INTEGRATION_DATA_MODE'
   | 'LOG_VISIT'
-  | 'ADD_PROPERTY';
+  | 'ADD_PROPERTY'
+  | 'ADD_CREDENTIAL'
+  | 'REMOVE_CREDENTIAL';
+
+export const AUDIT_ACTIONS: readonly AuditAction[] = [
+  'CREATE_CLIENT',
+  'UPDATE_CLIENT',
+  'ENABLE_MODULE',
+  'DISABLE_MODULE',
+  'SWITCH_DATA_MODE',
+  'INTEGRATION_DATA_MODE',
+  'LOG_VISIT',
+  'ADD_PROPERTY',
+  'ADD_CREDENTIAL',
+  'REMOVE_CREDENTIAL',
+] as const;
 
 export interface AuditLogEntry {
   id: string;
@@ -110,8 +125,14 @@ export interface AuditLogEntry {
   moduleId?: ModuleId;
   action: AuditAction;
   details: string;
-  // No ipAddress. Client-side code cannot obtain one; the prototype declared
-  // the field and never populated it. It returns in Phase 2, server-set.
+  /**
+   * Set by the server from CF-Connecting-IP.
+   *
+   * Phase 1 had no such field: client-side code cannot obtain an address, and
+   * the prototype declared it and left it empty forever. It is here now
+   * because there is finally something that can fill it in.
+   */
+  ipAddress?: string;
 }
 
 /**

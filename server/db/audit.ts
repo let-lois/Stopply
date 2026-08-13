@@ -12,14 +12,17 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { newId } from '@server/crypto/tokens';
 import type { Session } from '@server/db/scope';
+import type { AuditAction, ModuleId } from '@/types/index';
 
 export interface AuditInput {
   session: Session;
-  action: string;
+  // Typed against the client's closed set. The server and the audit page
+  // share one definition, so an action nothing can render cannot be written.
+  action: AuditAction;
   details: string;
   clientId?: string | null;
   clientName?: string | null;
-  moduleId?: string | null;
+  moduleId?: ModuleId | null;
   ipAddress?: string | null;
 }
 

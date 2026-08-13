@@ -2,8 +2,7 @@ import { Menu, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { usePlatform } from '@/lib/state/PlatformProvider';
 import { routes } from '@/types/routes';
-import { DemoIdentitySwitcher } from '@/platform/shell/DemoIdentitySwitcher';
-import { Badge } from '@/components/ui';
+import { AccountMenu } from '@/platform/shell/AccountMenu';
 
 export function PlatformHeader({
   navOpen,
@@ -39,10 +38,8 @@ export function PlatformHeader({
       </div>
 
       <div className="flex shrink-0 items-center gap-3">
-        <span className="hidden sm:block">
-          <Badge accent="amber">Demo data</Badge>
-        </span>
-        <DemoIdentitySwitcher currentUser={currentUser} />
+
+        {currentUser && <AccountMenu currentUser={currentUser} />}
       </div>
     </header>
   );

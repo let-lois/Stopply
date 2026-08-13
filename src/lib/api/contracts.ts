@@ -10,7 +10,8 @@
 // breaks both sides in the same `tsc` run.
 
 import { z } from 'zod';
-import { MODULE_IDS } from '@/types/index';
+import { AUDIT_ACTIONS, MODULE_IDS } from '@/types/index';
+import type { AuditAction } from '@/types/index';
 
 const isoDateTime = z.string().datetime({ offset: true });
 
@@ -117,6 +118,23 @@ export const setModuleRequestSchema = z.object({
   enabled: z.boolean(),
 });
 
+export const setDataModeRequestSchema = z.object({
+  dataMode: dataModeSchema,
+});
+
+export const createClientRequestSchema = z.object({
+  name: z.string().min(1).max(120),
+  industry: z.string().min(1).max(120),
+  code: z.string().min(2).max(8),
+  plan: clientPlanSchema,
+  status: clientStatusSchema,
+  contactName: z.string().max(120),
+  contactEmail: z.string().max(320),
+  enabledModules: z.array(moduleIdSchema),
+});
+
+export const createClientResponseSchema = z.object({ client: clientSchema });
+
 // ---------------------------------------------------------------------------
 // Team
 // ---------------------------------------------------------------------------
@@ -127,6 +145,10 @@ export const teamResponseSchema = z.object({ users: z.array(sessionUserSchema) }
 // Audit
 // ---------------------------------------------------------------------------
 
+export const auditActionSchema = z.enum(
+  AUDIT_ACTIONS as unknown as [string, ...string[]]
+) as z.ZodType<AuditAction>;
+
 export const auditEntrySchema = z.object({
   id: z.string(),
   timestamp: isoDateTime,
@@ -135,7 +157,10 @@ export const auditEntrySchema = z.object({
   clientId: z.string().optional(),
   clientName: z.string().optional(),
   moduleId: moduleIdSchema.optional(),
-  action: z.string(),
+  // The closed set, not a string. Both sides share this file, so the server
+  // cannot record an action the audit page has no branch for: it would fail
+  // to compile rather than render as a blank row.
+  action: auditActionSchema,
   details: z.string(),
   /**
    * Set by the server from CF-Connecting-IP, or absent.

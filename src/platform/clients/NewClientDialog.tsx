@@ -9,19 +9,17 @@
 // misconfigured by the previous one.
 
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import type { ClientPlan, ModuleId } from '@/types';
 import { usePlatformActions } from '@/lib/state/PlatformProvider';
-import { MODULE_ORDER, MODULE_REGISTRY, defaultViewFor } from '@/modules/registry';
+import { MODULE_ORDER, MODULE_REGISTRY } from '@/modules/registry';
 import { Button, Dialog, Switch } from '@/components/ui';
-import { routes } from '@/types/routes';
+import { ApiRequestError } from '@/lib/api/client';
 import { accentClasses } from '@/types/accent';
 
 const PLANS: ClientPlan[] = ['Growth', 'Pro', 'Enterprise'];
 
 export function NewClientDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { createClient } = usePlatformActions();
-  const navigate = useNavigate();
 
   const [name, setName] = useState('');
   const [industry, setIndustry] = useState('');
@@ -30,29 +28,35 @@ export function NewClientDialog({ open, onClose }: { open: boolean; onClose: () 
   const [plan, setPlan] = useState<ClientPlan>('Growth');
   const [modules, setModules] = useState<ModuleId[]>([]);
 
-  const submit = (event: React.FormEvent) => {
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  // The workspace is created by the server, which mints the id, so this
+  // awaits the response rather than navigating to an id invented locally.
+  // The prototype generated one client-side and would have produced two
+  // different ids for the same workspace the moment a server existed.
+  const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!name.trim()) return;
 
-    const client = createClient({
-      code: name.trim().slice(0, 3).toUpperCase(),
-      name: name.trim(),
-      industry: industry.trim() || 'Unspecified',
-      status: 'onboarding',
-      plan,
-      dataMode: 'demo',
-      enabledModules: modules,
-      contactEmail: contactEmail.trim(),
-      contactName: contactName.trim(),
-    });
-
-    onClose();
-    const target = defaultViewFor(client.enabledModules);
-    void navigate(
-      target
-        ? routes.workspace(client.id, target.moduleId, target.viewId)
-        : routes.workspaceSettings(client.id)
-    );
+    setSubmitting(true);
+    setError(null);
+    try {
+      await createClient({
+        code: name.trim().slice(0, 3).toUpperCase(),
+        name: name.trim(),
+        industry: industry.trim() || 'Unspecified',
+        status: 'onboarding',
+        plan,
+        enabledModules: modules,
+        contactEmail: contactEmail.trim(),
+        contactName: contactName.trim(),
+      });
+      onClose();
+    } catch (cause) {
+      setError(cause instanceof ApiRequestError ? cause.message : 'Could not create the workspace.');
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -73,7 +77,17 @@ export function NewClientDialog({ open, onClose }: { open: boolean; onClose: () 
         </>
       }
     >
-      <form id="new-client-form" onSubmit={submit} className="flex flex-col gap-4">
+      <form
+        id="new-client-form"
+        onSubmit={(event) => void submit(event)}
+        className="flex flex-col gap-4"
+      >
+        {error && (
+          <p role="alert" className="text-sm text-[var(--color-accent-rose)]">
+            {error}
+          </p>
+        )}
+        <fieldset disabled={submitting} className="contents">
         <label className="flex flex-col gap-1.5 text-sm">
           Client name
           <input
@@ -151,6 +165,7 @@ export function NewClientDialog({ open, onClose }: { open: boolean; onClose: () 
               </div>
             );
           })}
+        </fieldset>
         </fieldset>
       </form>
     </Dialog>

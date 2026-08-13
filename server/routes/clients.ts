@@ -5,7 +5,7 @@
 // file that reads a client id straight from the URL.
 
 import type { D1Database } from '@cloudflare/workers-types';
-import { json, readJson, clientIp, forbidden } from '@server/http';
+import { json, readJson, clientIp, forbidden, ApiError } from '@server/http';
 import type { RouteContext } from '@server/router';
 import {
   requireSession,
@@ -14,8 +14,11 @@ import {
   type Session,
 } from '@server/db/scope';
 import { recordAudit } from '@server/db/audit';
+import { newId } from '@server/crypto/tokens';
 import { moduleName } from '@/modules/catalog';
 import {
+  createClientRequestSchema,
+  setDataModeRequestSchema,
   setModuleRequestSchema,
   type SessionUser,
   type auditResponseSchema,
@@ -173,6 +176,110 @@ export async function setClientModule(ctx: RouteContext): Promise<Response> {
   return json(payload);
 }
 
+/**
+ * Switch a workspace between demo and live data.
+ *
+ * The prototype's equivalent toggled a flag that five of six modules never
+ * read, so the badge changed and the numbers did not, and it still wrote an
+ * audit entry claiming the source had changed. Here the flag is what
+ * useModuleData resolves against, and the entry is written by the server that
+ * actually changed it.
+ */
+export async function setClientDataMode(ctx: RouteContext): Promise<Response> {
+  const session = await requireSession(ctx.request, ctx.env);
+  const clientId = await requireClientInScope(ctx.env.DB, session, ctx.params['clientId']);
+  const body = await readJson(ctx.request, setDataModeRequestSchema);
+
+  if (session.user.role !== 'super_admin' && session.user.role !== 'client_admin') {
+    throw forbidden('Only an admin can change a workspace data source.');
+  }
+
+  const client = await ctx.env.DB.prepare('SELECT name FROM clients WHERE id = ?1')
+    .bind(clientId)
+    .first<{ name: string }>();
+
+  await ctx.env.DB.batch([
+    ctx.env.DB.prepare('UPDATE clients SET data_mode = ?1 WHERE id = ?2').bind(body.dataMode, clientId),
+    // Integrations follow the workspace. Leaving them behind is how a client
+    // ends up in live mode with every integration still reading demo.
+    ctx.env.DB.prepare('UPDATE integrations SET data_mode = ?1 WHERE client_id = ?2').bind(
+      body.dataMode,
+      clientId
+    ),
+  ]);
+
+  await recordAudit(ctx.env.DB, {
+    session,
+    action: 'SWITCH_DATA_MODE',
+    details: `Data mode set to ${body.dataMode}`,
+    clientId,
+    clientName: client?.name ?? null,
+    ipAddress: clientIp(ctx.request),
+  });
+
+  const payload: ClientsResponse = { clients: await loadClients(ctx.env.DB, session) };
+  return json(payload);
+}
+
+/** Create a workspace. Platform-level, so only a super admin may do it. */
+export async function createClient(ctx: RouteContext): Promise<Response> {
+  const session = await requireSession(ctx.request, ctx.env);
+  const body = await readJson(ctx.request, createClientRequestSchema);
+
+  if (session.user.role !== 'super_admin') {
+    throw forbidden('Only a platform admin can create a workspace.');
+  }
+
+  const id = newId('cl');
+  const now = new Date().toISOString();
+
+  const statements = [
+    ctx.env.DB.prepare(
+      `INSERT INTO clients
+         (id, code, name, industry, status, plan, data_mode, contact_name, contact_email, created_at, last_active)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'demo', ?7, ?8, ?9, ?10)`
+    ).bind(
+      id,
+      body.code.toUpperCase(),
+      body.name,
+      body.industry,
+      body.status,
+      body.plan,
+      body.contactName,
+      body.contactEmail,
+      now,
+      now
+    ),
+    ...body.enabledModules.map((moduleId) =>
+      ctx.env.DB.prepare(
+        'INSERT INTO client_modules (client_id, module_id, enabled_at) VALUES (?1, ?2, ?3)'
+      ).bind(id, moduleId, now)
+    ),
+  ];
+
+  try {
+    // One batch, so a workspace cannot exist with half its entitlements.
+    await ctx.env.DB.batch(statements);
+  } catch (error) {
+    if (String(error).includes('UNIQUE')) {
+      throw new ApiError(409, 'already_exists', 'That workspace code is already in use.');
+    }
+    throw error;
+  }
+
+  await recordAudit(ctx.env.DB, {
+    session,
+    action: 'CREATE_CLIENT',
+    details: `Created workspace ${body.name}`,
+    clientId: id,
+    clientName: body.name,
+    ipAddress: clientIp(ctx.request),
+  });
+
+  const payload: ClientsResponse = { clients: await loadClients(ctx.env.DB, session) };
+  return json(payload, { status: 201 });
+}
+
 export async function listTeam(ctx: RouteContext): Promise<Response> {
   const session = await requireSession(ctx.request, ctx.env);
   const scope = scopeFilter(session, 'u.client_id');
@@ -245,7 +352,11 @@ export async function listAudit(ctx: RouteContext): Promise<Response> {
       ...(r.client_id ? { clientId: r.client_id } : {}),
       ...(r.client_name ? { clientName: r.client_name } : {}),
       ...(r.module_id ? { moduleId: r.module_id as NonNullable<AuditResponse['entries'][number]['moduleId']> } : {}),
-      action: r.action,
+      // A column, so its type is whatever SQLite holds. Everything that
+      // writes it is typed against the closed set, and the client validates
+      // the response against the same set, so a row from an older deploy
+      // fails loudly at the boundary rather than rendering as a blank action.
+      action: r.action as AuditResponse['entries'][number]['action'],
       details: r.details,
       ...(r.ip_address ? { ipAddress: r.ip_address } : {}),
     })),

@@ -24,7 +24,10 @@ type PropertyDisposition = Visit['disposition'];
 import { fieldSalesDemo } from '@/lib/data/demo/fieldSales';
 import { propertiesByClientSchema, visitsByClientSchema } from '@/lib/persistence/schema';
 import { readStorage, STORAGE_KEYS, writeStorage } from '@/lib/persistence/storage';
-import { usePlatformActions } from '@/lib/state/PlatformProvider';
+import { usePlatform, usePlatformActions } from '@/lib/state/PlatformProvider';
+import { api } from '@/lib/api/client';
+import { apiPaths } from '@/lib/api/paths';
+import { logVisitResponseSchema } from '@/modules/field-sales/contracts';
 
 type ByClient<T> = Record<string, T[]>;
 
@@ -36,6 +39,14 @@ export interface LogVisitInput {
 }
 
 export interface FieldSalesActions {
+  /**
+   * Record a knock.
+   *
+   * In demo mode this updates local state only. In live mode it posts to the
+   * server, which owns the id, the arrival time and the audit entry, and
+   * which answers a resend of an already recorded knock with a success so an
+   * offline outbox can retry until it drains.
+   */
   logVisit: (input: LogVisitInput) => void;
 }
 
@@ -48,7 +59,12 @@ function nextId(prefix: string): string {
 
 export function FieldSalesProvider({ children }: { children: React.ReactNode }) {
   const { clientId } = useParams<{ clientId: string }>();
-  const { recordAudit } = usePlatformActions();
+  const { clients } = usePlatform();
+  const { refresh } = usePlatformActions();
+
+  // Demo and live are two different stores, and which one a knock goes to is
+  // the workspace's own setting rather than anything this component decides.
+  const isLive = clients.find((c) => c.id === clientId)?.dataMode === 'live';
 
   const [propertiesByClient, setPropertiesByClient] = useState<ByClient<Property>>(
     () => readStorage(STORAGE_KEYS.properties, propertiesByClientSchema) ?? {}
@@ -82,6 +98,36 @@ export function FieldSalesProvider({ children }: { children: React.ReactNode }) 
   const logVisit = useCallback(
     (input: LogVisitInput) => {
       if (!clientId || !seed) return;
+
+      if (isLive) {
+        // The id is minted here, on the device, before the knock is sent.
+        // That is the whole offline story: the server recognises a resend by
+        // this id and answers success rather than an error, so an outbox can
+        // retry until it drains. Never move this to the server.
+        const deviceVisitId = `dev_${crypto.randomUUID()}`;
+
+        void api
+          .post(
+            apiPaths.fieldSalesVisits(clientId),
+            {
+              deviceVisitId,
+              propertyId: input.propertyId,
+              repId: input.repId,
+              disposition: input.disposition,
+              notes: input.notes,
+              // The clock at the door, not the clock on arrival. Reporting
+              // reads this, so a knock uploaded late stays on the day it
+              // happened.
+              occurredAt: new Date().toISOString(),
+            },
+            logVisitResponseSchema
+          )
+          // The server owns the doors in live mode, so the way to see the
+          // knock is to re-read them rather than to guess locally and hope
+          // the guess matches what was recorded.
+          .then(() => refresh());
+        return;
+      }
 
       const visit: Visit = {
         id: nextId('visit'),
@@ -117,16 +163,15 @@ export function FieldSalesProvider({ children }: { children: React.ReactNode }) 
         return next;
       });
 
-      // Emitted after the setters return, in the action body. This is the
-      // only place it can go and still produce exactly one entry.
-      recordAudit({
-        action: 'LOG_VISIT',
-        details: `Logged ${input.disposition.replace(/_/g, ' ')}`,
-        clientId,
-        moduleId: 'field_sales',
-      });
+      // The trail is the server's. In live mode the POST below writes it; in
+      // demo mode nothing is recorded, because nothing happened to anyone's
+      // real workspace and an audit entry saying otherwise would be a lie.
+      //
+      // The prototype called its logger from inside setClients, which
+      // StrictMode double-invokes, so development wrote two entries and
+      // production one.
     },
-    [clientId, seed, recordAudit]
+    [clientId, seed, isLive, refresh]
   );
 
   const actions = useMemo<FieldSalesActions>(() => ({ logVisit }), [logVisit]);

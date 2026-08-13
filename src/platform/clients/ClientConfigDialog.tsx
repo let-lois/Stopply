@@ -85,7 +85,7 @@ export function ClientConfigDialog({
                     checked={enabled}
                     hideLabel
                     label={`${enabled ? 'Disable' : 'Enable'} ${def.name} for ${client.name}`}
-                    onChange={(next) => setModuleEnabled(client.id, id, next)}
+                    onChange={(next) => void setModuleEnabled(client.id, id, next)}
                   />
                 </div>
               );
@@ -105,9 +105,9 @@ export function ClientConfigDialog({
               checked={client.dataMode === 'live'}
               label="Live mode"
               hint={
-                client.dataMode === 'live' ? 'No live source is connected' : 'Showing demo data'
+                client.dataMode === 'live' ? 'Reading from the server' : 'Showing demo data'
               }
-              onChange={(next) => setClientDataMode(client.id, next ? 'live' : 'demo')}
+              onChange={(next) => void setClientDataMode(client.id, next ? 'live' : 'demo')}
             />
           </div>
         )}
