@@ -12,7 +12,8 @@
     "seed": "node scripts/seed.mjs",
     "provision:tenant": "node scripts/provision-tenant.mjs",
     "seed:mock": "node scripts/seed-mock-data.mjs",
-    "seed:mock:browser": "node scripts/build-browser-seeder.mjs"
+    "seed:mock:browser": "node scripts/build-browser-seeder.mjs",
+    "field:reps": "node scripts/add-field-reps.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

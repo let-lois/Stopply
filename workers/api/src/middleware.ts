@@ -1,7 +1,7 @@
 import type { Context, Next } from 'hono';
 import type { Role } from '@letlois/db';
-import type { AppContext } from './env';
-import { getSession, readSessionToken, checkCsrf } from './session';
+import { isDashboardSession, type AppContext } from './env';
+import { getSession, readSessionToken, readFieldToken, checkCsrf } from './session';
 import { isAgencyHost, resolveTenantByHost, getTenantById } from './tenantResolver';
 
 // Resolves host context and session on every request. Unknown hostnames
@@ -24,8 +24,17 @@ export async function contextMiddleware(c: Context<AppContext>, next: Next): Pro
   }
 
   const token = readSessionToken(c.req.header('cookie'));
+  const loaded = token ? await getSession(env, token) : null;
   c.set('sessionToken', token);
-  c.set('session', token ? await getSession(env, token) : null);
+  // A field rep's session is never a dashboard session, whichever cookie it
+  // arrives in. Dropping it here means no dashboard route has to remember to
+  // check the user type, including any route added later.
+  c.set('session', isDashboardSession(loaded) ? loaded : null);
+
+  const fieldToken = readFieldToken(c.req.header('cookie'));
+  const fieldLoaded = fieldToken ? await getSession(env, fieldToken) : null;
+  c.set('fieldToken', fieldToken);
+  c.set('fieldSession', fieldLoaded && fieldLoaded.userType === 'field' ? fieldLoaded : null);
 
   await next();
 }
@@ -44,12 +53,19 @@ export function requireRole(...roles: Role[]) {
   };
 }
 
-// CSRF double submit check on every mutating method.
+// CSRF double submit check on every mutating method, for both populations.
 export async function csrfMiddleware(c: Context<AppContext>, next: Next): Promise<Response | void> {
   const method = c.req.method.toUpperCase();
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
     const session = c.get('session');
     if (session && !checkCsrf(session, c.req.raw)) {
+      return c.json({ error: 'csrf token missing or invalid' }, 403);
+    }
+    // Checked separately: a request from the field app carries the field
+    // cookie and no dashboard session, so the check above would pass it
+    // unexamined.
+    const fieldSession = c.get('fieldSession');
+    if (fieldSession && !checkCsrf(fieldSession, c.req.raw)) {
       return c.json({ error: 'csrf token missing or invalid' }, 403);
     }
   }
@@ -83,6 +99,12 @@ export async function tenantScope(c: Context<AppContext>, next: Next): Promise<R
       if (!agencyCanAccess(session.role, session.assignedTenants, hostTenant.id)) {
         return c.json({ error: 'forbidden' }, 403);
       }
+    } else {
+      // Anything that is neither a tenant nor an agency user is refused
+      // rather than falling through. Without this branch a field rep's
+      // session presented in the dashboard cookie reached every read only
+      // tenant route.
+      return c.json({ error: 'forbidden' }, 403);
     }
     await next();
     return;
@@ -109,6 +131,20 @@ export function agencyCanAccess(
   if (role === 'agency_admin') return true;
   if (role === 'agency_staff') return (assignedTenants ?? []).includes(tenantId);
   return false;
+}
+
+// Scope for the field app's own routes. A rep session is valid only on its
+// own tenant's hostname: the tenant is taken from the host, never from
+// anything the phone sends, the same rule the dashboard follows.
+export async function fieldScope(c: Context<AppContext>, next: Next): Promise<Response | void> {
+  const session = c.get('fieldSession');
+  if (!session || session.userType !== 'field') return c.json({ error: 'unauthorized' }, 401);
+  if (c.get('hostContext') !== 'tenant') return c.json({ error: 'not found' }, 404);
+  const hostTenant = c.get('tenant');
+  if (!hostTenant) return c.json({ error: 'not found' }, 404);
+  if (session.tenantId !== hostTenant.id) return c.json({ error: 'forbidden' }, 403);
+  if (hostTenant.status !== 'active') return c.json({ error: 'not found' }, 404);
+  await next();
 }
 
 // Write access inside a tenant: account_admin, or any agency role with

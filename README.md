@@ -46,9 +46,10 @@ workers/api              Hono Worker: auth, tenant resolution, all API routes, i
 workers/sync             Cron Worker: integration syncs, rollups, agency pull, backups
 packages/db              control plane schema, tenant schema template, migrations, shared types
 packages/attribution     pure functions: identity resolution, touch attribution, rollups
+packages/field           pure functions: address normalization, dispositions, field reporting
 packages/tenant-d1       thin client for the D1 HTTP query API
 packages/connectors      Boulevard, Housecall Pro, Jobber connectors + CSV parser registry
-scripts                  migrations, seeding, provisioning, Be Clinical migration
+scripts                  migrations, seeding, provisioning, field crew onboarding
 wrangler.toml            API Worker bindings (CONTROL_DB, ASSETS, CSV_BUCKET, SESSIONS)
 ```
 
@@ -176,6 +177,77 @@ pnpm provision:tenant -- --slug hire --name "Hire" \
   --timezone America/Phoenix --plan starter \
   --budget 5000 --platforms meta
 ```
+
+## Door to door field tracking
+
+For clients who knock doors rather than (or as well as) buy ads. Reps log
+activity at the door from a phone; the client reads the reporting from
+their own dashboard. Both halves are in this repo.
+
+```
+  a rep's phone                        the client's dashboard
+  <host>/field                         <host>  ->  Door to Door
+       |                                              |
+       |  POST /api/field/visits            GET /api/tenant/field/overview
+       v                                              v
+  +--------------------------------------------------------------+
+  |  tenant database: field_reps, field_dispositions,             |
+  |                   field_addresses, field_visits               |
+  +--------------------------------------------------------------+
+```
+
+### The field app
+
+Served at `/field` on the client's own dashboard hostname (for example
+`all-star.bi.letlois.com/field`). Installable to a phone home screen via
+`/field.webmanifest`.
+
+The thing that makes it work in the field is the outbox. Nothing is ever
+sent directly: a knock is written to `localStorage` first, the rep gets
+their confirmation from the queue, and a background flush drains it
+whenever there is signal. Each visit carries a `client_uuid` minted on the
+phone, and the server's unique index on it makes a retry safe to repeat
+forever, which is what lets the app resend without ever double counting a
+knock. A visit already recorded answers 200, not an error, so it still
+clears the queue.
+
+Timestamps are the phone's clock at the door (`occurred_at`), not arrival
+time (`recorded_at`). A knock logged in a dead zone at 6pm and uploaded at
+midnight still belongs to the day it happened.
+
+### Reps are not dashboard users
+
+Reps live in `field_reps`, not the tenant `users` table, and carry their own
+cookie (`lbi_field`, separate from `lbi_session`). A field session is
+refused by every `/api/tenant/*` route, and a dashboard session is refused
+by `/api/field/*`. An account admin can hold both at once on the same
+hostname without one signing the other out.
+
+### Reporting
+
+`/api/tenant/field/overview` backs the Door to Door section: headline
+funnel, rep leaderboard, outcome breakdown, and a daily trend. Windows are
+cut in the client's own timezone, not UTC, so an evening knock lands on the
+day the client thinks it did. `/api/tenant/field/visits.csv` exports the
+full log.
+
+The funnel reads the disposition catalog's flags (`is_contact`, `is_lead`,
+`is_appointment`, `is_sale`) rather than hard coded keys, so a client can
+rename "Appointment set" to "Demo booked", or add an outcome of their own,
+without a stage dropping out of the reporting.
+
+### Onboarding a crew
+
+Add reps from Data and Team -> Field reps, or in bulk:
+
+```sh
+API_BASE=https://all-star.bi.letlois.com SESSION_COOKIE='lbi_session=...' CSRF_TOKEN=... \
+pnpm field:reps -- --file crew.csv        # name,email,role,team per line
+```
+
+Each rep's first password is printed once and is not recoverable. The Door
+to Door section appears on the client dashboard as soon as the roster has
+somebody on it.
 
 ## Be Clinical migration (tenant zero)
 
