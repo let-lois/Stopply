@@ -1717,3 +1717,118 @@ button.primary.action-cta:hover {
     transition: none;
   }
 }
+
+/* Door to door field activity reporting. Reads what reps logged in the
+   field app at /field. */
+
+/* The CSV export is a plain link, not a fetch: the browser handles the
+   download and the Worker sets the filename. Styled to match the small
+   buttons beside it. */
+a.button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.field-outcome-bar {
+  display: flex;
+  height: 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--hairline);
+}
+
+.field-outcome-seg {
+  height: 100%;
+  min-width: 2px;
+}
+
+.field-outcome-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  font-size: 12.5px;
+}
+
+.field-outcome-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.field-outcome-legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex: none;
+}
+
+/* Daily activity. One column per day, each stacked knocks / conversations /
+   appointments / sales so the shape of a day is readable at a glance. Days
+   nobody knocked come back from the API as zeros and render as an empty
+   column, which is the point: a gap in coverage should look like a gap. */
+.field-daily {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 120px;
+  padding-top: 4px;
+}
+
+.field-daily-col {
+  flex: 1 1 0;
+  min-width: 3px;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.field-daily-stack {
+  width: 100%;
+  min-height: 1px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  border-radius: 2px 2px 0 0;
+  overflow: hidden;
+  background: var(--hairline);
+}
+
+.field-daily-seg { width: 100%; }
+.field-daily-sales { background: var(--positive); }
+.field-daily-appts { background: var(--ch-meta); }
+.field-daily-contacts { background: var(--accent); }
+.field-daily-knocks { background: var(--gray-check); }
+
+/* A first password is shown exactly once and is never recoverable, so it
+   gets a block that has to be dismissed rather than a toast that expires
+   while the admin is looking away. */
+.field-issued {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--amber) 45%, var(--hairline));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--amber) 12%, var(--card));
+  font-size: 13.5px;
+}
+
+.field-issued code {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  user-select: all;
+}

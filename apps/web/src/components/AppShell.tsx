@@ -17,6 +17,7 @@ import { WorkBackwardsTab } from './tabs/WorkBackwards';
 import { PlanningTab } from './tabs/Planning';
 import { PresentTab } from './tabs/Present';
 import { DataTeamTab } from './tabs/DataTeam';
+import { FieldActivityTab } from './tabs/FieldActivity';
 import { ChatWidget } from './ChatWidget';
 import { StopplyLogo } from './StopplyLogo';
 import { DemoBadge } from './DemoBadge';
@@ -65,7 +66,15 @@ function ChannelLogo({ channel, size = 16 }: { channel: 'meta' | 'google'; size?
 // a client's dashboard is one continuous page and the sidebar entries
 // for these just scroll to the matching section on it.
 type ConsoleKey = 'clients' | 'team' | 'audit' | 'secrets';
-type SectionKey = 'performance' | 'meta' | 'google' | 'work-backwards' | 'planning' | 'present' | 'data-team';
+type SectionKey =
+  | 'performance'
+  | 'field'
+  | 'meta'
+  | 'google'
+  | 'work-backwards'
+  | 'planning'
+  | 'present'
+  | 'data-team';
 type TabKey = ConsoleKey | SectionKey;
 
 // KPIs and Goals are hidden from the nav for now (too much noise on top
@@ -75,7 +84,10 @@ type TabKey = ConsoleKey | SectionKey;
 // channel's full campaign/ad breakdown has its own page instead of
 // competing with the other channel's for space; Main Dashboard is just
 // the combined recap.
-const CLIENT_SECTIONS: SectionKey[] = ['performance', 'meta', 'google', 'present', 'data-team'];
+// 'field' is in the list but only renders for a client that actually
+// knocks doors, decided by whether the tenant has any field reps on its
+// roster. An ads-only client never sees an empty door to door section.
+const CLIENT_SECTIONS: SectionKey[] = ['performance', 'field', 'meta', 'google', 'present', 'data-team'];
 
 // Sections the client never presents from: agency working areas. They
 // group to the right side of the profile nav under an Internal label.
@@ -148,6 +160,9 @@ export function AppShell({
   const [logoSrc, setLogoSrc] = useState('/api/tenant/logo');
   const [error, setError] = useState<string | null>(null);
   const [canSecrets, setCanSecrets] = useState(false);
+  // Whether this client runs a door to door crew. Null while unknown, so
+  // the section does not flash in and back out on a client that has none.
+  const [hasFieldReps, setHasFieldReps] = useState<boolean | null>(null);
   // Read after mount and then watched, since the mode lives as an attribute
   // on <html> that React does not otherwise see change.
   const [themeMode, setThemeMode] = useState<ThemeMode>('light');
@@ -187,10 +202,20 @@ export function AppShell({
       .catch(() => undefined);
   }, []);
 
+  const loadFieldRoster = useCallback(() => {
+    api<{ reps: unknown[] }>('/api/tenant/field/reps')
+      .then((r) => setHasFieldReps(r.reps.length > 0))
+      // A tenant database provisioned before the field tables existed 500s
+      // here. Treated as "no crew" rather than surfacing an error for a
+      // section that client was never going to use.
+      .catch(() => setHasFieldReps(false));
+  }, []);
+
   useEffect(() => {
     if (!hasTenant) return;
     loadSettings();
     loadSources();
+    loadFieldRoster();
     api<{ months: string[] }>('/api/tenant/months')
       .then((r) => {
         setMonths(r.months);
@@ -219,7 +244,7 @@ export function AppShell({
     } else {
       fetch('/api/tenant/logo', { method: 'HEAD' }).then((r) => setHasLogo(r.ok)).catch(() => undefined);
     }
-  }, [hasTenant, loadSettings, loadSources]);
+  }, [hasTenant, loadSettings, loadSources, loadFieldRoster]);
 
   // Agency staff may have been granted the manageSecrets permission. We
   // probe the endpoint rather than threading the flag through the session:
@@ -326,13 +351,20 @@ export function AppShell({
 
   // The sections of the one-page client dashboard this user may see, in
   // page order. Viewers get only what their view config grants.
-  const sectionKeys: SectionKey[] = !hasTenant
-    ? []
-    : isViewer
-      ? CLIENT_SECTIONS.filter((s) =>
-          ((settings?.viewConfig?.tabs ?? ['performance']) as SectionKey[]).includes(s)
-        ).filter((s) => s !== 'present' && s !== 'data-team')
-      : CLIENT_SECTIONS;
+  const sectionKeys: SectionKey[] = (
+    !hasTenant
+      ? []
+      : isViewer
+        ? CLIENT_SECTIONS.filter((s) =>
+            ((settings?.viewConfig?.tabs ?? ['performance']) as SectionKey[]).includes(s)
+          ).filter((s) => s !== 'present' && s !== 'data-team')
+        : CLIENT_SECTIONS
+    // Door to door shows for anyone who could set it up, whether or not this
+    // client has a crew yet: gating it on the roster meant the section hid
+    // itself from the very person who still had to add the first rep. The
+    // client's own read only viewers are spared an empty section until
+    // there is actually activity to read.
+  ).filter((s) => s !== 'field' || hasFieldReps === true || !isViewer);
 
   const staleCount = sources.filter((s) => s.freshness === 'red').length;
 
@@ -342,6 +374,7 @@ export function AppShell({
     audit: 'Audit log',
     secrets: 'Keys & secrets',
     performance: 'Main Dashboard',
+    field: 'Door to Door',
     meta: 'Meta',
     google: 'Google Ads',
     'work-backwards': 'KPIs',
@@ -547,6 +580,18 @@ export function AppShell({
                       />
                     </section>
                   )}
+                  {/* Door to door. Sits directly under the main dashboard
+                      because for a client that knocks, this is the activity
+                      the rest of the funnel is downstream of. */}
+                  {sectionKeys.includes('field') && (
+                    <section id="section-field" className="page-section stack" style={{ gap: 10 }}>
+                      <h2 className="section-title">Door to Door</h2>
+                      <FieldActivityTab
+                        canWrite={!isViewer}
+                        timezone={settings?.tenant.timezone}
+                      />
+                    </section>
+                  )}
                   {/* Meta and Google each get the same PerformanceTab, just
                       narrowed to their own channel via channelFilter, so
                       each platform's campaigns and ads live on its own page
@@ -638,6 +683,7 @@ export function AppShell({
                     sources={sources}
                     refreshSources={loadSources}
                     refreshSettings={loadSettings}
+                    refreshFieldRoster={loadFieldRoster}
                   />
                 </section>
               )}

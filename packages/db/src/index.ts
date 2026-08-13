@@ -5,7 +5,11 @@ export type TenantStatus = 'active' | 'suspended';
 export type TenantPlan = 'starter' | 'pro' | 'whitelabel';
 export type AgencyRole = 'agency_admin' | 'agency_staff';
 export type TenantRole = 'account_admin' | 'viewer';
-export type Role = AgencyRole | TenantRole;
+// Door to door reps who log activity from the field app. Deliberately not
+// part of TenantRole: a rep is not a dashboard user, has no row in the
+// tenant users table, and no /api/tenant route accepts their session.
+export type FieldRole = 'rep' | 'manager';
+export type Role = AgencyRole | TenantRole | FieldRole;
 
 export interface TenantRow {
   id: string;
@@ -78,6 +82,16 @@ export const HOME_SERVICES_FUNNEL_LABELS: FunnelLabels = {
   scheduled: 'Jobs Booked',
   completed: 'Jobs Completed',
   purchase: 'Invoices Paid',
+};
+
+// Door to door: the funnel a knocking crew actually runs on. A "lead" is a
+// door that was knocked, not a form fill, and the stages are the ones a
+// setter and a closer are measured against.
+export const DOOR_TO_DOOR_FUNNEL_LABELS: FunnelLabels = {
+  lead: 'Knocks',
+  scheduled: 'Appointments',
+  completed: 'Sits',
+  purchase: 'Sales',
 };
 
 export const BE_CLINICAL_FUNNEL_LABELS: FunnelLabels = {
@@ -153,13 +167,28 @@ export function isDefaultTheme(theme: Record<string, unknown> | null | undefined
 }
 
 export interface SessionRecord {
-  userType: 'agency' | 'tenant';
+  // 'field' sessions ride a separate cookie from dashboard sessions and are
+  // refused by every dashboard route. See fieldScope in the API middleware.
+  userType: 'agency' | 'tenant' | 'field';
   userId: string;
   role: Role;
   tenantId: string | null;
   assignedTenants: string[] | null;
   csrf: string;
   createdAt: string;
+}
+
+export interface FieldRepRow {
+  id: string;
+  email: string;
+  name: string;
+  phone: string | null;
+  role: FieldRole;
+  team: string | null;
+  password_hash: string;
+  active: number;
+  last_login_at: string | null;
+  created_at: string;
 }
 
 export interface SourceRow {

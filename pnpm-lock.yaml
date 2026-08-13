@@ -70,6 +70,12 @@ importers:
 
   packages/db: {}
 
+  packages/field:
+    devDependencies:
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.6(@types/node@20.19.43)
+
   packages/tenant-d1: {}
 
   workers/api:
@@ -86,6 +92,9 @@ importers:
       '@letlois/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@letlois/field':
+        specifier: workspace:*
+        version: link:../../packages/field
       '@letlois/tenant-d1':
         specifier: workspace:*
         version: link:../../packages/tenant-d1

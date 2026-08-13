@@ -13,6 +13,7 @@ import { useToast } from '../Toasts';
 import { CodeBox } from '../CodeBox';
 import { applyThemeMode, getThemeMode, type ThemeMode } from '@/lib/theme';
 import { BudgetForm, type TenantCard } from '../AgencyOverview';
+import { FieldRepsSection } from './FieldActivity';
 
 // The palette a tenant starts from in the theme editor, and the base every
 // save is spread over so a partial edit still sends a complete theme (the
@@ -62,12 +63,17 @@ export function DataTeamTab({
   sources,
   refreshSources,
   refreshSettings,
+  refreshFieldRoster,
 }: {
   settings: TenantSettings;
   labels: FunnelLabels;
   sources: SourceInfo[];
   refreshSources: () => void;
   refreshSettings: () => void;
+  // Lets AppShell re-check whether this client has a crew, so the
+  // client-facing Door to Door section appears as soon as the first rep is
+  // added rather than on the next page load.
+  refreshFieldRoster?: () => void;
 }) {
   const toast = useToast();
   const tz = settings.tenant.timezone;
@@ -78,6 +84,7 @@ export function DataTeamTab({
       <SourcesSection sources={sources} tz={tz} refreshSources={refreshSources} toast={toast} />
       <ImportsSection tz={tz} />
       <TeamSection toast={toast} />
+      <FieldRepsSection onRosterChanged={refreshFieldRoster} />
       <TargetsSection labels={labels} toast={toast} />
       {settings.role === 'agency_admin' && <ClientBudgetSection tenantId={settings.tenant.id} />}
       <SettingsSection settings={settings} labels={labels} toast={toast} isAgency={isAgency} refreshSettings={refreshSettings} />

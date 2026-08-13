@@ -9,6 +9,8 @@ import { importRoutes } from './routes/imports';
 import { integrationRoutes } from './routes/integrations';
 import { settingsRoutes } from './routes/settings';
 import { chatRoutes, helpRoutes } from './routes/chat';
+import { fieldRoutes } from './routes/field';
+import { fieldAdminRoutes } from './routes/fieldAdmin';
 import { buildTrackingScript } from './tjs';
 import { getTenantBySlug } from './tenantResolver';
 import { tenantD1Client } from './provisioning';
@@ -36,6 +38,10 @@ app.route('/api/tenant', tenantRoutes);
 app.route('/api/imports', importRoutes);
 app.route('/api/tenant/integrations', integrationRoutes);
 app.route('/api/tenant/settings', settingsRoutes);
+// Door to door field tracking: /api/field is the reps' phones, and
+// /api/tenant/field is the reporting and roster the client sees.
+app.route('/api/tenant/field', fieldAdminRoutes);
+app.route('/api/field', fieldRoutes);
 app.route('/api/help', helpRoutes);
 app.route('/api/chat', chatRoutes);
 app.route('/ingest', ingestRoutes);
