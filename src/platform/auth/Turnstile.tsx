@@ -17,6 +17,20 @@ const SITE_KEY = import.meta.env['VITE_TURNSTILE_SITE_KEY'] as string | undefine
 
 const SCRIPT_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
 
+// Cloudflare publishes these for testing. The matching secret accepts any
+// token, so a deployment configured with one is not actually challenging
+// anybody. That is a fine way to demonstrate the flow and a bad way to run a
+// login, so the page says which one it is rather than looking protected.
+const TEST_SITE_KEYS = new Set([
+  '1x00000000000000000000AA',
+  '2x00000000000000000000AB',
+  '1x00000000000000000000BB',
+  '2x00000000000000000000BB',
+  '3x00000000000000000000FF',
+]);
+
+export const usingTestChallenge = SITE_KEY !== undefined && TEST_SITE_KEYS.has(SITE_KEY);
+
 interface TurnstileApi {
   render: (
     element: HTMLElement,

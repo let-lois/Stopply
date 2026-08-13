@@ -12,7 +12,12 @@ compatibility_date = "2026-08-01"
 # nodejs_compat is not enabled: nothing in functions/ imports a node builtin,
 # and the crypto it needs is WebCrypto, which workerd has natively.
 
-account_id = "af6cdf4448e16dc7a72f84c3dd7cf7fb"
+# The account is deliberately NOT pinned here: wrangler rejects account_id in a
+# Pages configuration file. It comes from CLOUDFLARE_ACCOUNT_ID in the
+# environment instead. The value for this project is
+# af6cdf4448e16dc7a72f84c3dd7cf7fb ("All LetLois Domains"), which is written
+# down here so the next person does not have to guess which of two accounts
+# holds the D1 below.
 
 [[d1_databases]]
 binding = "DB"

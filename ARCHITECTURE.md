@@ -96,14 +96,95 @@ npx vitest run
 npm run build
 ```
 
-## Not yet true
+## The backend
 
-Phase 1 stores nothing on a server and authenticates nobody. In particular:
+Cloudflare Pages Functions, D1, and Workers Secrets. One function
+(`functions/api/[[route]].ts`) dispatches `server/api.ts`, which is the entire
+API surface on one screen. Reviewing what is reachable means reading one table
+rather than walking a directory of `_middleware.ts` files.
 
-- The role switcher is a presentation device. There is no authorization.
-- Credentials are references only. No code path accepts, stores, transmits,
-  or displays a secret value, and none will before the backend exists.
-- Nothing is encrypted, and no copy in the interface says otherwise.
+### Where the enforcement is
+
+Every handler starts by resolving the session, then validating the requested
+client against that session's scope, then checking entitlement if it serves
+module data. Those are the first lines of the handler, not middleware a route
+can forget to declare: a handler that skips one has no `session` variable to
+use afterwards.
+
+- **Scope comes from the session.** A `client_id` in the URL is a hint checked
+  against it, never an instruction. Out of scope answers **404, not 403**,
+  because confirming a workspace exists is itself a disclosure.
+- **Entitlement is re-checked per request.** `ModuleGuard` in the browser is a
+  UX affordance and says so in its own comment. `requireModuleEnabled` is the
+  decision, and it reads the same row the invoice is about.
+- **The audit trail is the server's.** Server clock, actor from the session,
+  address from `CF-Connecting-IP`. The table refuses `UPDATE` and `DELETE` by
+  trigger, so append-only is a property rather than a habit. One consequence
+  worth knowing: it cannot be pruned, so retention needs a plan before it
+  needs one urgently.
+
+### Invariants are constraints
+
+Each was probed with a deliberate violation before being relied on.
+
+- `users` CHECKs that a client-scoped role has a client. That is exactly the
+  object the prototype's role switcher produced on every use.
+- `territories` CHECKs that its bounds are the right way round.
+- Entitlement is the existence of a `client_modules` row, not a boolean, so
+  "disabled" and "missing" cannot drift apart.
+- `visits.device_visit_id` is UNIQUE, which is the whole offline story.
+
+### Argon2id, and one discarded attempt
+
+workerd refuses runtime WASM compilation: `hash-wasm` and every WASM-backed
+Argon2 instantiate lazily inside the first call and fail with *"Wasm code
+generation disallowed by embedder"*. Confirmed against `wrangler pages dev`,
+not assumed. `@noble/hashes` is pure JavaScript and works, measured at roughly
+270ms per hash at OWASP's first recommended parameters. That cost is the
+feature, and it is also why login sits behind both Turnstile and a
+per-address failure limit: an endpoint that burns a quarter second of CPU per
+call is a denial of service vector otherwise.
+
+### Turnstile fails closed
+
+The secret is read through `requireBinding`, which throws. A missing secret is
+a 500 on every write, not a silent open door. `if (env.TURNSTILE_SECRET)` is
+the shape this avoids, and the spec names it.
+
+`TURNSTILE_VERIFY_URL` moves the verification endpoint **outside production
+only** so a sandbox that cannot reach `challenges.cloudflare.com` can still
+exercise the signed-in half of the API. It is ignored when `ENVIRONMENT` is
+`production`, and a test asserts that. The secret is still required and
+`success` must still come back true; only the destination moves.
+
+### The credential store has no read path
+
+`server/crypto/seal.ts` exports `sealSecret` and `last4`, and a test asserts
+that those are the only two exports. There is no `open()`, `unseal()`, or
+`decrypt()`, and that is not an oversight to be filled in later: §7's
+guarantee is cheapest to keep when the code that could break it does not
+exist. When an integration eventually needs to spend a credential, the decrypt
+belongs next to that outbound call.
+
+## Still not true
+
+- **The Turnstile keys on the deployment are Cloudflare's test pair**, which
+  accept any answer. The API token available during the build could not create
+  a real widget. The login page says so in visible copy rather than looking
+  protected. Replace them in the dashboard, then
+  `wrangler pages secret put TURNSTILE_SECRET` and rebuild with
+  `VITE_TURNSTILE_SITE_KEY`.
+- **WAF rate limiting is not configured.** The per-address login limit in
+  `login_attempts` is real and enforced; the dashboard-level rule the spec also
+  asks for is a console setting nobody has made yet.
+- **Five of six modules have no live source.** Advertising, ecommerce,
+  logistics, CRM and analytics reject live mode with "not connected", because
+  their data would come from Meta, Google Ads, Shopify, Stripe and a carrier
+  API and none of those integrations exists. Each becomes a case in
+  `src/lib/data/live/index.ts` when its integration is built, and no view
+  changes on that day.
+- **A rep cannot sign in yet.** `reps.user_id` exists for it, and `fieldScope`
+  style separation between rep and dashboard sessions has not been built here.
 
 ## Brand assets
 
@@ -130,3 +211,29 @@ The mark's pink is available as `--color-brand`. It is identity, not
 interaction: it belongs to the logo and the occasional deliberate highlight,
 never to a button. The interactive accent stays indigo, so a control's colour
 continues to mean something.
+
+## Running it
+
+```sh
+# Local, against a local D1
+npx wrangler d1 execute stopply-platform --local --file migrations/0001_initial.sql
+npx wrangler d1 execute stopply-platform --local --file migrations/0002_login_attempts.sql
+node scripts/seed.mjs > /tmp/seed.sql
+npx wrangler d1 execute stopply-platform --local --file /tmp/seed.sql
+
+node qa/turnstile-stub.mjs &          # this sandbox cannot reach Cloudflare's
+npx wrangler pages dev dist --port 8788 &
+
+node qa/api-qa.mjs                    # 35 checks against a real workerd
+node qa/manual-qa.mjs                 # 19 browser checks
+node qa/login-qa.mjs                  # 10 sign-in checks
+```
+
+`.dev.vars` holds the local secrets and is gitignored. Deployed secrets are set
+with `wrangler pages secret put` against
+`CLOUDFLARE_ACCOUNT_ID=af6cdf4448e16dc7a72f84c3dd7cf7fb`.
+
+The seeded accounts are `admin@letlois.example.invalid` (platform) and
+`admin@allstar.example.invalid` (one workspace, which is what proves scoping
+restricts rather than merely filters a sidebar). The password comes from
+`SEED_PASSWORD` and defaults to a demo value printed by the seed script.

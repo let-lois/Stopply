@@ -8,7 +8,7 @@
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui';
-import { Turnstile, turnstileConfigured } from '@/platform/auth/Turnstile';
+import { Turnstile, turnstileConfigured, usingTestChallenge } from '@/platform/auth/Turnstile';
 import { useSessionActions } from '@/lib/auth/SessionProvider';
 import { ApiRequestError } from '@/lib/api/client';
 import { routes } from '@/types/routes';
@@ -100,6 +100,14 @@ export default function LoginPage() {
           {!turnstileConfigured && (
             <p className="text-xs text-[var(--color-ink-faint)]">
               Sign-in is unavailable until the challenge is configured.
+            </p>
+          )}
+
+          {usingTestChallenge && (
+            <p className="text-xs text-[var(--color-accent-amber)]">
+              This deployment uses Cloudflare's test challenge keys, which accept any
+              answer. Replace them with a real Turnstile keypair before anyone signs in
+              with an account that matters.
             </p>
           )}
         </form>
