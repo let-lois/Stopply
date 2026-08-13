@@ -7,6 +7,12 @@ import { LogVisitDialog } from '@/modules/field-sales/components/LogVisitDialog'
 import { DISPOSITION_LABELS } from '@/modules/field-sales/selectors';
 import type { PropertyDisposition } from '@/modules/field-sales/types';
 import { relativeTime } from '@/lib/format/datetime';
+import {
+  lastRepByProperty,
+  repColors,
+  UNWORKED_COLOR,
+} from '@/modules/field-sales/repColors';
+import type { Property } from '@/modules/field-sales/types';
 import { Skeleton } from '@/components/ui';
 
 // MapLibre is around 200KB gzipped, which is worth it here and worth nothing
@@ -16,8 +22,19 @@ const DoorMap = lazy(() =>
   import('@/modules/field-sales/components/DoorMap').then((m) => ({ default: m.DoorMap }))
 );
 
-// Door colours live with the map, which needs them as literals for a paint
-// expression evaluated on the GPU.
+// Outcome colours, as literals, because the map resolves a colour per door
+// rather than reading a CSS variable on the GPU.
+const DISPOSITION_HEX: Record<PropertyDisposition, string> = {
+  not_visited: '#6b7280',
+  no_answer: '#94a3b8',
+  come_back: '#f59e0b',
+  not_interested: '#ef4444',
+  interested: '#38bdf8',
+  appointment_set: '#a855f7',
+  closed_sale: '#10b981',
+  do_not_knock: '#f8fafc',
+};
+
 
 const FILTERS: Array<{ id: 'all' | PropertyDisposition; label: string }> = [
   { id: 'all', label: 'All doors' },
@@ -42,6 +59,11 @@ export default function FieldSalesCanvass() {
   // detail panel showing a stale status after a visit was logged.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [logging, setLogging] = useState(false);
+  // What the colours mean. Outcome answers "what happened at this house"; rep
+  // answers "who is working this street", which is the question a manager
+  // looking at a city has. Neither replaces the other.
+  const [colorBy, setColorBy] = useState<'outcome' | 'rep'>('outcome');
+  const [repFilter, setRepFilter] = useState<string>('all');
 
   // Memoized rather than defaulted inline: `?? []` builds a new array on
   // every render, which would invalidate every downstream useMemo below it.
@@ -68,10 +90,35 @@ export default function FieldSalesCanvass() {
     [data, activeTerritoryId]
   );
 
-  const visible = useMemo(
-    () => (filter === 'all' ? inTerritory : inTerritory.filter((p) => p.disposition === filter)),
-    [inTerritory, filter]
+  const reps = useMemo(() => data?.reps ?? [], [data]);
+  const colorByRep = useMemo(() => repColors(reps), [reps]);
+
+  // Who last knocked each door. The latest visit wins, so a door shows
+  // whoever worked it most recently rather than whoever got there first.
+  const repByProperty = useMemo(
+    () => lastRepByProperty(data?.visits ?? []),
+    [data]
   );
+
+  const colorFor = useCallback(
+    (property: Property) => {
+      if (colorBy === 'outcome') return DISPOSITION_HEX[property.disposition];
+      const repId = repByProperty.get(property.id);
+      // Grey for a door nobody has knocked. It has no rep to be coloured by,
+      // and inventing one would be the map claiming knowledge it does not have.
+      return repId ? (colorByRep.get(repId) ?? UNWORKED_COLOR) : UNWORKED_COLOR;
+    },
+    [colorBy, repByProperty, colorByRep]
+  );
+
+  const visible = useMemo(() => {
+    const byOutcome =
+      filter === 'all' ? inTerritory : inTerritory.filter((p) => p.disposition === filter);
+    if (repFilter === 'all') return byOutcome;
+    // Narrowing to one rep is how a manager checks a single person's round
+    // without reading every other pin on the street.
+    return byOutcome.filter((p) => repByProperty.get(p.id) === repFilter);
+  }, [inTerritory, filter, repFilter, repByProperty]);
 
   const selected = useMemo(
     () => properties.find((p) => p.id === selectedId) ?? null,
@@ -105,10 +152,34 @@ export default function FieldSalesCanvass() {
             </Button>
           ))}
           <select
+            value={colorBy}
+            onChange={(e) => setColorBy(e.target.value === 'rep' ? 'rep' : 'outcome')}
+            aria-label="Colour doors by"
+            className="ml-auto min-h-10 rounded-xl border border-[var(--color-hairline)] bg-white/6 px-3 text-sm"
+          >
+            <option value="outcome">Colour by outcome</option>
+            <option value="rep">Colour by rep</option>
+          </select>
+
+          <select
+            value={repFilter}
+            onChange={(e) => setRepFilter(e.target.value)}
+            aria-label="Rep"
+            className="min-h-10 rounded-xl border border-[var(--color-hairline)] bg-white/6 px-3 text-sm"
+          >
+            <option value="all">All reps</option>
+            {reps.map((rep) => (
+              <option key={rep.id} value={rep.id}>
+                {rep.name}
+              </option>
+            ))}
+          </select>
+
+          <select
             value={activeTerritoryId}
             onChange={(e) => setTerritoryId(e.target.value)}
             aria-label="Territory"
-            className="ml-auto min-h-10 rounded-xl border border-[var(--color-hairline)] bg-white/6 px-3 text-sm"
+            className="min-h-10 rounded-xl border border-[var(--color-hairline)] bg-white/6 px-3 text-sm"
           >
             <option value="all">All territories</option>
             {data?.territories.map((t) => (
@@ -126,6 +197,39 @@ export default function FieldSalesCanvass() {
                 {visible.length.toLocaleString()} of {inTerritory.length.toLocaleString()} doors
               </p>
             </div>
+            {/* A colour coding nobody can read is decoration. The legend is
+                not optional, and it changes with what the colours mean. */}
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5 px-6 pb-3 text-xs">
+              {colorBy === 'rep'
+                ? [
+                    ...reps.map((rep) => ({
+                      key: rep.id,
+                      label: rep.name,
+                      color: colorByRep.get(rep.id) ?? UNWORKED_COLOR,
+                    })),
+                    { key: 'none', label: 'Not yet knocked', color: UNWORKED_COLOR },
+                  ].map((entry) => (
+                    <span key={entry.key} className="flex items-center gap-1.5">
+                      <span
+                        className="size-2.5 rounded-full"
+                        style={{ background: entry.color }}
+                        aria-hidden="true"
+                      />
+                      <span className="text-[var(--color-ink-soft)]">{entry.label}</span>
+                    </span>
+                  ))
+                : FILTERS.filter((f) => f.id !== 'all').map((f) => (
+                    <span key={f.id} className="flex items-center gap-1.5">
+                      <span
+                        className="size-2.5 rounded-full"
+                        style={{ background: DISPOSITION_HEX[f.id as PropertyDisposition] }}
+                        aria-hidden="true"
+                      />
+                      <span className="text-[var(--color-ink-soft)]">{f.label}</span>
+                    </span>
+                  ))}
+            </div>
+
             <div className="min-h-0 flex-1">
               <Suspense fallback={<Skeleton className="size-full" />}>
                 <DoorMap
@@ -133,6 +237,7 @@ export default function FieldSalesCanvass() {
                   territory={activeTerritory}
                   selectedId={selectedId}
                   onSelect={handleSelect}
+                  colorFor={colorFor}
                 />
               </Suspense>
             </div>

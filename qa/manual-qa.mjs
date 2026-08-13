@@ -167,21 +167,67 @@ check(
   (await page.locator('.maplibregl-ctrl-geolocate').count()) > 0
 );
 
+// Colouring by rep is what answers "who is working this street". The legend
+// is part of the feature, not decoration: a colour coding nobody can read
+// tells a manager nothing.
 await page.getByRole('button', { name: 'All doors' }).click();
 await page.waitForTimeout(400);
 
-// The map is a canvas, so it carries no text. Every door has to remain
-// reachable without it, which is what the Properties view is for.
-await page.goto(`${BASE}/c/cl_roguesolar/field-sales/properties`, { waitUntil: 'networkidle' });
-await page.waitForTimeout(500);
+await page.selectOption('select[aria-label="Colour doors by"]', 'rep');
+await page.waitForTimeout(1200);
+await page.screenshot({ path: `${SHOTS}/30-canvass-by-rep.png`, fullPage: true });
+
+// The legend has to name whoever this client's reps actually are, so it is
+// read from the rep picker rather than from a name hardcoded here.
+const repNames = (await page.locator('select[aria-label="Rep"] option').allInnerTexts()).slice(1);
+const legend = await page.locator('.flex-wrap.gap-x-4').first().innerText();
 check(
-  'every door is reachable without the map',
-  (await page.locator('table tbody tr, [role="row"]').count()) > 5,
-  `${await page.locator('table tbody tr, [role="row"]').count()} rows`
+  'the legend names the reps it is colouring by',
+  repNames.length > 0 && repNames.every((n) => legend.includes(n)) && legend.includes('Not yet knocked'),
+  legend.replace(/\n/g, ', ')
 );
-await page.goto(`${BASE}/c/cl_roguesolar/field-sales/canvass`, MAP_WAIT);
-await page.locator('canvas.maplibregl-canvas').waitFor({ timeout: 15000 });
-await page.waitForTimeout(800);
+
+// Narrowing to one rep is how a manager checks a single round.
+//
+// The counter is uppercased by CSS, and innerText returns what is rendered
+// rather than what is in the DOM, so this reads "48 OF 48 DOORS". Matching
+// case-sensitively silently returned nothing.
+const doorsCounter = page.locator('.micro-label', { hasText: /of .* doors/i }).first();
+const readCount = async () => {
+  const text = await doorsCounter.innerText();
+  const m = /([\d,]+) of ([\d,]+)/i.exec(text);
+  return m ? Number(m[1].replace(/,/g, '')) : -1;
+};
+const allReps = await readCount();
+await page.selectOption('select[aria-label="Rep"]', { index: 1 });
+await page.waitForTimeout(900);
+const oneRep = await readCount();
+check(
+  'filtering to one rep shows only their doors',
+  oneRep > 0 && oneRep < allReps,
+  `${oneRep} of ${allReps}`
+);
+
+// Each rep's round is a different set of doors, which is the property that
+// makes colouring by rep worth anything. Comparing the two filtered maps is a
+// stronger signal than comparing coloured against uncoloured: most doors are
+// unworked either way, and "not visited" and "not yet knocked" are deliberately
+// the same doors, so a whole-map comparison barely moves.
+const firstRep = await mapCanvas.screenshot();
+if (repNames.length > 1) {
+  await page.selectOption('select[aria-label="Rep"]', { index: 2 });
+  await page.waitForTimeout(900);
+  const secondRep = await mapCanvas.screenshot();
+  check(
+    'each rep has their own doors, not the same ones recoloured',
+    Math.abs(firstRep.length - secondRep.length) > 100,
+    `${firstRep.length} vs ${secondRep.length} bytes`
+  );
+}
+
+await page.selectOption('select[aria-label="Rep"]', 'all');
+await page.selectOption('select[aria-label="Colour doors by"]', 'outcome');
+await page.waitForTimeout(600);
 
 // QA 14: dialog behaviour, including focus restore to the trigger.
 // Driven from the Properties list rather than the map. The doors are drawn

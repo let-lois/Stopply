@@ -28,7 +28,6 @@ import {
   Map as MapLibreMap,
   NavigationControl,
   ScaleControl,
-  type ExpressionSpecification,
   type GeoJSONSource,
   setWorkerUrl,
   type MapLayerMouseEvent,
@@ -54,12 +53,19 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import type { FeatureCollection } from 'geojson';
 import type { Property, PropertyDisposition, Territory } from '@/modules/field-sales/types';
 import { DEFAULT_BASEMAP, MAP_STYLE_URL } from '@/modules/field-sales/mapConfig';
+import { tackImage, UNWORKED_COLOR } from '@/modules/field-sales/repColors';
 
 setWorkerUrl(workerUrl);
 
 const SOURCE = 'doors';
 const LAYER = 'doors-circles';
+const LAYER_TACKS = 'doors-tacks';
 const LAYER_SELECTED = 'doors-selected';
+
+// Images belong to a map instance, not to this module, so there is
+// deliberately no module-level cache of which ones exist. An earlier version
+// kept one and skipped adding an image the cache knew about but a freshly
+// mounted map did not, which lost every tack after a remount.
 
 // The same colours the legend uses, resolved to literals because a MapLibre
 // paint expression is evaluated on the GPU and cannot read a CSS variable.
@@ -74,22 +80,30 @@ const DISPOSITION_HEX: Record<PropertyDisposition, string> = {
   do_not_knock: '#f8fafc',
 };
 
-/** The paint expression that colours a door by its outcome. */
-const COLOR_EXPRESSION = [
-  'match',
-  ['get', 'disposition'],
-  ...Object.entries(DISPOSITION_HEX).flat(),
-  DISPOSITION_HEX.not_visited,
-] as unknown as ExpressionSpecification;
+// The colour is resolved per door and written onto the feature rather than
+// matched in a paint expression. Colouring by rep depends on who last knocked,
+// which is not a property of the door and cannot be expressed as a match on
+// one, so both colourings go through the same path.
 
-function toFeatureCollection(properties: Property[]): FeatureCollection {
+function toFeatureCollection(
+  properties: Property[],
+  colorFor: (p: Property) => string
+): FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: properties.map((p) => ({
       type: 'Feature',
       id: p.id,
       geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
-      properties: { id: p.id, disposition: p.disposition, address: p.address },
+      properties: {
+        id: p.id,
+        disposition: p.disposition,
+        address: p.address,
+        // Resolved here rather than in a paint expression, because colouring
+        // by rep depends on who last knocked, which is not a property of the
+        // door and cannot be expressed as a match on one.
+        color: colorFor(p),
+      },
     })),
   };
 }
@@ -101,9 +115,22 @@ export interface DoorMapProps {
   territory: Territory | undefined;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /**
+   * What each door's colour means.
+   *
+   * The caller resolves it, because colouring by rep needs the visit history
+   * and the map has no business holding that.
+   */
+  colorFor?: (property: Property) => string;
 }
 
-export function DoorMap({ properties, territory, selectedId, onSelect }: DoorMapProps) {
+export function DoorMap({
+  properties,
+  territory,
+  selectedId,
+  onSelect,
+  colorFor,
+}: DoorMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const readyRef = useRef(false);
@@ -182,19 +209,44 @@ export function DoorMap({ properties, territory, selectedId, onSelect }: DoorMap
     // 'style.load' fires as soon as the style is parsed, which is the moment
     // it becomes legal to add a source, and owes nothing to the network.
     map.on('style.load', () => {
-      map.addSource(SOURCE, { type: 'geojson', data: toFeatureCollection([]) });
+      map.addSource(SOURCE, {
+        type: 'geojson',
+        data: toFeatureCollection([], () => UNWORKED_COLOR),
+      });
 
       map.addLayer({
         id: LAYER,
         type: 'circle',
         source: SOURCE,
+        // Handed over to the tacks once there is room for them.
+        maxzoom: 14,
         paint: {
           // Grows with zoom, so a door is a dot in an overview and a target
           // worth tapping once the rep is on the street.
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 3, 15, 6, 18, 11],
-          'circle-color': COLOR_EXPRESSION,
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 5],
+          'circle-color': ['get', 'color'],
           'circle-stroke-width': 1,
           'circle-stroke-color': 'rgba(0,0,0,0.5)',
+        },
+      });
+
+      // Tacks above a certain zoom, dots below it. A tack is the right shape
+      // for "somebody was here" and the wrong one for two thousand of them at
+      // city scale, where they stack into an unreadable wall.
+      map.addLayer({
+        id: LAYER_TACKS,
+        type: 'symbol',
+        source: SOURCE,
+        minzoom: 14,
+        layout: {
+          'icon-image': ['concat', 'tack-', ['get', 'color']],
+          // The tip of the tack is the door, so the image sits above the point
+          // rather than centred on it.
+          'icon-anchor': 'bottom',
+          'icon-size': ['interpolate', ['linear'], ['zoom'], 14, 0.7, 18, 1],
+          // Doors on one street are close together by definition. Hiding half
+          // of them to avoid overlap would hide half the round.
+          'icon-allow-overlap': true,
         },
       });
 
@@ -211,7 +263,7 @@ export function DoorMap({ properties, territory, selectedId, onSelect }: DoorMap
         },
       });
 
-      map.on('click', LAYER, (event: MapLayerMouseEvent) => {
+      map.on('click', [LAYER, LAYER_TACKS], (event: MapLayerMouseEvent) => {
         // Feature properties are whatever the source put there, so the type
         // is unknown until checked rather than trusted.
         const props: unknown = event.features?.[0]?.properties;
@@ -221,8 +273,10 @@ export function DoorMap({ properties, territory, selectedId, onSelect }: DoorMap
             : undefined;
         if (typeof id === 'string') onSelectRef.current(id);
       });
-      map.on('mouseenter', LAYER, () => (map.getCanvas().style.cursor = 'pointer'));
-      map.on('mouseleave', LAYER, () => (map.getCanvas().style.cursor = ''));
+      for (const layer of [LAYER, LAYER_TACKS]) {
+        map.on('mouseenter', layer, () => (map.getCanvas().style.cursor = 'pointer'));
+        map.on('mouseleave', layer, () => (map.getCanvas().style.cursor = ''));
+      }
 
       readyRef.current = true;
     });
@@ -241,16 +295,33 @@ export function DoorMap({ properties, territory, selectedId, onSelect }: DoorMap
     if (!map) return;
 
     const apply = () => {
+      const resolve = colorFor ?? ((p: Property) => DISPOSITION_HEX[p.disposition]);
+
+      // One image per colour, added the first time that colour appears. A
+      // symbol layer refers to images by name, so a colour with no image
+      // renders nothing at all.
+      for (const property of properties) {
+        const color = resolve(property);
+        if (map.hasImage(`tack-${color}`)) continue;
+        const image = tackImage(color);
+        if (!image) continue;
+        map.addImage(`tack-${color}`, image, { pixelRatio: 2 });
+      }
+      if (!map.hasImage(`tack-${UNWORKED_COLOR}`)) {
+        const fallback = tackImage(UNWORKED_COLOR);
+        if (fallback) map.addImage(`tack-${UNWORKED_COLOR}`, fallback, { pixelRatio: 2 });
+      }
+
       const source: GeoJSONSource | undefined = map.getSource(SOURCE);
       // setData resolves once the worker has parsed the new features.
       // Nothing here depends on that having happened, and awaiting it would
       // only delay the next render for no visible benefit.
-      void source?.setData(toFeatureCollection(properties));
+      void source?.setData(toFeatureCollection(properties, resolve));
     };
 
     if (readyRef.current) apply();
     else void map.once('style.load', apply);
-  }, [properties]);
+  }, [properties, colorFor]);
 
   useEffect(() => {
     const map = mapRef.current;
