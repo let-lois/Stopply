@@ -1,0 +1,31 @@
+# The gate the prototype never had.
+#
+# Its typecheck failed on main and nobody knew, because esbuild strips types
+# without resolving them and no CI ran tsc. Every job below is required, and
+# typecheck runs first because it is the one that was silently broken.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Typecheck build config
+        run: npx tsc --noEmit -p tsconfig.node.json
+      - name: Lint
+        run: npx eslint . --max-warnings 0
+      - name: Test
+        run: npx vitest run
+      - name: Build
+        run: npm run build

@@ -1,0 +1,122 @@
+@import 'tailwindcss';
+
+/* Stopply's visual identity, tokenized.
+
+   Dark slate ground, indigo primary, glass panels with a wide corner radius,
+   tight uppercase micro-labels, heavy numeric displays. The look is carried
+   over unchanged; what changes is that it lives here as tokens instead of as
+   literal class strings repeated across twenty files. */
+
+@theme {
+  /* Ground and surfaces. */
+  --color-surface-base: oklch(0.19 0.02 265);
+  --color-surface-raised: oklch(0.24 0.022 265);
+  --color-surface-glass: oklch(0.28 0.025 265 / 0.55);
+  --color-hairline: oklch(0.38 0.025 265 / 0.6);
+
+  /* Ink. */
+  --color-ink: oklch(0.97 0.005 265);
+  --color-ink-soft: oklch(0.72 0.02 265);
+  --color-ink-faint: oklch(0.58 0.02 265);
+
+  /* Accents. One per module, assigned by the registry and nowhere else.
+     Every accent has a literal utility class mapping in @/types/accent so
+     no class name is ever built by string interpolation, which Tailwind's
+     static extractor cannot see. */
+  --color-accent-slate: oklch(0.65 0.03 265);
+  --color-accent-indigo: oklch(0.62 0.18 275);
+  --color-accent-emerald: oklch(0.7 0.16 165);
+  --color-accent-amber: oklch(0.78 0.15 75);
+  --color-accent-rose: oklch(0.68 0.19 15);
+  --color-accent-sky: oklch(0.72 0.14 235);
+  --color-accent-purple: oklch(0.65 0.19 300);
+
+  /* Status. */
+  --color-positive: oklch(0.7 0.16 165);
+  --color-caution: oklch(0.78 0.15 75);
+  --color-negative: oklch(0.65 0.19 25);
+
+  /* The shell's one magic number. The prototype hardcoded 5rem in three
+     places that had to be kept in sync by hand; the grid layout below now
+     derives from this single value. */
+  --spacing-header: 5rem;
+
+  --radius-panel: 2rem;
+}
+
+/* The app owns the viewport. One scroll model, defined in AppShell:
+   a full-height grid whose sidebar and main are the only scroll containers.
+   The prototype had three competing systems and two inert `sticky` rules
+   whose only scrolling ancestor was a sibling. */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-surface-base);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer utilities {
+  .glass-panel {
+    background-color: var(--color-surface-glass);
+    backdrop-filter: blur(24px);
+    border: 1px solid var(--color-hairline);
+    border-radius: var(--radius-panel);
+  }
+
+  /* The micro-label: uppercase, wide tracking, small and quiet. Used above
+     every numeric display in the identity. */
+  .micro-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-ink-faint);
+  }
+
+  .numeric-display {
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+
+  /* Layered deliberately. The prototype defined this at top level while its
+     neighbours were layered, giving it different cascade precedence and
+     making it impossible to override. */
+  .animate-fadeIn {
+    animation: fadeIn 0.24s ease-out both;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Motion is a preference, not a decision the app gets to make. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Keyboard focus is always visible. Every interactive element inherits this
+   unless it opts out deliberately. */
+:focus-visible {
+  outline: 2px solid var(--color-accent-indigo);
+  outline-offset: 2px;
+}
