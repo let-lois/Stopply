@@ -4,9 +4,10 @@
 // dashboard, and giving it its own provider is what keeps a phone from ever
 // holding a client's roster, audit trail or credential list in memory.
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { z } from 'zod';
 import { api, ApiRequestError } from '@/lib/api/client';
+import { drain, enqueue, listQueued, type QueuedKnock } from '@/lib/field/outbox';
 import {
   fieldDoorsSchema,
   logVisitResponseSchema,
@@ -32,11 +33,22 @@ export interface FieldState {
   status: FieldStatus;
   data: FieldDoors | null;
   error: string | null;
+  /** Knocks taken but not yet accepted by the server. */
+  pending: number;
+  /** Whether the browser currently believes it has a connection. */
+  online: boolean;
 }
 
 export interface FieldActions {
   signIn: (email: string, password: string, turnstileToken: string) => Promise<void>;
   signOut: () => Promise<void>;
+  /**
+   * Record a knock.
+   *
+   * Never rejects for want of a connection. The knock is written to the phone
+   * first and sent whenever there is signal, so a rep in a stairwell is not
+   * shown a failure for something they did correctly.
+   */
   logKnock: (input: { propertyId: string; disposition: Disposition; notes: string | null }) => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -49,14 +61,108 @@ export function FieldSessionProvider({ children }: { children: React.ReactNode }
     status: 'checking',
     data: null,
     error: null,
+    pending: 0,
+    online: typeof navigator === 'undefined' ? true : navigator.onLine,
   });
 
-  const apply = useCallback((data: FieldDoors) => {
-    setState({ status: 'signed-in', data, error: null });
+  // The queue, mirrored in memory so the door list can show a knock the server
+  // has not accepted yet. Held in a ref as well because the drain runs from
+  // event listeners that must not be rebound every time it changes.
+  const queuedRef = useRef<QueuedKnock[]>([]);
+
+  /**
+   * Overlay the queue on top of whatever the server said.
+   *
+   * Without this a refresh silently reverts every unsent knock: the server has
+   * not heard about them, so its answer is the old outcome, and the rep watches
+   * their morning undo itself. The queue is the newer truth until it drains.
+   */
+  const withQueued = useCallback((data: FieldDoors): FieldDoors => {
+    if (queuedRef.current.length === 0) return data;
+    const byProperty = new Map(queuedRef.current.map((k) => [k.propertyId, k]));
+    return {
+      ...data,
+      properties: data.properties.map((p) => {
+        const queued = byProperty.get(p.id);
+        return queued ? { ...p, disposition: queued.disposition as Door['disposition'] } : p;
+      }),
+    };
   }, []);
 
+  const apply = useCallback(
+    (data: FieldDoors) => {
+      setState((prev) => ({ ...prev, status: 'signed-in', data: withQueued(data), error: null }));
+    },
+    [withQueued]
+  );
+
+  const syncQueue = useCallback(async () => {
+    queuedRef.current = await listQueued();
+    setState((prev) => ({ ...prev, pending: queuedRef.current.length }));
+  }, []);
+
+  // runDrain is defined below but referenced by the boot effect above it, and
+  // a ref is what lets the effect depend on nothing that changes. Without it
+  // the effect re-runs on every drain and re-fetches the doors each time.
+  const drainRef = useRef<() => Promise<void>>(async () => {});
+
+  /** Send one queued knock, classifying the failure so the drain can decide. */
+  const sendOne = useCallback(async (knock: QueuedKnock) => {
+    try {
+      await api.post(
+        paths.visits,
+        {
+          deviceVisitId: knock.deviceVisitId,
+          propertyId: knock.propertyId,
+          disposition: knock.disposition,
+          notes: knock.notes,
+          occurredAt: knock.occurredAt,
+        },
+        logVisitResponseSchema
+      );
+      return { ok: true } as const;
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        // 401 is not permanent in the sense that matters: the rep can sign in
+        // again and the knock is still good. 4xx otherwise means the server
+        // will refuse this knock identically forever.
+        const permanent = error.status >= 400 && error.status < 500 && error.status !== 401;
+        return { ok: false, permanent, message: error.message } as const;
+      }
+      return { ok: false, permanent: false, message: 'offline' } as const;
+    }
+  }, []);
+
+  const runDrain = useCallback(async () => {
+    if (queuedRef.current.length === 0) return;
+    const result = await drain(sendOne);
+    await syncQueue();
+    // Only worth a round trip if something actually landed.
+    if (result.sent > 0) {
+      try {
+        apply(await api.get(paths.doors, fieldDoorsSchema));
+      } catch {
+        // The knocks are recorded; the refresh can wait for the next attempt.
+      }
+    }
+  }, [sendOne, syncQueue, apply]);
+
+  useEffect(() => {
+    drainRef.current = runDrain;
+  }, [runDrain]);
+
+  // Boot: read the queue, ask who we are, and send anything still waiting.
+  //
+  // That last part is not optional. A rep who closes the app in a dead zone
+  // and opens it an hour later in signal would otherwise sit on a full queue
+  // until the sixty second timer came round or they happened to log another
+  // knock, which is exactly the moment they are checking whether their morning
+  // made it.
   useEffect(() => {
     const controller = new AbortController();
+
+    void syncQueue().then(() => drainRef.current());
+
     api
       .get(paths.doors, fieldDoorsSchema, controller.signal)
       .then((data) => {
@@ -64,17 +170,46 @@ export function FieldSessionProvider({ children }: { children: React.ReactNode }
       })
       .catch(() => {
         if (!controller.signal.aborted) {
-          setState({ status: 'signed-out', data: null, error: null });
+          setState((prev) => ({ ...prev, status: 'signed-out', data: null }));
         }
       });
+
     return () => controller.abort();
-  }, [apply]);
+  }, [apply, syncQueue]);
+
+  // Drain whenever there is a reason to think it might work: the connection
+  // came back, the rep returned to the app, or a few minutes passed. None of
+  // these is reliable on its own, which is why there are three.
+  useEffect(() => {
+    const onOnline = () => {
+      setState((prev) => ({ ...prev, online: true }));
+      void runDrain();
+    };
+    const onOffline = () => setState((prev) => ({ ...prev, online: false }));
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void runDrain();
+    };
+
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    document.addEventListener('visibilitychange', onVisible);
+    const timer = window.setInterval(() => void runDrain(), 60000);
+
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.clearInterval(timer);
+    };
+  }, [runDrain]);
 
   const signIn = useCallback<FieldActions['signIn']>(
     async (email, password, turnstileToken) => {
       apply(await api.post(paths.login, { email, password, turnstileToken }, fieldDoorsSchema));
+      // A rep who was signed out with knocks still queued gets them sent now.
+      void runDrain();
     },
-    [apply]
+    [apply, runDrain]
   );
 
   const signOut = useCallback(async () => {
@@ -85,7 +220,10 @@ export function FieldSessionProvider({ children }: { children: React.ReactNode }
       // normal condition for this app.
       if (!(error instanceof ApiRequestError)) throw error;
     }
-    setState({ status: 'signed-out', data: null, error: null });
+    // The queue deliberately survives. Those knocks belong to the rep who took
+    // them and will send when they sign back in; clearing it here would throw
+    // away a morning's work to tidy up.
+    setState((prev) => ({ ...prev, status: 'signed-out', data: null }));
   }, []);
 
   const refresh = useCallback(async () => {
@@ -94,28 +232,26 @@ export function FieldSessionProvider({ children }: { children: React.ReactNode }
 
   const logKnock = useCallback<FieldActions['logKnock']>(
     async (input) => {
-      // Minted here, on the device, before the knock is sent. The server
-      // recognises a resend by this id and answers success, so the outbox in
-      // the next change can retry forever without double counting a door.
+      // Minted here, on the device, before the first send, and reused on every
+      // retry. The server recognises a knock it already holds by this id, so
+      // the queue can retry forever without double counting a door.
       const deviceVisitId = `dev_${crypto.randomUUID()}`;
+      const occurredAt = new Date().toISOString();
 
-      const result = await api.post(
-        paths.visits,
-        {
-          deviceVisitId,
-          propertyId: input.propertyId,
-          disposition: input.disposition,
-          notes: input.notes,
-          // The phone's clock at the door. A knock uploaded hours later still
-          // belongs to the day it happened.
-          occurredAt: new Date().toISOString(),
-        },
-        logVisitResponseSchema
-      );
+      // Written to the phone before anything is attempted. This is the line
+      // that makes a knock in a dead zone survive.
+      await enqueue({
+        deviceVisitId,
+        propertyId: input.propertyId,
+        disposition: input.disposition,
+        notes: input.notes,
+        occurredAt,
+      });
+      await syncQueue();
 
-      // Applied locally rather than refetched. A rep on a weak signal should
-      // see the door change the instant they tap, and the next refresh
-      // reconciles against the server anyway.
+      // Shown as done immediately, because from the rep's side it is: the
+      // knock is recorded and will arrive. Making them wait on the network
+      // would be showing them a lie the other way.
       setState((prev) => {
         if (!prev.data) return prev;
         return {
@@ -125,12 +261,24 @@ export function FieldSessionProvider({ children }: { children: React.ReactNode }
             properties: prev.data.properties.map((p) =>
               p.id === input.propertyId ? { ...p, disposition: input.disposition } : p
             ),
-            visits: result.duplicate ? prev.data.visits : [result.visit, ...prev.data.visits],
+            visits: [
+              {
+                id: deviceVisitId,
+                propertyId: input.propertyId,
+                repId: prev.data.session.repId,
+                disposition: input.disposition,
+                notes: input.notes,
+                occurredAt,
+              },
+              ...prev.data.visits,
+            ],
           },
         };
       });
+
+      void runDrain();
     },
-    []
+    [syncQueue, runDrain]
   );
 
   const actions = useMemo<FieldActions>(

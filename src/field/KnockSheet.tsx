@@ -56,8 +56,10 @@ export function KnockSheet({ door, onClose }: { door: Door; onClose: () => void 
       await logKnock({ propertyId: door.id, disposition, notes: notes.trim() || null });
       onClose();
     } catch (cause) {
+      // The knock is already on the phone by the time anything can throw, so
+      // this is not "it was lost". Only a genuine refusal reaches here.
       setError(
-        cause instanceof ApiRequestError ? cause.message : 'Could not save. It will retry.'
+        cause instanceof ApiRequestError ? cause.message : 'Saved on your phone. It will send when you have signal.'
       );
       setSaving(null);
     }

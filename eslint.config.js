@@ -182,6 +182,16 @@ export default tseslint.config(
     rules: { 'no-restricted-imports': 'off' },
   },
 
+  // A service worker runs in its own global scope: no window, no document,
+  // and `self` is the worker rather than the page. Saying so here is what
+  // makes a stray `document` reference in it a lint error instead of a
+  // runtime failure on a rep's phone.
+  {
+    files: ['public/*-sw.js'],
+    languageOptions: { globals: globals.serviceworker },
+    rules: { 'no-restricted-imports': 'off' },
+  },
+
   // Operational scripts are plain Node.
   {
     files: ['scripts/**/*.mjs'],

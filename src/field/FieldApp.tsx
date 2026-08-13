@@ -15,7 +15,7 @@
 //  - h-dvh, not h-screen, because mobile browser chrome moves and a fixed
 //    100vh puts the primary action under the address bar.
 
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { FieldSessionProvider, useField } from '@/lib/field/FieldSessionProvider';
 
@@ -50,6 +50,19 @@ function FieldRoutes() {
 }
 
 export default function FieldApp() {
+  // Registered from here rather than from main.tsx, and scoped to /field, so
+  // the dashboard is never controlled by it. A worker script at the root may
+  // claim a narrower scope than its own path, which is what makes this legal.
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.register('/field-sw.js', { scope: '/field' }).catch((error: unknown) => {
+      // Not fatal. Without the worker the app simply needs a connection to
+      // open; the outbox, which is the part that protects a rep's knocks,
+      // does not depend on it.
+      console.warn('[field] offline support unavailable', error);
+    });
+  }, []);
+
   return (
     <FieldSessionProvider>
       {/* The safe-area padding is what keeps the sign-out control clear of a

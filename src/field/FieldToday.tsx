@@ -6,7 +6,7 @@
 // rather than pretending to an order it cannot compute.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { LogOut, MapPin, RefreshCw } from 'lucide-react';
+import { CloudOff, LogOut, MapPin, RefreshCw, UploadCloud } from 'lucide-react';
 import { useField, useFieldActions, type Door } from '@/lib/field/FieldSessionProvider';
 import { distanceM, formatDistance, getFix, type Fix, type GeoState } from '@/lib/field/geo';
 import { DISPOSITION_LABELS } from '@/modules/field-sales/selectors';
@@ -32,7 +32,7 @@ function startOfToday(): number {
 }
 
 export default function FieldToday() {
-  const { data } = useField();
+  const { data, pending, online } = useField();
   const { signOut, refresh } = useFieldActions();
   // Starts as 'locating' rather than 'idle' because the app always asks on
   // arrival. Setting it from inside the effect instead would be a synchronous
@@ -120,12 +120,28 @@ export default function FieldToday() {
           </div>
         </div>
 
-        <div className="mt-3 flex items-center gap-4 text-sm">
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
           <span>
             <span className="text-lg font-bold tabular-nums">{knockedToday}</span>{' '}
             <span className="text-[var(--color-ink-soft)]">knocked today</span>
           </span>
           <span className="text-[var(--color-ink-soft)]">{doors.length} doors</span>
+
+          {/* Says where a rep's work currently is. Silence here would mean a
+              rep with no signal cannot tell whether their morning is safe. */}
+          {pending > 0 && (
+            <span className="flex items-center gap-1.5 rounded-full bg-[var(--color-accent-amber)]/20 px-2.5 py-1 text-[var(--color-accent-amber)]">
+              <UploadCloud size={14} aria-hidden="true" />
+              <span className="font-medium tabular-nums">{pending}</span>
+              <span>waiting to send</span>
+            </span>
+          )}
+          {!online && pending === 0 && (
+            <span className="flex items-center gap-1.5 text-[var(--color-ink-faint)]">
+              <CloudOff size={14} aria-hidden="true" />
+              Offline
+            </span>
+          )}
         </div>
       </header>
 

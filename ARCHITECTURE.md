@@ -224,6 +224,75 @@ is what the check reports. Verified by reintroducing the bug: "the canvass
 renders a real map" keeps passing and the doors check fails, which is precisely
 why the second check exists.
 
+## The rep app
+
+`/field` is its own route tree, its own session provider and its own chunk. A
+phone never downloads the dashboard and a desk never downloads this.
+
+### Two populations, two cookies
+
+Reps authenticate against `reps` and never appear in `users`. Their sessions
+live in `field_sessions` and carry `stopply_field` rather than
+`stopply_session`. The separation is structural: a field token hashes to a row
+in `field_sessions`, which joins only to `reps`, and the dashboard's resolver
+never touches that table. There is no query that turns a rep's cookie into a
+dashboard session.
+
+It matters because one person holds both at once, on the same hostname: a
+manager who also knocks. If a phone is lost, the blast radius stops at that
+rep's own doors. `qa/field-qa.mjs` checks the wall in both directions.
+
+Scope comes off the session row, so a phone cannot name a workspace, a
+territory or a rep. `repId` is optional in the shared schema and the two routes
+read it differently: the dashboard requires it, because a manager logging on
+someone's behalf has to say whose knock it was, and the field route ignores it
+and uses the session.
+
+### The outbox
+
+A knock is written to IndexedDB before anything is attempted, and sent whenever
+there is signal. Without it a knock in a stairwell is lost, and a rep who loses
+a few knocks stops logging them, which is worse than the knocks.
+
+Retrying is safe because `deviceVisitId` is minted on the device before the
+first send and reused on every retry: the server recognises a knock it already
+holds and answers 200, so a drain cannot double count a door however often it
+runs. That is also why a duplicate must never become a 4xx, which would stop
+the queue draining forever.
+
+Three details worth keeping:
+
+- **A refresh overlays the queue.** The server has not heard about unsent
+  knocks, so its answer is the old outcome. Without the overlay a rep watches
+  their morning undo itself.
+- **The queue drains on boot**, not only on the `online` event and the timer. A
+  rep who closes the app in a dead zone and reopens it in signal is precisely
+  the person checking whether their morning made it, and they would otherwise
+  wait a minute to find out.
+- **Signing out keeps the queue.** Those knocks belong to the rep who took them
+  and send when they sign back in. Clearing it to tidy up would throw away a
+  morning.
+
+A 4xx other than 401 drops the knock from the queue, because a door that no
+longer exists will be refused identically forever and would block everything
+behind it. A 401 is kept: the rep can sign in again and the knock is still good.
+
+### The service worker
+
+`public/field-sw.js`, scoped to `/field`, so the dashboard never passes through
+it. One job: make the app open with no signal.
+
+It **never caches `/api`**. Not once, not stale-while-revalidate, not "just the
+door list". A stale do-not-knock list means a rep knocks a household that asked
+not to be, which is the one mistake this system exists to prevent.
+
+It reads the entry assets out of the HTML at install time rather than listing
+hashed filenames it cannot know. Without that the first visit cached the shell
+and none of the scripts, because those were requested before the worker took
+control, and a reload offline served a document referencing files that were not
+there. The app appeared to have offline support and did not. `qa/offline-qa.mjs`
+catches that specific failure by cutting the browser's connection for real.
+
 ## Still not true
 
 - **The Turnstile keys on the deployment are Cloudflare's test pair**, which
@@ -248,8 +317,12 @@ why the second check exists.
   `scripts/import-bi-users.mjs` replaces it with each person's real
   bi.letlois.com hash, after which their existing password works here and this
   one stops mattering.
-- **A rep cannot sign in yet.** `reps.user_id` exists for it, and `fieldScope`
-  style separation between rep and dashboard sessions has not been built here.
+- **A rep's knock is not on the audit trail.** `audit_log`'s actor is a `users`
+  row and a rep is not one. Forcing one in would break the foreign key or
+  require making it nullable, weakening the trail for everyone else. The knock
+  is its own record, with the rep, both clocks and the device id on it.
+- **The app must be opened once with a connection** before it works without
+  one, which is what installs the worker and its cache.
 
 ## Brand assets
 
