@@ -16,6 +16,7 @@ import type { LucideIcon } from 'lucide-react';
 import { BarChart3, DoorOpen, Megaphone, ShoppingCart, Truck, Users } from 'lucide-react';
 import type { ModuleId } from '@/types';
 import type { AccentToken } from '@/types/accent';
+import { MODULE_NAMES, MODULE_ORDER } from '@/modules/catalog';
 
 export interface ModuleViewDef {
   label: string;
@@ -55,7 +56,7 @@ const AnalyticsOverview = lazy(() => import('@/modules/analytics/views/Overview'
 export const MODULE_REGISTRY: Record<ModuleId, ModuleDefinition> = {
   advertising: {
     id: 'advertising',
-    name: 'Advertising',
+    name: MODULE_NAMES.advertising,
     tagline: 'Spend, leads and return',
     description: 'Campaign performance across paid channels, with the leads each one produced.',
     Icon: Megaphone,
@@ -70,7 +71,7 @@ export const MODULE_REGISTRY: Record<ModuleId, ModuleDefinition> = {
   },
   field_sales: {
     id: 'field_sales',
-    name: 'Field Sales',
+    name: MODULE_NAMES.field_sales,
     tagline: 'Doors, outcomes and territory',
     description: 'What the crew knocked, what came of it, and which streets are still open.',
     Icon: DoorOpen,
@@ -86,7 +87,7 @@ export const MODULE_REGISTRY: Record<ModuleId, ModuleDefinition> = {
   },
   ecommerce: {
     id: 'ecommerce',
-    name: 'Ecommerce',
+    name: MODULE_NAMES.ecommerce,
     tagline: 'Orders and revenue',
     description: 'Store performance and the order book behind it.',
     Icon: ShoppingCart,
@@ -100,7 +101,7 @@ export const MODULE_REGISTRY: Record<ModuleId, ModuleDefinition> = {
   },
   logistics: {
     id: 'logistics',
-    name: 'Logistics',
+    name: MODULE_NAMES.logistics,
     tagline: 'Shipments in flight',
     description: 'Where every shipment is, and which ones need attention.',
     Icon: Truck,
@@ -113,7 +114,7 @@ export const MODULE_REGISTRY: Record<ModuleId, ModuleDefinition> = {
   },
   crm: {
     id: 'crm',
-    name: 'CRM',
+    name: MODULE_NAMES.crm,
     tagline: 'Pipeline and deals',
     description: 'Deals by stage, and what the open pipeline is worth.',
     Icon: Users,
@@ -126,7 +127,7 @@ export const MODULE_REGISTRY: Record<ModuleId, ModuleDefinition> = {
   },
   analytics: {
     id: 'analytics',
-    name: 'Analytics',
+    name: MODULE_NAMES.analytics,
     // rose, as the prototype's registry always said. Its ClientsPage ternary
     // fell through to purple and rendered this module the wrong colour.
     tagline: 'Traffic and conversion',
@@ -157,15 +158,11 @@ export function getView(moduleId: ModuleId, viewId: string): ModuleViewDef | und
   return MODULE_REGISTRY[moduleId].views[viewId];
 }
 
-/** Nav order. The order of the registry object, made explicit. */
-export const MODULE_ORDER: ModuleId[] = [
-  'advertising',
-  'field_sales',
-  'ecommerce',
-  'logistics',
-  'crm',
-  'analytics',
-];
+// Nav order and display names come from the catalog, which has no React and
+// no icons in it, so the server can read them for the audit trail without
+// bundling this file. Re-exported here so every existing call site keeps
+// importing them from the registry.
+export { MODULE_ORDER, MODULE_NAMES } from '@/modules/catalog';
 
 /**
  * The view a client lands on, in one place.

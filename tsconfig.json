@@ -16,7 +16,19 @@
     "allowJs": false,
     "skipLibCheck": true,
     "types": ["vitest/globals", "@testing-library/jest-dom"],
-    "paths": { "@/*": ["./src/*"] }
+    "paths": {
+      "@/*": ["./src/*"],
+      "@server/*": ["./server/*"]
+    }
   },
-  "include": ["src"]
+  // server/ and functions/ are typechecked by this same project rather than a
+  // second one. They keep the DOM lib and import the handful of Cloudflare
+  // types they need explicitly: pulling in @cloudflare/workers-types globally
+  // redeclares Request, Response and fetch, and reconciling two definitions of
+  // those across one codebase costs more than it buys.
+  //
+  // The contracts in src/lib/api are shared by both sides, so one tsconfig
+  // means a change to a wire shape breaks the server and the client in the
+  // same run.
+  "include": ["src", "server", "functions"]
 }

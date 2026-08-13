@@ -37,7 +37,10 @@ const NO_DIRECT_DEMO = {
 };
 
 export default tseslint.config(
-  { ignores: ['dist', 'coverage', 'node_modules'] },
+  // .wrangler holds bundles wrangler generates while running the Functions
+  // locally: its own middleware shims plus every dependency inlined. Linting
+  // generated output tells you nothing about this codebase.
+  { ignores: ['dist', 'coverage', 'node_modules', '.wrangler'] },
 
   js.configs.recommended,
 
@@ -140,9 +143,15 @@ export default tseslint.config(
     },
   },
 
-  // Demo datasets are the one place allowed to import them.
+  // The adapters are the one place allowed to import them: a dataset and its
+  // live counterpart both have to speak a module's domain shape to produce it.
+  //
+  // Scoped to demo/ and live/ specifically. The glob here used to be all of
+  // src/lib/data/**, which silently lifted the restriction from useModuleData
+  // and anything else that landed in the directory later. A guardrail with a
+  // glob wider than its reason is a guardrail waiting to be walked around.
   {
-    files: ['src/lib/data/demo/**/*.ts', 'src/lib/data/**/*.ts'],
+    files: ['src/lib/data/demo/**/*.ts', 'src/lib/data/live/**/*.ts'],
     rules: {
       'no-restricted-imports': ['error', { patterns: [NO_DEEP_RELATIVE] }],
     },
@@ -171,5 +180,36 @@ export default tseslint.config(
     files: ['qa/**/*.mjs'],
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
     rules: { 'no-restricted-imports': 'off' },
+  },
+
+  // Operational scripts are plain Node.
+  {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { globals: globals.node },
+    rules: { 'no-restricted-imports': 'off' },
+  },
+
+  // server/ and functions/ run on workerd: web globals, no DOM, no Node.
+  // Spelling that out here is what makes an accidental `process.env` or a
+  // `document` reference in a handler a lint error rather than a 500 in
+  // production.
+  {
+    files: ['server/**/*.ts', 'functions/**/*.ts'],
+    languageOptions: {
+      globals: {
+        ...globals.serviceworker,
+        crypto: 'readonly',
+        console: 'readonly',
+        fetch: 'readonly',
+        Request: 'readonly',
+        Response: 'readonly',
+        Headers: 'readonly',
+        FormData: 'readonly',
+        URL: 'readonly',
+        TextEncoder: 'readonly',
+        btoa: 'readonly',
+        atob: 'readonly',
+      },
+    },
   }
 );

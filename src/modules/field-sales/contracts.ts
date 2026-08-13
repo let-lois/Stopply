@@ -1,0 +1,103 @@
+// The field-sales wire contract.
+//
+// It lives inside the module rather than in src/lib/api/contracts.ts because
+// the ownership rule in §3 says a module owns its domain, and this is that
+// domain crossing a network instead of a function call. The server imports it,
+// the live adapter imports it, and both are checked against the same
+// definition in the same tsc run.
+
+import { z } from 'zod';
+
+export const dispositionSchema = z.enum([
+  'not_visited',
+  'no_answer',
+  'come_back',
+  'not_interested',
+  'interested',
+  'appointment_set',
+  'closed_sale',
+  'do_not_knock',
+]);
+
+export const territoryWireSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  bounds: z.object({
+    north: z.number(),
+    south: z.number(),
+    east: z.number(),
+    west: z.number(),
+  }),
+  assignedRepId: z.string().nullable(),
+});
+
+export const repWireSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  territoryId: z.string().nullable(),
+});
+
+export const propertyWireSchema = z.object({
+  id: z.string(),
+  address: z.string(),
+  city: z.string(),
+  state: z.string(),
+  postalCode: z.string(),
+  lat: z.number(),
+  lng: z.number(),
+  territoryId: z.string(),
+  disposition: dispositionSchema,
+  ownerName: z.string().nullable(),
+  ownerPhone: z.string().nullable(),
+  notes: z.string().nullable(),
+});
+
+export const visitWireSchema = z.object({
+  id: z.string(),
+  propertyId: z.string(),
+  repId: z.string(),
+  disposition: dispositionSchema,
+  notes: z.string().nullable(),
+  occurredAt: z.string(),
+});
+
+export const fieldSalesDataSchema = z.object({
+  properties: z.array(propertyWireSchema),
+  visits: z.array(visitWireSchema),
+  territories: z.array(territoryWireSchema),
+  reps: z.array(repWireSchema),
+});
+
+/**
+ * Logging a knock.
+ *
+ * `deviceVisitId` is minted on the device, before the knock is uploaded, and
+ * is the entire offline story. The rep keeps working out of signal, the
+ * outbox retries whenever it can, and the server recognises a knock it has
+ * already recorded by this id rather than by guessing from a timestamp.
+ *
+ * `occurredAt` is the device's clock at the door. It is deliberately not
+ * derived from arrival time: a knock uploaded hours later belongs on the day
+ * it happened, and reporting reads this field.
+ */
+export const logVisitRequestSchema = z.object({
+  deviceVisitId: z.string().min(8).max(64),
+  propertyId: z.string().min(1),
+  repId: z.string().min(1),
+  disposition: dispositionSchema,
+  notes: z.string().max(2000).nullable(),
+  occurredAt: z.string().datetime({ offset: true }),
+});
+
+export const logVisitResponseSchema = z.object({
+  visit: visitWireSchema,
+  /**
+   * True when this knock was already recorded.
+   *
+   * It is a 200, not a 4xx, and that is not a detail. The device's outbox
+   * retries until it gets a success, so answering a resend with an error
+   * means the outbox never drains and the rep's phone retries the same knock
+   * forever. Never change this to an error response.
+   */
+  duplicate: z.boolean(),
+});
