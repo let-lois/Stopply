@@ -19,9 +19,13 @@ import { PlatformSidebar } from '@/platform/shell/PlatformSidebar';
 import { Skeleton } from '@/components/ui';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { WorkspaceBanner } from '@/platform/shell/WorkspaceBanner';
+import { FieldSalesProvider } from '@/lib/state/FieldSalesProvider';
 
 export function AppShell() {
   return (
+    // Inside the router, so the provider can read the active client from the
+    // route rather than from a second source of truth beside it.
+    <FieldSalesProvider>
     <div className="grid h-dvh grid-rows-[auto_1fr] overflow-hidden">
       <PlatformHeader />
       <div className="grid min-h-0 grid-cols-1 md:grid-cols-[16rem_1fr]">
@@ -40,5 +44,6 @@ export function AppShell() {
         </main>
       </div>
     </div>
+    </FieldSalesProvider>
   );
 }

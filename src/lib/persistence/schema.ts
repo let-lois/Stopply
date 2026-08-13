@@ -70,6 +70,17 @@ export const auditLogEntrySchema = z.object({
 // Field-sales persisted shapes. Deliberately structural rather than imported
 // from the module: persistence is a wire format and must be able to reject a
 // shape the current code would otherwise accept by inference.
+const dispositionSchema = z.enum([
+  'not_visited',
+  'no_answer',
+  'come_back',
+  'not_interested',
+  'interested',
+  'appointment_set',
+  'closed_sale',
+  'do_not_knock',
+]);
+
 export const propertySchema = z.object({
   id: z.string(),
   address: z.string(),
@@ -79,23 +90,27 @@ export const propertySchema = z.object({
   lat: z.number(),
   lng: z.number(),
   territoryId: z.string(),
-  disposition: z.string(),
+  disposition: dispositionSchema,
   ownerName: z.string().nullable(),
   ownerPhone: z.string().nullable(),
   notes: z.string().nullable(),
-  isSample: z.boolean().optional(),
 });
 
 export const visitSchema = z.object({
   id: z.string(),
   propertyId: z.string(),
   repId: z.string(),
-  disposition: z.string(),
+  disposition: dispositionSchema,
   notes: z.string().nullable(),
   occurredAt: z.iso.datetime(),
 });
 
 export const clientsPayloadSchema = z.array(clientSchema);
+
+// Field work is stored per client rather than as one flat list. A rep's day
+// belongs to a workspace, and switching workspace must not lose it.
+export const propertiesByClientSchema = z.record(z.string(), z.array(propertySchema));
+export const visitsByClientSchema = z.record(z.string(), z.array(visitSchema));
 export const auditPayloadSchema = z.array(auditLogEntrySchema);
 export const propertiesPayloadSchema = z.array(propertySchema);
 export const visitsPayloadSchema = z.array(visitSchema);

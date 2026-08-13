@@ -14,6 +14,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import type { DataMode, ModuleId } from '@/types';
 import { usePlatform } from '@/lib/state/PlatformProvider';
+import { useFieldSalesSlice } from '@/lib/state/FieldSalesProvider';
 import { buildDemoData, type ModuleDataMap } from '@/lib/data/moduleDataMap';
 import { resolveDataMode } from '@/lib/data/resolveDataMode';
 import { fetchLiveData } from '@/lib/data/live';
@@ -37,12 +38,28 @@ export function useModuleData<M extends ModuleId>(moduleId: M): ModuleDataResult
   const client = useMemo(() => clients.find((c) => c.id === clientId), [clients, clientId]);
   const mode = useMemo(() => resolveDataMode(client, moduleId), [client, moduleId]);
 
+  // Field sales is the one module with mutable state, because it is the one
+  // reps write to. Its provider holds the live properties and visits, so the
+  // seam serves those rather than regenerating a dataset every render, which
+  // would discard a knock the moment it was logged.
+  //
+  // Hooks cannot be conditional, so this is always read and used only when
+  // it applies. Undefined outside a workspace route, where the generated
+  // dataset is the right answer anyway.
+  const fieldSlice = useFieldSalesSlice();
+
   // Demo data is synchronous, so it is computed during render rather than
   // faked through a loading state that never means anything.
-  const demoData = useMemo(
-    () => (mode === 'demo' && clientId ? buildDemoData(moduleId, clientId, new Date()) : undefined),
-    [mode, clientId, moduleId]
-  );
+  const demoData = useMemo(() => {
+    if (mode !== 'demo' || !clientId) return undefined;
+    if (moduleId === 'field_sales' && fieldSlice) {
+      // Narrowing M to a single member is beyond what the compiler tracks
+      // through a generic, so the assertion is contained here rather than
+      // pushed onto every caller.
+      return fieldSlice as ModuleDataMap[M];
+    }
+    return buildDemoData(moduleId, clientId, new Date());
+  }, [mode, clientId, moduleId, fieldSlice]);
 
   // Identifies the fetch the current render needs. Loading is then derived by
   // comparing it against what has actually arrived, rather than set

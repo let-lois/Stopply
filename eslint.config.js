@@ -111,10 +111,19 @@ export default tseslint.config(
     },
   },
 
-  // The two sanctioned seams. Both exist precisely to bridge platform code
-  // and module domains, so both are allowed to import module types.
+  // The sanctioned seams. Each exists precisely to bridge platform code and a
+  // module's domain, so each may import module types.
+  //
+  // FieldSalesProvider is the third because field sales is the one module
+  // with mutable shared state. It imports exactly one named interface, the
+  // slice the module exports for this purpose, and derives everything else
+  // from it, so the crossing stays one line wide.
   {
-    files: ['src/modules/registry.ts', 'src/lib/data/moduleDataMap.ts'],
+    files: [
+      'src/modules/registry.ts',
+      'src/lib/data/moduleDataMap.ts',
+      'src/lib/state/FieldSalesProvider.tsx',
+    ],
     rules: {
       'no-restricted-imports': ['error', { patterns: [NO_DEEP_RELATIVE] }],
     },

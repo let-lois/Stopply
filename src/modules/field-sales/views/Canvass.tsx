@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useModuleData } from '@/lib/data/useModuleData';
 import { ModuleGate } from '@/components/ModuleStates';
 import { Badge, Button, Card } from '@/components/ui';
+import { LogVisitDialog } from '@/modules/field-sales/components/LogVisitDialog';
 import { boundsFor, projectToBounds } from '@/modules/field-sales/geo';
 import { DISPOSITION_LABELS } from '@/modules/field-sales/selectors';
 import type { PropertyDisposition } from '@/modules/field-sales/types';
@@ -34,6 +35,7 @@ export default function FieldSalesCanvass() {
   // The id, not the object. Holding a snapshot is what left the prototype's
   // detail panel showing a stale status after a visit was logged.
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [logging, setLogging] = useState(false);
 
   // Memoized rather than defaulted inline: `?? []` builds a new array on
   // every render, which would invalidate every downstream useMemo below it.
@@ -152,6 +154,9 @@ export default function FieldSalesCanvass() {
                 <p className="text-xs text-[var(--color-ink-faint)]">
                   {lastVisit ? `Last knocked ${relativeTime(lastVisit.occurredAt)}` : 'Never knocked'}
                 </p>
+                <Button variant="primary" onClick={() => setLogging(true)}>
+                  Log a knock
+                </Button>
               </div>
             ) : (
               <div>
@@ -164,6 +169,18 @@ export default function FieldSalesCanvass() {
           </Card>
         </div>
       </div>
+
+      {/* Mounted only while open, and given the derived property rather than
+          a snapshot, so the panel behind it shows the new outcome the moment
+          the knock is saved. */}
+      {logging && selected && (
+        <LogVisitDialog
+          property={selected}
+          reps={data?.reps ?? []}
+          open
+          onClose={() => setLogging(false)}
+        />
+      )}
     </ModuleGate>
   );
 }
