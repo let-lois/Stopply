@@ -53,6 +53,14 @@ export default function FieldSalesDashboard() {
             <Stat
               label="Appointments"
               value={kpis.appointmentsSet.toLocaleString()}
+              // The no-show count next to the booking count, because a crew
+              // booking well and showing badly reads as a good week here
+              // otherwise. The Funnel view is where the rest of it lives.
+              note={
+                kpis.appointmentsSet > 0
+                  ? `${kpis.appointmentsKept.toLocaleString()} showed, ${kpis.noShows.toLocaleString()} did not`
+                  : undefined
+              }
               accent="purple"
             />
             <Stat
