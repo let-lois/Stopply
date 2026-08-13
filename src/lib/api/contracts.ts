@@ -109,6 +109,14 @@ export const clientSchema = z.object({
   lastActive: isoDateTime,
   contactEmail: z.string(),
   contactName: z.string(),
+  /**
+   * IANA zone, the one this client's days are cut in.
+   *
+   * Defaulted rather than required so a response from a deploy that predates
+   * the column still validates. The default matches the column's, so the two
+   * cannot answer differently for the same client.
+   */
+  timezone: z.string().default('America/Los_Angeles'),
 });
 
 export const clientsResponseSchema = z.object({ clients: z.array(clientSchema) });

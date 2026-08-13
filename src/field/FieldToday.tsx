@@ -21,6 +21,10 @@ const OUTCOME_DOT: Record<Door['disposition'], string> = {
   not_interested: 'bg-[var(--color-negative)]',
   interested: 'bg-[var(--color-accent-sky)]',
   appointment_set: 'bg-[var(--color-accent-purple)]',
+  // Kept and missed sit either side of the appointment they came from: the
+  // same family of outcome, one of them good news and one of them not.
+  appointment_kept: 'bg-[var(--color-accent-indigo)]',
+  appointment_missed: 'bg-[var(--color-accent-rose)]',
   closed_sale: 'bg-[var(--color-positive)]',
   do_not_knock: 'bg-[var(--color-ink)]',
 };

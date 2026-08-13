@@ -38,6 +38,7 @@ export function seedClients(now: Date = new Date()): Client[] {
       lastActive: iso(40 * 60_000, now),
       contactEmail: 'ops@bluecactus.example.invalid',
       contactName: 'Dana Whitfield',
+      timezone: 'America/Phoenix',
     },
     {
       id: 'cl_allstar',
@@ -58,6 +59,7 @@ export function seedClients(now: Date = new Date()): Client[] {
       lastActive: iso(20 * 60_000, now),
       contactEmail: 'field@allstar.example.invalid',
       contactName: 'Marcus Bell',
+      timezone: 'America/Phoenix',
     },
     {
       id: 'cl_beclinical',
@@ -76,6 +78,7 @@ export function seedClients(now: Date = new Date()): Client[] {
       lastActive: iso(3 * HOUR, now),
       contactEmail: 'team@beclinical.example.invalid',
       contactName: 'Priya Ramanathan',
+      timezone: 'America/Phoenix',
     },
     {
       id: 'cl_roguesolar',
@@ -95,6 +98,7 @@ export function seedClients(now: Date = new Date()): Client[] {
       lastActive: iso(15 * 60_000, now),
       contactEmail: 'ops@roguesolar.example.invalid',
       contactName: 'Rowan Alexander',
+      timezone: 'America/Los_Angeles',
     },
   ];
 }

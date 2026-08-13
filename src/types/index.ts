@@ -70,6 +70,13 @@ export interface Client {
   lastActive: string;
   contactEmail: string;
   contactName: string;
+  /**
+   * IANA zone. Reporting days are cut here, not in the reader's zone: a
+   * manager in Arizona looking at a California crew would otherwise see the
+   * day boundary move by an hour, and "knocked today" would disagree with the
+   * crew's own count of their own day.
+   */
+  timezone: string;
 }
 
 export interface PlatformUser {

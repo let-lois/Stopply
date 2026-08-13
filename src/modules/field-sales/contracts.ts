@@ -15,6 +15,8 @@ export const dispositionSchema = z.enum([
   'not_interested',
   'interested',
   'appointment_set',
+  'appointment_kept',
+  'appointment_missed',
   'closed_sale',
   'do_not_knock',
 ]);
@@ -93,6 +95,8 @@ export const visitWireSchema = z.object({
   repId: z.string(),
   disposition: dispositionSchema,
   notes: z.string().nullable(),
+  /** Null means the rep did not say, which is not the same as no car. */
+  vehiclePresent: z.boolean().nullable(),
   occurredAt: z.string(),
 });
 
@@ -128,6 +132,8 @@ export const logVisitRequestSchema = z.object({
   repId: z.string().min(1).optional(),
   disposition: dispositionSchema,
   notes: z.string().max(2000).nullable(),
+  /** Optional: a rep who did not look must not be recorded as seeing no car. */
+  vehiclePresent: z.boolean().nullable().optional(),
   occurredAt: z.string().datetime({ offset: true }),
 });
 

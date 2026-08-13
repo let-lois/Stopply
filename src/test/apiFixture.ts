@@ -34,6 +34,7 @@ function client(overrides: Partial<Client> & Pick<Client, 'id' | 'name'>): Clien
     lastActive: NOW,
     contactEmail: 'ops@example.invalid',
     contactName: 'Ops',
+    timezone: 'America/Los_Angeles',
     ...overrides,
   };
 }
@@ -122,6 +123,7 @@ export function installApiFixture(clients: Client[] = testClients) {
               repId: 'rep_1',
               disposition: 'closed_sale',
               notes: null,
+              vehiclePresent: null,
               occurredAt: NOW,
             },
             duplicate: false,

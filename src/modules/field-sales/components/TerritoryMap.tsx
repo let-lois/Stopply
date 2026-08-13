@@ -26,7 +26,7 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import type { FeatureCollection } from 'geojson';
 import type { Ring } from '@/modules/field-sales/polygon';
 import { boundsOf } from '@/modules/field-sales/polygon';
-import { DEFAULT_BASEMAP, MAP_STYLE_URL } from '@/modules/field-sales/mapConfig';
+import { DEFAULT_BASEMAP, DEFAULT_CENTER, MAP_STYLE_URL } from '@/modules/field-sales/mapConfig';
 
 setWorkerUrl(workerUrl);
 
@@ -139,7 +139,7 @@ export function TerritoryMap({
     const map = new MapLibreMap({
       container: containerRef.current,
       style: MAP_STYLE_URL ?? DEFAULT_BASEMAP,
-      center: [-111.63, 33.41],
+      center: DEFAULT_CENTER,
       zoom: 12,
       attributionControl: false,
     });
@@ -272,7 +272,7 @@ export function TerritoryMap({
   }, [selectedId, territories, whenReady]);
 
   // Frame everything on arrival, once, so a manager sees the whole patchwork
-  // rather than a default centre somewhere in Arizona.
+  // rather than the default centre.
   const framedRef = useRef(false);
   useEffect(() => {
     if (framedRef.current || territories.length === 0) return;

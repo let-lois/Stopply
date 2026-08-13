@@ -51,9 +51,10 @@ import {
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { FeatureCollection } from 'geojson';
-import type { Property, PropertyDisposition, Territory } from '@/modules/field-sales/types';
-import { DEFAULT_BASEMAP, MAP_STYLE_URL } from '@/modules/field-sales/mapConfig';
+import type { Property, Territory } from '@/modules/field-sales/types';
+import { DEFAULT_BASEMAP, DEFAULT_CENTER, MAP_STYLE_URL } from '@/modules/field-sales/mapConfig';
 import { tackImage, UNWORKED_COLOR } from '@/modules/field-sales/repColors';
+import { DISPOSITION_HEX } from '@/modules/field-sales/dispositionColors';
 
 setWorkerUrl(workerUrl);
 
@@ -66,19 +67,6 @@ const LAYER_SELECTED = 'doors-selected';
 // deliberately no module-level cache of which ones exist. An earlier version
 // kept one and skipped adding an image the cache knew about but a freshly
 // mounted map did not, which lost every tack after a remount.
-
-// The same colours the legend uses, resolved to literals because a MapLibre
-// paint expression is evaluated on the GPU and cannot read a CSS variable.
-const DISPOSITION_HEX: Record<PropertyDisposition, string> = {
-  not_visited: '#6b7280',
-  no_answer: '#94a3b8',
-  come_back: '#f59e0b',
-  not_interested: '#ef4444',
-  interested: '#38bdf8',
-  appointment_set: '#a855f7',
-  closed_sale: '#10b981',
-  do_not_knock: '#f8fafc',
-};
 
 // The colour is resolved per door and written onto the feature rather than
 // matched in a paint expression. Colouring by rep depends on who last knocked,
@@ -175,7 +163,7 @@ export function DoorMap({
       // A provider's style when one is configured, otherwise the free
       // OpenStreetMap basemap. Either way the doors sit on streets.
       style: MAP_STYLE_URL ?? DEFAULT_BASEMAP,
-      center: [-111.63, 33.41],
+      center: DEFAULT_CENTER,
       zoom: 12,
       attributionControl: false,
     });

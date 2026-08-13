@@ -56,3 +56,14 @@ export const DEFAULT_BASEMAP: StyleSpecification = {
 
 /** There is always a basemap now. This says whether it is the default one. */
 export const usingDefaultBasemap = MAP_STYLE_URL === undefined;
+
+/**
+ * Where a map opens before it knows what it is showing.
+ *
+ * Visible for a fraction of a second: every map here reframes to its own doors
+ * or territories as soon as it has them. It matters anyway, because a client
+ * with no doors yet never gets that reframe and sits on this instead. The main
+ * market is Riverside, California, so that is where an empty map opens rather
+ * than the Mesa, Arizona coordinates this was seeded with.
+ */
+export const DEFAULT_CENTER: [number, number] = [-117.38, 33.95];

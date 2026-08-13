@@ -23,23 +23,62 @@ export const REP_PALETTE = [
   '#facc15',
   '#c084fc',
   '#4ade80',
+  '#38bdf8',
+  '#fda4af',
+  '#86efac',
+  '#fcd34d',
+  '#a78bfa',
+  '#5eead4',
 ] as const;
 
 /** For a door nobody has knocked yet, which has no rep to colour it by. */
 export const UNWORKED_COLOR = '#64748b';
 
+/** FNV-1a, 32-bit. Small, stable, and not a security boundary. */
+function hash(value: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < value.length; i++) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h;
+}
+
 /**
  * Assign each rep a colour.
  *
- * By position in the roster sorted by id, so the same crew gets the same
- * colours on every load and a manager can learn them. The honest limitation:
- * adding a rep shifts the colours of those after them in that order. Storing a
- * colour on the rep is the fix if that ever matters more than the simplicity
- * of deriving it.
+ * From a hash of the rep's id, not their position in the roster. Position was
+ * simpler and was wrong in a way that only shows up on a growing crew: sorting
+ * by id and indexing into the palette means hiring one rep re-colours everyone
+ * after them, so the whole map changes meaning overnight and the colours a
+ * manager had learned now belong to somebody else. A hash gives each rep a
+ * colour they keep for as long as they have the id.
+ *
+ * The trade is collisions. Past sixteen reps two of them share a colour, and
+ * even below that a hash can land twice in the same bucket. So a second pass
+ * moves a colliding rep to the nearest free colour, in id order, which keeps
+ * every rep on the current roster distinct while leaving everyone who did not
+ * collide exactly where they were. Beyond a full palette collisions are
+ * unavoidable and the legend, which names every rep, is what disambiguates.
  */
 export function repColors(reps: Array<{ id: string }>): Map<string, string> {
   const ordered = [...reps].sort((a, b) => a.id.localeCompare(b.id));
-  return new Map(ordered.map((rep, i) => [rep.id, REP_PALETTE[i % REP_PALETTE.length]!]));
+  const taken = new Set<number>();
+  const assigned = new Map<string, string>();
+
+  for (const rep of ordered) {
+    const preferred = hash(rep.id) % REP_PALETTE.length;
+    let index = preferred;
+    // Only walks when the preferred slot is gone, so a rep whose colour is
+    // free keeps it no matter who else joins.
+    for (let step = 0; step < REP_PALETTE.length && taken.has(index); step++) {
+      index = (preferred + step + 1) % REP_PALETTE.length;
+    }
+    taken.add(index);
+    assigned.set(rep.id, REP_PALETTE[index]!);
+  }
+
+  return assigned;
 }
 
 /**

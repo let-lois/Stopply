@@ -10,7 +10,7 @@
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 
-const BASE = 'http://localhost:8788';
+const BASE = process.env.QA_BASE ?? 'http://localhost:8788';
 const SHOTS = 'qa/screenshots';
 mkdirSync(SHOTS, { recursive: true });
 

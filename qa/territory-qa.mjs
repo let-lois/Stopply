@@ -62,16 +62,33 @@ const repCookie = (rep.headers.get('set-cookie') ?? '').split(';')[0];
 const repDraw = await call('/api/clients/cl_allstar/territories', {
   method: 'POST',
   cookie: repCookie,
-  body: { name: 'Mine now', boundary: [[-111.66, 33.4], [-111.6, 33.4], [-111.6, 33.44]] },
+  body: { name: 'Mine now', boundary: [[-117.42, 33.9], [-117.36, 33.9], [-117.36, 33.99]] },
 });
 check('a rep cannot draw a territory', repDraw.status === 401 || repDraw.status === 403, `got ${repDraw.status}`);
 
-// Draw a new one over the western half of the northern territory.
+// Draw a new one over the western half of whatever the client actually holds.
+//
+// Derived from the doors rather than written down. This harness carried a box
+// around Mesa, Arizona, so when the market moved to California it drew a
+// territory over open desert, claimed nothing, and reported five failures that
+// were all one stale constant. A box computed from the data is right wherever
+// the client is.
+const allDoors = await call('/api/clients/cl_allstar/field-sales/data', { cookie });
+const coords = allDoors.json.properties.map((p) => [p.lng, p.lat]);
+const lngs = coords.map((c) => c[0]);
+const lats = coords.map((c) => c[1]);
+const minLng = Math.min(...lngs);
+const maxLng = Math.max(...lngs);
+const minLat = Math.min(...lats) - 0.01;
+const maxLat = Math.max(...lats) + 0.01;
+// Half way across, padded out top and bottom, so the strip certainly contains
+// some doors and certainly does not contain all of them.
+const midLng = (minLng + maxLng) / 2;
 const west = [
-  [-111.66, 33.4],
-  [-111.63, 33.4],
-  [-111.63, 33.44],
-  [-111.66, 33.44],
+  [minLng - 0.01, minLat],
+  [midLng, minLat],
+  [midLng, maxLat],
+  [minLng - 0.01, maxLat],
 ];
 const created = await call('/api/clients/cl_allstar/territories', {
   method: 'POST',
@@ -80,9 +97,14 @@ const created = await call('/api/clients/cl_allstar/territories', {
 });
 check('a manager draws a territory', created.status === 201, `got ${created.status} ${created.text.slice(0, 100)}`);
 
-const strip = created.json?.territories?.find((t) => t.name === 'West Strip');
-check('it comes back with a bounding box derived from the shape', 
-  strip?.bounds?.west === -111.66 && strip?.bounds?.east === -111.63,
+// By id-diff against what was there before, not by name. Finding by name
+// picked up a leftover 'West Strip' from an earlier interrupted run and then
+// measured the wrong territory, which read as a routing bug and was a harness
+// bug. The id the server just minted is unambiguous.
+const before = new Set(initial.json.territories.map((t) => t.id));
+const strip = created.json?.territories?.find((t) => !before.has(t.id));
+check('it comes back with a bounding box derived from the shape',
+  strip?.bounds?.west === minLng - 0.01 && strip?.bounds?.east === midLng,
   JSON.stringify(strip?.bounds));
 
 const stripDoors = created.json?.doorCounts?.[strip?.id] ?? 0;
@@ -144,16 +166,26 @@ check(
 const busyDelete = await call(`/api/clients/cl_allstar/territories/${strip.id}`, { method: 'DELETE', cookie });
 check('a territory holding doors cannot be deleted', busyDelete.status === 400, `got ${busyDelete.status}`);
 
-// Put the rep back and clean up: redraw the original over the strip.
+// Put the rep back and clean up: restore the original over the strip.
+//
+// Restored from the shape read at the top of this run, not from a shape
+// written down here. The hardcoded version put the territory back as a box in
+// Arizona with an Arizona name, so every run of this harness moved the seed a
+// little further from the data it was seeded with, and the damage outlived the
+// run. A harness that leaves the database different from how it found it is
+// worse than no harness.
 await call(`/api/clients/cl_allstar/reps/rep_as_1`, { method: 'PATCH', cookie, body: { territoryId: 'ter_as_1' } });
-await call('/api/clients/cl_allstar/territories/ter_as_1', {
-  method: 'PATCH',
-  cookie,
-  body: {
-    name: 'East Mesa North',
-    boundary: [[-111.66, 33.4], [-111.6, 33.4], [-111.6, 33.44], [-111.66, 33.44]],
-  },
-});
+// Every territory, not just the one the strip overlapped most. The strip cuts
+// across the client's whole extent, so restoring only the first left the
+// southern doors inside it and the delete below then failed on a territory
+// that was supposed to be empty.
+for (const original of initial.json.territories) {
+  await call(`/api/clients/cl_allstar/territories/${original.id}`, {
+    method: 'PATCH',
+    cookie,
+    body: { name: original.name, boundary: original.boundary },
+  });
+}
 const emptied = await call(`/api/clients/cl_allstar/territories/${strip.id}`, { method: 'DELETE', cookie });
 check('an empty territory can be removed', emptied.status === 200, `got ${emptied.status}`);
 

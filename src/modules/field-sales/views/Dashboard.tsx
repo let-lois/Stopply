@@ -8,21 +8,14 @@ import {
   selectRepPerformance,
 } from '@/modules/field-sales/selectors';
 import { accentClasses } from '@/types/accent';
+import { DISPOSITION_HEX } from '@/modules/field-sales/dispositionColors';
 
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 
-// The disposition colours are the module's own vocabulary, not the platform
-// accent set, so they map to explicit CSS variables rather than tokens.
-const DISPOSITION_COLOR: Record<string, string> = {
-  not_visited: 'var(--color-ink-faint)',
-  no_answer: 'var(--color-accent-slate)',
-  come_back: 'var(--color-accent-amber)',
-  not_interested: 'var(--color-negative)',
-  interested: 'var(--color-accent-sky)',
-  appointment_set: 'var(--color-accent-purple)',
-  closed_sale: 'var(--color-positive)',
-  do_not_knock: 'var(--color-ink)',
-};
+// The map's colours, not a second set that has to be kept in step with them.
+// This was a Record<string, string> of CSS variables, which meant a new
+// outcome compiled cleanly and rendered as undefined in the chart.
+const DISPOSITION_COLOR = DISPOSITION_HEX;
 
 export default function FieldSalesDashboard() {
   const { data, mode, isLoading, error } = useModuleData('field_sales');

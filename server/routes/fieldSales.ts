@@ -86,6 +86,7 @@ export async function getFieldSalesData(ctx: RouteContext): Promise<Response> {
         rep_id: string;
         disposition: string;
         notes: string | null;
+        vehicle_present: number | null;
         occurred_at: string;
       }>(),
   ]);
@@ -121,6 +122,9 @@ export async function getFieldSalesData(ctx: RouteContext): Promise<Response> {
         repId: v.rep_id,
         disposition: v.disposition as Visit['disposition'],
         notes: v.notes,
+        // Three-valued on the wire as well as in the column: null carries
+        // "the rep did not say" rather than collapsing to false.
+        vehiclePresent: v.vehicle_present === null ? null : v.vehicle_present === 1,
         occurredAt: v.occurred_at,
       })
     ),
@@ -184,6 +188,7 @@ export async function logVisit(ctx: RouteContext): Promise<Response> {
         repId,
         disposition: body.disposition,
         notes: body.notes,
+        vehiclePresent: body.vehiclePresent ?? null,
         occurredAt: existing.occurred_at,
       },
       duplicate: true,
@@ -196,8 +201,8 @@ export async function logVisit(ctx: RouteContext): Promise<Response> {
 
   await ctx.env.DB.prepare(
     `INSERT INTO visits
-       (id, device_visit_id, client_id, property_id, rep_id, disposition, notes, occurred_at, recorded_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`
+       (id, device_visit_id, client_id, property_id, rep_id, disposition, notes, vehicle_present, occurred_at, recorded_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`
   )
     .bind(
       id,
@@ -207,6 +212,11 @@ export async function logVisit(ctx: RouteContext): Promise<Response> {
       repId,
       body.disposition,
       body.notes,
+      body.vehiclePresent === null || body.vehiclePresent === undefined
+        ? null
+        : body.vehiclePresent
+          ? 1
+          : 0,
       body.occurredAt,
       now
     )
@@ -237,6 +247,7 @@ export async function logVisit(ctx: RouteContext): Promise<Response> {
       repId,
       disposition: body.disposition,
       notes: body.notes,
+      vehiclePresent: body.vehiclePresent ?? null,
       occurredAt: body.occurredAt,
     },
     duplicate: false,

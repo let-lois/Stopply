@@ -293,6 +293,83 @@ control, and a reload offline served a document referencing files that were not
 there. The app appeared to have offline support and did not. `qa/offline-qa.mjs`
 catches that specific failure by cutting the browser's connection for real.
 
+## The funnel
+
+Knocked, contacted, booked, showed, sold. `src/modules/field-sales/funnel.ts`
+derives all five from the visit log; nothing is stored pre-aggregated.
+
+**Showed and no-show exist because the gap between booked and sold was
+invisible.** Before them, an appointment nobody turned up to and an appointment
+that had not happened yet were the same row, and that gap is where this
+business leaks. `appointment_kept` and `appointment_missed` split it. They are
+offered on the knock sheet only at a door already sitting at
+`appointment_set`, because they belong to an appointment rather than to a
+knock, and putting them beside the six outcomes a rep taps all day would invite
+marking a house "no-show" that never had one.
+
+**A stage is reached once and stays reached.** Counting current dispositions
+made the booked total fall every time an appointment went well, because a door
+that showed leaves `appointment_set`. The one deliberate exception is the
+headline "Sales" count, which is standing rather than cumulative: a sale later
+re-dispositioned did happen and the funnel counts the flow, but the card a
+manager reads as "we have this many sales" must not include it. The funnel view
+says so in words when the two numbers differ, rather than showing whichever is
+larger.
+
+**A later stage implies the earlier ones.** A door sold at the kerb with no
+appointment counts as booked, timestamped at the same visit. The alternative is
+a funnel where a stage is wider than the one above it, which is not a funnel.
+`STAGE_RANK` in `funnel.ts` is the whole definition and is written down there.
+
+**Credit follows the visit that first reached each stage.** The setter keeps
+their booking when a closer finishes the sale, and the closer is not credited
+with a booking they inherited. `passedOn` counts doors one rep booked and
+another closed, which is the only place a good setter's contribution is
+visible at all.
+
+**Days are cut in the client's timezone**, from `clients.timezone`, via
+`src/lib/format/zonedDay.ts`. A knock at 11pm in Riverside is 6am the next day
+in UTC, so cutting in UTC makes the crew's Tuesday disagree with the crew's own
+Tuesday. The range filter and the daily buckets read the same day-keys, because
+when they did not the headline and the chart underneath it disagreed by exactly
+the knocks in the overlap.
+
+### Cars on the drive
+
+`visits.vehicle_present` is nullable on purpose and three-valued end to end:
+null means the rep did not look, which is not the same as saying there was no
+car. The knock sheet starts with neither answer chosen and says out loud what
+leaving it alone means. Reporting counts only knocks where a rep said either
+way, because folding "did not look" into "no car" would put most of a day in
+the no-car row and make the signal look worthless.
+
+### A larger crew
+
+The market is California and the crew is about to grow, so two things changed.
+
+Rep colours come from a hash of the rep's id, not from their position in the
+roster. Position meant hiring one rep re-coloured everyone after them, so a
+manager who had learned the map found it meaning something else the next day.
+Past a full palette collisions are unavoidable and the legend, which names
+every rep, is what disambiguates. `repColors.test.ts` is the guard.
+
+The canvass legend lists only the reps whose colour is actually on screen.
+Thirty names wrapped to five rows and pushed the map down the page to explain
+colours that were not on it.
+
+### Rebuilding a table on D1
+
+Migration `0005` opens with a warning worth repeating here. D1 manages the
+connection and **ignores `PRAGMA foreign_keys = OFF`**: it still reports 1. The
+first version of that migration rebuilt `properties` before `visits`, so
+`DROP TABLE properties` cascaded through `visits.property_id ON DELETE CASCADE`
+and deleted every knock in the database before the copy could read them. The
+copy then inserted nothing and the migration reported success. Reordering does
+not help, because `visits` references `properties` whichever way round they are
+rebuilt. The fix is to stage the child rows in a table with no foreign key at
+all: `CREATE TABLE AS SELECT` produces one with no constraints, so the cascade
+cannot reach it.
+
 ## Still not true
 
 - **The Turnstile keys on the deployment are Cloudflare's test pair**, which

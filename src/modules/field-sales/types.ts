@@ -8,6 +8,11 @@ export type PropertyDisposition =
   | 'not_interested'
   | 'interested'
   | 'appointment_set'
+  // Two outcomes, not one, because a booking nobody turned up to and a booking
+  // that has not happened yet were indistinguishable without them, and the gap
+  // between booked and showed is where this business leaks.
+  | 'appointment_kept'
+  | 'appointment_missed'
   | 'closed_sale'
   | 'do_not_knock';
 
@@ -49,6 +54,14 @@ export interface Visit {
   repId: string;
   disposition: PropertyDisposition;
   notes: string | null;
+  /**
+   * A car on the drive.
+   *
+   * Null means the rep did not say, which is not the same as saying there was
+   * none. It is the best signal that somebody is home and it is what decides
+   * which no-answers are worth a second pass.
+   */
+  vehiclePresent: boolean | null;
   /** ISO 8601. */
   occurredAt: string;
 }

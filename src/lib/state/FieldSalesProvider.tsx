@@ -36,6 +36,12 @@ export interface LogVisitInput {
   disposition: PropertyDisposition;
   notes: string | null;
   repId: string;
+  /**
+   * Whether there was a car on the drive. Optional here rather than on the rep
+   * app, because a manager logging a knock from a desk was not at the kerb and
+   * has nothing to report; it stays null and reads as "not recorded".
+   */
+  vehiclePresent?: boolean | null;
 }
 
 export interface FieldSalesActions {
@@ -115,6 +121,7 @@ export function FieldSalesProvider({ children }: { children: React.ReactNode }) 
               repId: input.repId,
               disposition: input.disposition,
               notes: input.notes,
+              vehiclePresent: input.vehiclePresent ?? null,
               // The clock at the door, not the clock on arrival. Reporting
               // reads this, so a knock uploaded late stays on the day it
               // happened.
@@ -135,6 +142,7 @@ export function FieldSalesProvider({ children }: { children: React.ReactNode }) 
         repId: input.repId,
         disposition: input.disposition,
         notes: input.notes,
+        vehiclePresent: input.vehiclePresent ?? null,
         occurredAt: new Date().toISOString(),
       };
 

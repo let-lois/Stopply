@@ -104,6 +104,7 @@ async function loadDoors(db: D1Database, session: FieldSession): Promise<FieldDo
         rep_id: string;
         disposition: string;
         notes: string | null;
+        vehicle_present: number | null;
         occurred_at: string;
       }>(),
   ]);
@@ -136,6 +137,7 @@ async function loadDoors(db: D1Database, session: FieldSession): Promise<FieldDo
       repId: v.rep_id,
       disposition: v.disposition as FieldDoors['visits'][number]['disposition'],
       notes: v.notes,
+      vehiclePresent: v.vehicle_present === null ? null : v.vehicle_present === 1,
       occurredAt: v.occurred_at,
     })),
   };
@@ -258,6 +260,7 @@ export async function fieldLogVisit(ctx: RouteContext): Promise<Response> {
         repId: session.repId,
         disposition: body.disposition,
         notes: body.notes,
+        vehiclePresent: body.vehiclePresent ?? null,
         occurredAt: existing.occurred_at,
       },
       duplicate: true,
@@ -270,8 +273,8 @@ export async function fieldLogVisit(ctx: RouteContext): Promise<Response> {
 
   await ctx.env.DB.prepare(
     `INSERT INTO visits
-       (id, device_visit_id, client_id, property_id, rep_id, disposition, notes, occurred_at, recorded_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`
+       (id, device_visit_id, client_id, property_id, rep_id, disposition, notes, vehicle_present, occurred_at, recorded_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`
   )
     .bind(
       id,
@@ -281,6 +284,11 @@ export async function fieldLogVisit(ctx: RouteContext): Promise<Response> {
       session.repId,
       body.disposition,
       body.notes,
+      body.vehiclePresent === null || body.vehiclePresent === undefined
+        ? null
+        : body.vehiclePresent
+          ? 1
+          : 0,
       body.occurredAt,
       now
     )
@@ -307,6 +315,7 @@ export async function fieldLogVisit(ctx: RouteContext): Promise<Response> {
       repId: session.repId,
       disposition: body.disposition,
       notes: body.notes,
+      vehiclePresent: body.vehiclePresent ?? null,
       occurredAt: body.occurredAt,
     },
     duplicate: false,

@@ -25,6 +25,15 @@ export interface QueuedKnock {
   propertyId: string;
   disposition: string;
   notes: string | null;
+  /**
+   * Whether there was a car on the drive. Null means the rep did not say,
+   * which is not the same as saying there was none.
+   *
+   * Optional on the type as well as nullable, because knocks queued by a build
+   * from before this field existed are still sitting in some phone's
+   * IndexedDB, and they have to drain rather than fail validation.
+   */
+  vehiclePresent?: boolean | null;
   /** The phone's clock at the door, not at send time. */
   occurredAt: string;
   /** For surfacing a knock that keeps failing rather than hiding it. */

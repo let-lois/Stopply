@@ -49,7 +49,13 @@ export interface FieldActions {
    * first and sent whenever there is signal, so a rep in a stairwell is not
    * shown a failure for something they did correctly.
    */
-  logKnock: (input: { propertyId: string; disposition: Disposition; notes: string | null }) => Promise<void>;
+  logKnock: (input: {
+    propertyId: string;
+    disposition: Disposition;
+    notes: string | null;
+    /** Null when the rep did not say, which is not the same as "no car". */
+    vehiclePresent: boolean | null;
+  }) => Promise<void>;
   refresh: () => Promise<void>;
 }
 
@@ -116,6 +122,9 @@ export function FieldSessionProvider({ children }: { children: React.ReactNode }
           propertyId: knock.propertyId,
           disposition: knock.disposition,
           notes: knock.notes,
+          // ?? null rather than passing it straight through, so a knock queued
+          // by an older build sends "not recorded" instead of undefined.
+          vehiclePresent: knock.vehiclePresent ?? null,
           occurredAt: knock.occurredAt,
         },
         logVisitResponseSchema
@@ -245,6 +254,7 @@ export function FieldSessionProvider({ children }: { children: React.ReactNode }
         propertyId: input.propertyId,
         disposition: input.disposition,
         notes: input.notes,
+        vehiclePresent: input.vehiclePresent,
         occurredAt,
       });
       await syncQueue();
@@ -268,6 +278,7 @@ export function FieldSessionProvider({ children }: { children: React.ReactNode }
                 repId: prev.data.session.repId,
                 disposition: input.disposition,
                 notes: input.notes,
+                vehiclePresent: input.vehiclePresent,
                 occurredAt,
               },
               ...prev.data.visits,

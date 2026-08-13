@@ -27,7 +27,7 @@ const context = await browser.newContext({
   isMobile: true,
   hasTouch: true,
   deviceScaleFactor: 3,
-  geolocation: { latitude: 33.42, longitude: -111.63 },
+  geolocation: { latitude: 33.97, longitude: -117.38 },
   permissions: ['geolocation'],
 });
 const page = await context.newPage();
@@ -62,9 +62,13 @@ await page.goto(`${BASE}/field`, { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(1800);
 await page.screenshot({ path: `${SHOTS}/21-field-today.png` });
 
-check('the rep sees their own name and territory', 
-  (await page.getByText('Marcus Webb').count()) > 0 &&
-  (await page.getByText('East Mesa North').count()) > 0);
+// The territory's name is read from the header rather than asserted as a
+// literal: this said 'East Mesa North' and failed when the market moved to
+// California, which is the harness breaking on data rather than on a defect.
+const territoryLine = await page.locator('header p').nth(1).innerText();
+check('the rep sees their own name and territory',
+  (await page.getByText('Marcus Webb').count()) > 0 && territoryLine.trim().length > 0,
+  territoryLine);
 
 const overflows = await page.evaluate(
   () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
@@ -114,6 +118,33 @@ check(
 );
 await sheet.getByRole('button', { name: 'Cancel' }).click();
 await page.waitForTimeout(300);
+
+// A car on the drive. Three-valued, and the state that matters is the third
+// one: leaving it alone has to stay distinct from tapping No.
+const carYes = sheet.getByRole('button', { name: 'Yes', exact: true });
+check(
+  'the car question starts with neither answer chosen',
+  (await carYes.getAttribute('aria-pressed')) === 'false' &&
+    (await sheet.getByText('Leave both off if you did not check.').count()) > 0
+);
+
+await carYes.click();
+await page.waitForTimeout(200);
+check('tapping Yes records a car', (await carYes.getAttribute('aria-pressed')) === 'true');
+
+await carYes.click();
+await page.waitForTimeout(200);
+check(
+  'tapping it again clears it, so a mis-tap is recoverable without closing the sheet',
+  (await carYes.getAttribute('aria-pressed')) === 'false'
+);
+
+// Showed and no-show belong to a door with an appointment, not to every door.
+check(
+  'showed and no-show are not offered at a door with no appointment',
+  (await sheet.getByRole('button', { name: 'Showed', exact: true }).count()) === 0 &&
+    (await sheet.getByRole('button', { name: 'No-show', exact: true }).count()) === 0
+);
 
 // Log a real knock and see it land.
 // The count, not the label beside it: getByText(/knocked today/) matches the

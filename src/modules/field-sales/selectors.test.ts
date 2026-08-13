@@ -19,11 +19,11 @@ function property(disposition: PropertyDisposition, territoryId = 'ter_a'): Prop
   return {
     id: `prop_${seq}`,
     address: `${seq} Test St`,
-    city: 'Mesa',
-    state: 'AZ',
-    postalCode: '85201',
-    lat: 33.4,
-    lng: -111.8,
+    city: 'Riverside',
+    state: 'CA',
+    postalCode: '92503',
+    lat: 33.95,
+    lng: -117.4,
     territoryId,
     disposition,
     ownerName: null,
@@ -32,7 +32,12 @@ function property(disposition: PropertyDisposition, territoryId = 'ter_a'): Prop
   };
 }
 
-function visit(propertyId: string, disposition: PropertyDisposition, repId = 'rep_1'): Visit {
+function visit(
+  propertyId: string,
+  disposition: PropertyDisposition,
+  repId = 'rep_1',
+  occurredAt = '2026-08-13T17:00:00.000Z'
+): Visit {
   seq++;
   return {
     id: `visit_${seq}`,
@@ -40,7 +45,8 @@ function visit(propertyId: string, disposition: PropertyDisposition, repId = 're
     repId,
     disposition,
     notes: null,
-    occurredAt: '2026-08-13T17:00:00.000Z',
+    vehiclePresent: null,
+    occurredAt,
   };
 }
 

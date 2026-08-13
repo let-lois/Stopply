@@ -9,7 +9,7 @@
 // time is how a rep stops logging them.
 
 import { useEffect, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { Car, X } from 'lucide-react';
 import { useFieldActions, type Disposition, type Door } from '@/lib/field/FieldSessionProvider';
 import { DISPOSITION_LABELS } from '@/modules/field-sales/selectors';
 import { ApiRequestError } from '@/lib/api/client';
@@ -32,9 +32,23 @@ const OUTCOMES: Array<{ id: Disposition; tone: string }> = [
   { id: 'closed_sale', tone: 'bg-[var(--color-positive)]' },
 ];
 
+// Showed and no-show are not knocks, they are what happened to an appointment
+// somebody already booked. Offering them at every door would put two taps a
+// rep will use twice a week in front of the six they use all day, and would
+// invite marking a house "no-show" that never had an appointment. They appear
+// only once a door is actually sitting at appointment_set.
+const APPOINTMENT_OUTCOMES: Array<{ id: Disposition; tone: string }> = [
+  { id: 'appointment_kept', tone: 'bg-[var(--color-accent-indigo)]' },
+  { id: 'appointment_missed', tone: 'bg-[var(--color-accent-rose)]' },
+];
+
 export function KnockSheet({ door, onClose }: { door: Door; onClose: () => void }) {
   const { logKnock } = useFieldActions();
   const [notes, setNotes] = useState('');
+  // Three-valued on purpose. Null is the state a rep leaves it in when they
+  // did not look, and that is different from saying there was no car. A
+  // boolean here would silently report "no vehicle" for every door in the day.
+  const [vehiclePresent, setVehiclePresent] = useState<boolean | null>(null);
   const [saving, setSaving] = useState<Disposition | null>(null);
   const [confirmingDnk, setConfirmingDnk] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +67,12 @@ export function KnockSheet({ door, onClose }: { door: Door; onClose: () => void 
     setSaving(disposition);
     setError(null);
     try {
-      await logKnock({ propertyId: door.id, disposition, notes: notes.trim() || null });
+      await logKnock({
+        propertyId: door.id,
+        disposition,
+        notes: notes.trim() || null,
+        vehiclePresent,
+      });
       onClose();
     } catch (cause) {
       // The knock is already on the phone by the time anything can throw, so
@@ -115,6 +134,46 @@ export function KnockSheet({ door, onClose }: { door: Door; onClose: () => void 
           </p>
         )}
 
+        {/* Above the note because it is an observation from the kerb, made
+            before the door is even answered, and because a rep will tap it far
+            more often than they will type. Tapping the selected side again
+            clears it, so a mis-tap is recoverable without closing the sheet. */}
+        <div className="mb-4">
+          <p className="text-sm font-medium" id="vehicle-label">
+            Car on the drive?
+          </p>
+          <div className="mt-2 flex gap-3" role="group" aria-labelledby="vehicle-label">
+            {([true, false] as const).map((value) => {
+              const active = vehiclePresent === value;
+              return (
+                <button
+                  key={String(value)}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setVehiclePresent(active ? null : value)}
+                  className={`min-h-14 flex-1 rounded-2xl border-2 text-base font-semibold ${
+                    active
+                      ? 'border-[var(--color-accent-sky)] bg-[var(--color-accent-sky)]/20 text-[var(--color-accent-sky)]'
+                      : 'border-[var(--color-hairline)] text-[var(--color-ink-soft)]'
+                  }`}
+                >
+                  <span className="flex items-center justify-center gap-2">
+                    {value && <Car size={18} aria-hidden="true" />}
+                    {value ? 'Yes' : 'No'}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {/* Says out loud what leaving it alone means, so a blank is a
+              deliberate "did not look" rather than an accidental "no car". */}
+          {vehiclePresent === null && (
+            <p className="mt-2 text-xs text-[var(--color-ink-faint)]">
+              Leave both off if you did not check.
+            </p>
+          )}
+        </div>
+
         <label className="mb-4 block">
           <span className="text-sm font-medium">Note (optional)</span>
           <textarea
@@ -130,6 +189,25 @@ export function KnockSheet({ door, onClose }: { door: Door; onClose: () => void 
           <p role="alert" className="mb-3 text-sm font-medium text-[var(--color-negative)]">
             {error}
           </p>
+        )}
+
+        {door.disposition === 'appointment_set' && (
+          <div className="mb-3">
+            <p className="mb-2 text-sm font-medium">This door has an appointment booked</p>
+            <div className="grid grid-cols-2 gap-3">
+              {APPOINTMENT_OUTCOMES.map((outcome) => (
+                <button
+                  key={outcome.id}
+                  type="button"
+                  disabled={saving !== null}
+                  onClick={() => void save(outcome.id)}
+                  className={`min-h-16 rounded-2xl px-3 text-base font-semibold text-black disabled:opacity-40 ${outcome.tone}`}
+                >
+                  {saving === outcome.id ? 'Saving…' : DISPOSITION_LABELS[outcome.id]}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
 
         <div className="grid grid-cols-2 gap-3">

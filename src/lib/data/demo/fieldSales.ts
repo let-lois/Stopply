@@ -12,15 +12,19 @@ import { between, pick, rng } from '@/lib/data/demo/rng';
 // carried real Austin coordinates on every property and then positioned pins
 // by array index, so the geography was decorative and the pins moved when the
 // list was filtered.
+//
+// Riverside, California. The demo used Mesa, Arizona, which put a prospective
+// client's first look at the product in the wrong state and, once clients
+// carried a timezone, an hour off their own day as well.
 const TERRITORY_SEEDS = [
-  { id: 'ter_north', name: 'North Ridge', lat: 33.4484, lng: -111.926 },
-  { id: 'ter_central', name: 'Central Mesa', lat: 33.4152, lng: -111.8315 },
-  { id: 'ter_south', name: 'South Gateway', lat: 33.3806, lng: -111.789 },
+  { id: 'ter_north', name: 'Riverside North', lat: 33.9806, lng: -117.4102 },
+  { id: 'ter_central', name: 'Arlington', lat: 33.9418, lng: -117.4275 },
+  { id: 'ter_south', name: 'La Sierra', lat: 33.9061, lng: -117.4783 },
 ];
 
 const STREETS = [
-  'N Sycamore St', 'E Palm Ln', 'W Cactus Rd', 'S Ironwood Dr', 'N Mesquite Way',
-  'E Saguaro Blvd', 'W Ocotillo Rd', 'S Juniper Ct',
+  'Magnolia Ave', 'Arlington Ave', 'Van Buren Blvd', 'Central Ave', 'Chicago Ave',
+  'Tyler St', 'Indiana Ave', 'La Sierra Ave',
 ];
 
 const REP_NAMES = ['Dana Reyes', 'Marcus Hill', 'Priya Nair', 'Tyler Boone'];
@@ -93,15 +97,15 @@ export function fieldSalesDemo(clientId: string, now: Date): FieldSalesData {
         properties.push({
           id: `prop_${clientId}_${t}_${r}_${n}`,
           address: `${100 + t * 200 + r * 20 + n * 2} ${street}`,
-          city: 'Mesa',
-          state: 'AZ',
-          postalCode: '85201',
+          city: 'Riverside',
+          state: 'CA',
+          postalCode: '92503',
           lat: seed.lat + r * 0.0016,
           lng: seed.lng + n * 0.0012,
           territoryId: seed.id,
           disposition: visited ? weightedDisposition(random) : 'not_visited',
           ownerName: ownerKnown ? `${pick(random, OWNER_FIRST)} ${pick(random, OWNER_LAST)}` : null,
-          ownerPhone: ownerKnown ? `480-555-${String(1000 + between(random, 0, 8999)).slice(-4)}` : null,
+          ownerPhone: ownerKnown ? `951-555-${String(1000 + between(random, 0, 8999)).slice(-4)}` : null,
           notes: null,
         });
       }
@@ -118,6 +122,9 @@ export function fieldSalesDemo(clientId: string, now: Date): FieldSalesData {
       repId: pick(random, reps).id,
       disposition: p.disposition,
       notes: null,
+      // Demo data does not pretend a rep looked at the drive. Null is "not
+      // recorded", which is exactly what happened here.
+      vehiclePresent: null,
       occurredAt: new Date(
         now.getTime() - between(random, 0, 27) * 86400000 - between(random, 0, 8) * 3600000
       ).toISOString(),

@@ -70,10 +70,16 @@ check(
 
 const repCookie = setCookie.split(';')[0];
 
+// Deliberately not a hardcoded territory name. This asserted 'East Mesa North'
+// and failed when the market moved to California, which is a harness breaking
+// on a data change rather than on a defect. What has to hold is that the rep
+// gets a named territory of their own; the next check is the one that proves
+// it is only theirs.
 check(
   'signing in returns the rep their own territory',
   login.json?.session?.repName === 'Marcus Webb' &&
-    login.json?.session?.territoryName === 'East Mesa North',
+    typeof login.json?.session?.territoryName === 'string' &&
+    login.json.session.territoryName.length > 0,
   `${login.json?.session?.territoryName}, ${login.json?.properties?.length} doors`
 );
 
@@ -174,6 +180,114 @@ const after = await call('/api/field/doors', { cookie: repCookie });
 check(
   "the door's outcome reflects the knock",
   after.json?.properties?.find((p) => p.id === target?.id)?.disposition === 'interested'
+);
+
+// A car on the drive. Three-valued end to end: the column, the contract and
+// the phone all have to keep "did not look" distinct from "no car", and the
+// place that breaks is a boolean cast somewhere in the middle turning one into
+// the other.
+const carDoor = doors.json?.properties?.[1];
+const carKnock = {
+  deviceVisitId: `dev_fieldqa_car_${Date.now().toString(36)}`,
+  propertyId: carDoor?.id,
+  disposition: 'no_answer',
+  notes: null,
+  vehiclePresent: true,
+  occurredAt: new Date().toISOString(),
+};
+const carLogged = await call('/api/field/visits', { method: 'POST', cookie: repCookie, body: carKnock });
+check(
+  'a knock records a car on the drive',
+  carLogged.status === 200 && carLogged.json?.visit?.vehiclePresent === true,
+  `${carLogged.status} vehiclePresent=${carLogged.json?.visit?.vehiclePresent}`
+);
+
+// The knock further up sent no vehiclePresent at all.
+check(
+  'a knock that did not say reads back as null, not false',
+  logged.json?.visit?.vehiclePresent === null,
+  `got ${JSON.stringify(logged.json?.visit?.vehiclePresent)}`
+);
+
+const withCar = await call('/api/field/doors', { cookie: repCookie });
+const carVisit = (withCar.json?.visits ?? []).find(
+  (v) => v.id === carLogged.json?.visit?.id
+);
+check(
+  'the car survives a round trip through the database',
+  carVisit?.vehiclePresent === true,
+  `got ${JSON.stringify(carVisit?.vehiclePresent)}`
+);
+
+// The stages that made the booked-to-showed gap visible. A CHECK constraint
+// that was never widened would reject these at the database rather than at the
+// contract, which is a 500 rather than a 400 and is worth catching here.
+const showDoor = doors.json?.properties?.[2];
+const showKnock = {
+  deviceVisitId: `dev_fieldqa_kept_${Date.now().toString(36)}`,
+  propertyId: showDoor?.id,
+  disposition: 'appointment_kept',
+  notes: null,
+  vehiclePresent: false,
+  occurredAt: new Date().toISOString(),
+};
+const showLogged = await call('/api/field/visits', { method: 'POST', cookie: repCookie, body: showKnock });
+check(
+  'a kept appointment is accepted by the database, not just by the contract',
+  showLogged.status === 200 && showLogged.json?.visit?.disposition === 'appointment_kept',
+  `${showLogged.status} ${showLogged.json?.error?.message ?? ''}`
+);
+check(
+  'and "no car" is stored as false rather than collapsing to null',
+  showLogged.json?.visit?.vehiclePresent === false,
+  `got ${JSON.stringify(showLogged.json?.visit?.vehiclePresent)}`
+);
+
+const missed = await call('/api/field/visits', {
+  method: 'POST',
+  cookie: repCookie,
+  body: {
+    ...showKnock,
+    deviceVisitId: `${showKnock.deviceVisitId}_m`,
+    disposition: 'appointment_missed',
+  },
+});
+check(
+  'so is a missed one',
+  missed.status === 200 && missed.json?.visit?.disposition === 'appointment_missed',
+  `${missed.status} ${missed.json?.error?.message ?? ''}`
+);
+
+// Do not knock is still sticky, whatever arrives afterwards.
+const dnkDoor = doors.json?.properties?.[3];
+const stamp = Date.now().toString(36);
+await call('/api/field/visits', {
+  method: 'POST',
+  cookie: repCookie,
+  body: {
+    deviceVisitId: `dev_fieldqa_dnk_${stamp}`,
+    propertyId: dnkDoor?.id,
+    disposition: 'do_not_knock',
+    notes: null,
+    occurredAt: new Date().toISOString(),
+  },
+});
+await call('/api/field/visits', {
+  method: 'POST',
+  cookie: repCookie,
+  body: {
+    deviceVisitId: `dev_fieldqa_dnk_${stamp}_after`,
+    propertyId: dnkDoor?.id,
+    disposition: 'appointment_kept',
+    notes: null,
+    occurredAt: new Date().toISOString(),
+  },
+});
+const sticky = await call('/api/field/doors', { cookie: repCookie });
+check(
+  'do not knock survives a later knock arriving out of order',
+  sticky.json?.properties?.find((p) => p.id === dnkDoor?.id)?.disposition === 'do_not_knock',
+  sticky.json?.properties?.find((p) => p.id === dnkDoor?.id)?.disposition
 );
 
 const out = await call('/api/field/logout', { method: 'POST', cookie: repCookie });

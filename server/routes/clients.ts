@@ -44,6 +44,7 @@ interface ClientRow {
   contact_email: string;
   created_at: string;
   last_active: string;
+  timezone: string | null;
 }
 
 interface ModuleRow {
@@ -120,6 +121,10 @@ async function loadClients(db: D1Database, session: Session): Promise<ClientPayl
       lastActive: row.last_active,
       contactEmail: row.contact_email,
       contactName: row.contact_name,
+      // The column is NOT NULL with a default, so this fallback is for a
+      // database that has not had migration 0005 applied rather than for a row
+      // that could legitimately be missing one.
+      timezone: row.timezone ?? 'America/Los_Angeles',
     };
   });
 }

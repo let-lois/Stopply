@@ -12,6 +12,7 @@ import {
   repColors,
   UNWORKED_COLOR,
 } from '@/modules/field-sales/repColors';
+import { DISPOSITION_HEX } from '@/modules/field-sales/dispositionColors';
 import type { Property } from '@/modules/field-sales/types';
 import { Skeleton } from '@/components/ui';
 
@@ -22,25 +23,17 @@ const DoorMap = lazy(() =>
   import('@/modules/field-sales/components/DoorMap').then((m) => ({ default: m.DoorMap }))
 );
 
-// Outcome colours, as literals, because the map resolves a colour per door
-// rather than reading a CSS variable on the GPU.
-const DISPOSITION_HEX: Record<PropertyDisposition, string> = {
-  not_visited: '#6b7280',
-  no_answer: '#94a3b8',
-  come_back: '#f59e0b',
-  not_interested: '#ef4444',
-  interested: '#38bdf8',
-  appointment_set: '#a855f7',
-  closed_sale: '#10b981',
-  do_not_knock: '#f8fafc',
-};
-
-
+// Not every outcome, deliberately. These are the ones a manager filters by:
+// the funnel stages plus the two that mean "leave it alone". No answer and
+// come back are the bulk of a day and filtering to them shows you almost
+// everything, which is not a filter.
 const FILTERS: Array<{ id: 'all' | PropertyDisposition; label: string }> = [
   { id: 'all', label: 'All doors' },
   { id: 'not_visited', label: 'Not visited' },
   { id: 'interested', label: 'Interested' },
   { id: 'appointment_set', label: 'Appointment set' },
+  { id: 'appointment_kept', label: 'Showed' },
+  { id: 'appointment_missed', label: 'No-show' },
   { id: 'closed_sale', label: 'Closed' },
   { id: 'do_not_knock', label: 'Do not knock' },
 ];
@@ -119,6 +112,28 @@ export default function FieldSalesCanvass() {
     // without reading every other pin on the street.
     return byOutcome.filter((p) => repByProperty.get(p.id) === repFilter);
   }, [inTerritory, filter, repFilter, repByProperty]);
+
+  // Only the reps whose colour is actually on the map right now.
+  //
+  // Listing the whole roster was fine at four reps and stops being fine as the
+  // crew grows: thirty names wrap to five rows and push the map off the screen
+  // to explain colours that are not on it. A manager looking at one territory
+  // sees the two or three people working it.
+  const legendReps = useMemo(() => {
+    if (colorBy !== 'rep') return [];
+    const present = new Set(
+      visible.map((p) => repByProperty.get(p.id)).filter((id): id is string => Boolean(id))
+    );
+    return reps
+      .filter((rep) => present.has(rep.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [colorBy, visible, repByProperty, reps]);
+
+  /** Whether any visible door has nobody on it, so the grey entry is earned. */
+  const hasUnworked = useMemo(
+    () => visible.some((p) => !repByProperty.get(p.id)),
+    [visible, repByProperty]
+  );
 
   const selected = useMemo(
     () => properties.find((p) => p.id === selectedId) ?? null,
@@ -199,15 +214,20 @@ export default function FieldSalesCanvass() {
             </div>
             {/* A colour coding nobody can read is decoration. The legend is
                 not optional, and it changes with what the colours mean. */}
-            <div className="flex flex-wrap gap-x-4 gap-y-1.5 px-6 pb-3 text-xs">
+            {/* Capped in height and scrollable rather than unbounded: on a
+                large crew looking at every territory at once the list is
+                genuinely long, and it must not be able to squeeze the map. */}
+            <div className="flex max-h-20 flex-wrap gap-x-4 gap-y-1.5 overflow-y-auto px-6 pb-3 text-xs">
               {colorBy === 'rep'
                 ? [
-                    ...reps.map((rep) => ({
+                    ...legendReps.map((rep) => ({
                       key: rep.id,
                       label: rep.name,
                       color: colorByRep.get(rep.id) ?? UNWORKED_COLOR,
                     })),
-                    { key: 'none', label: 'Not yet knocked', color: UNWORKED_COLOR },
+                    ...(hasUnworked
+                      ? [{ key: 'none', label: 'Not yet knocked', color: UNWORKED_COLOR }]
+                      : []),
                   ].map((entry) => (
                     <span key={entry.key} className="flex items-center gap-1.5">
                       <span

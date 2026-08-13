@@ -15,19 +15,38 @@
 // see. This is the highest-value test surface in the application.
 
 import type { Property, PropertyDisposition, Rep, Territory, Visit } from '@/modules/field-sales/types';
+import { buildJourneys, stillAt } from '@/modules/field-sales/funnel';
 
-/** Dispositions that count as having reached a person. */
+/**
+ * Dispositions that count as having reached a person.
+ *
+ * appointment_kept is one: somebody opened the door for the appointment.
+ * appointment_missed is not, and that is the point of separating them. A rep
+ * who drives out to a booked appointment and finds nobody home has had no
+ * conversation, and counting it as one would make a crew's contact rate climb
+ * every time an appointment fell through.
+ */
 const CONTACT_DISPOSITIONS: ReadonlySet<PropertyDisposition> = new Set([
   'not_interested',
   'interested',
   'appointment_set',
+  'appointment_kept',
   'closed_sale',
   'do_not_knock',
 ]);
 
+/**
+ * A household that has expressed interest, whatever happened afterwards.
+ *
+ * appointment_missed stays in. They booked; the appointment is what failed,
+ * not the lead. Dropping it here would mean a no-show quietly removed a lead
+ * from the pipeline, which is the opposite of what a manager needs to see.
+ */
 const LEAD_DISPOSITIONS: ReadonlySet<PropertyDisposition> = new Set([
   'interested',
   'appointment_set',
+  'appointment_kept',
+  'appointment_missed',
   'closed_sale',
 ]);
 
@@ -38,6 +57,8 @@ export const DISPOSITION_LABELS: Record<PropertyDisposition, string> = {
   not_interested: 'Not interested',
   interested: 'Interested',
   appointment_set: 'Appointment set',
+  appointment_kept: 'Showed',
+  appointment_missed: 'No-show',
   closed_sale: 'Closed sale',
   do_not_knock: 'Do not knock',
 };
@@ -49,8 +70,14 @@ export interface FieldKpis {
   propertiesVisited: number;
   totalProperties: number;
   contacts: number;
+  /** Doors sitting at Interested right now, still waiting on a booking. */
   interestedLeads: number;
+  /** Doors that ever booked, including ones that have since shown or sold. */
   appointmentsSet: number;
+  /** Doors that booked and turned up. */
+  appointmentsKept: number;
+  /** Doors that booked and did not. The leak, as a number. */
+  noShows: number;
   salesClosed: number;
   /** Share of visits that reached a person. */
   contactRate: number;
@@ -68,16 +95,30 @@ export function selectKpis(properties: Property[], visits: Visit[]): FieldKpis {
     if (CONTACT_DISPOSITIONS.has(visit.disposition)) contacts++;
   }
 
-  // Counted from the property's current disposition, not from the visit
-  // history, so re-logging a closed sale cannot inflate the total and a
-  // property moved out of Interested stops counting as interested.
+  // Interested is a current state: these are the doors still waiting on a
+  // booking, so a door that has since booked correctly leaves the count.
   let interestedLeads = 0;
-  let appointmentsSet = 0;
-  let salesClosed = 0;
   for (const property of properties) {
     if (property.disposition === 'interested') interestedLeads++;
-    if (property.disposition === 'appointment_set') appointmentsSet++;
-    if (property.disposition === 'closed_sale') salesClosed++;
+  }
+
+  // Bookings and sales are cumulative, and read from the journey rather than
+  // from current dispositions. Counting current dispositions meant a door that
+  // booked and then showed left appointment_set, so "appointments set" fell
+  // every time an appointment went well. Per-door and once, so re-logging a
+  // sale still cannot inflate anything.
+  const journeys = buildJourneys(visits);
+  let appointmentsSet = 0;
+  let appointmentsKept = 0;
+  let salesClosed = 0;
+  for (const journey of journeys.values()) {
+    if (journey.booked) appointmentsSet++;
+    if (journey.showed) appointmentsKept++;
+    // Standing, not cumulative, and deliberately the one number here that is.
+    // A sale re-dispositioned afterwards did happen, and the funnel counts the
+    // flow, but this card is what a manager reads as "we have this many sales"
+    // and it must not include one that was reversed.
+    if (stillAt(journey, 'sold')) salesClosed++;
   }
 
   return {
@@ -87,6 +128,8 @@ export function selectKpis(properties: Property[], visits: Visit[]): FieldKpis {
     contacts,
     interestedLeads,
     appointmentsSet,
+    appointmentsKept,
+    noShows: appointmentsSet - appointmentsKept,
     salesClosed,
     contactRate: visits.length > 0 ? contacts / visits.length : 0,
     conversionRate: contacts > 0 ? salesClosed / contacts : 0,

@@ -98,15 +98,25 @@ for (const [id, email, name, role, clientId] of team) {
   );
 }
 
-// Field data for Allstar. Two territories over real Mesa, Arizona extents, so
-// the map projection has something honest to work with.
+// Field data for Allstar, over real Riverside, California extents. California
+// is the market; the client's timezone drives how reporting days are cut, so
+// the data and the zone have to agree or "knocked today" means two things.
 const territories = [
-  ['ter_as_1', 'East Mesa North', 33.44, 33.4, -111.6, -111.66, 'rep_as_1'],
-  ['ter_as_2', 'East Mesa South', 33.4, 33.36, -111.6, -111.66, 'rep_as_2'],
+  ['ter_as_1', 'Riverside North', 33.99, 33.95, -117.34, -117.42, 'rep_as_1'],
+  ['ter_as_2', 'Riverside South', 33.95, 33.91, -117.34, -117.42, 'rep_as_2'],
 ];
-for (const [id, name, north, south, east, west, rep] of territories) {
+for (const [id, name, north, south, east, west] of territories) {
+  // The boundary is the definition and the box is derived from it, so the seed
+  // writes both rather than leaving a territory with no shape. assigned_rep_id
+  // is gone: who works a territory lives on the rep, in one place.
+  const ring = JSON.stringify([
+    [west, south],
+    [east, south],
+    [east, north],
+    [west, north],
+  ]);
   lines.push(
-    `INSERT INTO territories (id, client_id, name, north, south, east, west, assigned_rep_id) VALUES (${q(id)}, 'cl_allstar', ${q(name)}, ${north}, ${south}, ${east}, ${west}, ${q(rep)});`
+    `INSERT INTO territories (id, client_id, name, north, south, east, west, boundary_json) VALUES (${q(id)}, 'cl_allstar', ${q(name)}, ${north}, ${south}, ${east}, ${west}, ${q(ring)});`
   );
 }
 
@@ -131,16 +141,45 @@ const rand = () => {
   return state / 2147483648;
 };
 
-const STREETS = ['E Broadway Rd', 'S Higley Rd', 'E Southern Ave', 'S Val Vista Dr', 'E Baseline Rd'];
+const STREETS = [
+  'Magnolia Ave',
+  'Arlington Ave',
+  'Van Buren Blvd',
+  'Central Ave',
+  'Chicago Ave',
+];
+
+// Weighted to look like a real week rather than a tidy funnel. The three
+// appointment outcomes are what make the booked-to-showed gap visible: a
+// no-show is not a booking that has not happened yet, and until now the two
+// were indistinguishable.
 const OUTCOMES = [
-  ['not_visited', 0.34],
-  ['no_answer', 0.3],
+  ['not_visited', 0.3],
+  ['no_answer', 0.28],
   ['come_back', 0.08],
-  ['not_interested', 0.14],
-  ['interested', 0.08],
-  ['appointment_set', 0.04],
+  ['not_interested', 0.13],
+  ['interested', 0.07],
+  ['appointment_set', 0.05],
+  ['appointment_missed', 0.03],
+  ['appointment_kept', 0.04],
   ['closed_sale', 0.02],
 ];
+
+// A door that reached a later stage passed through the earlier ones, so each
+// outcome carries the ladder that produced it. Without this the funnel shows
+// more sales than appointments, which is not a funnel.
+const LADDER = {
+  not_visited: [],
+  no_answer: ['no_answer'],
+  come_back: ['no_answer', 'come_back'],
+  not_interested: ['not_interested'],
+  interested: ['interested'],
+  appointment_set: ['interested', 'appointment_set'],
+  appointment_missed: ['interested', 'appointment_set', 'appointment_missed'],
+  appointment_kept: ['interested', 'appointment_set', 'appointment_kept'],
+  closed_sale: ['interested', 'appointment_set', 'appointment_kept', 'closed_sale'],
+  do_not_knock: ['do_not_knock'],
+};
 
 function pickOutcome() {
   let r = rand();
@@ -163,20 +202,32 @@ for (let i = 0; i < 96; i++) {
   const street = STREETS[i % STREETS.length];
 
   lines.push(
-    `INSERT INTO properties (id, client_id, address, city, state, postal_code, lat, lng, territory_id, disposition, owner_name, owner_phone, notes, created_at, updated_at) VALUES (${q(id)}, 'cl_allstar', ${q(`${streetNumber} ${street}`)}, 'Mesa', 'AZ', '85206', ${lat.toFixed(6)}, ${lng.toFixed(6)}, ${q(terId)}, ${q(disposition)}, NULL, NULL, NULL, ${q(iso(now))}, ${q(iso(now))});`
+    `INSERT INTO properties (id, client_id, address, city, state, postal_code, lat, lng, territory_id, disposition, owner_name, owner_phone, notes, created_at, updated_at) VALUES (${q(id)}, 'cl_allstar', ${q(`${streetNumber} ${street}`)}, 'Riverside', 'CA', '92503', ${lat.toFixed(6)}, ${lng.toFixed(6)}, ${q(terId)}, ${q(disposition)}, NULL, NULL, NULL, ${q(iso(now))}, ${q(iso(now))});`
   );
 
-  // A door that was knocked has a visit behind it. A door that was not, does
-  // not: the two have to agree, or the dashboard's "doors visited" disagrees
-  // with its own outcome breakdown.
-  if (disposition !== 'not_visited') {
-    const daysAgo = Math.floor(rand() * 21);
-    const occurred = new Date(now.getTime() - daysAgo * 86400000 - Math.floor(rand() * 8) * 3600000);
+  // A door that was knocked has visits behind it, one per stage it passed
+  // through, spaced out in time. The two have to agree or the dashboard's
+  // "doors visited" disagrees with its own outcome breakdown, and the funnel
+  // shows sales with no appointment in front of them.
+  const stages = LADDER[disposition] ?? [];
+  const firstDaysAgo = 4 + Math.floor(rand() * 24);
+
+  stages.forEach((stage, stageIndex) => {
+    // Later stages happen later: an appointment is set at the door and kept
+    // days afterwards, which is exactly the interval the funnel measures.
+    const daysAgo = Math.max(0, firstDaysAgo - stageIndex * (1 + Math.floor(rand() * 4)));
+    const occurred = new Date(
+      now.getTime() - daysAgo * 86400000 - Math.floor(rand() * 8) * 3600000
+    );
+    // A car on the drive, recorded at the door only. Unknown for a third of
+    // them, because a rep who did not look is not the same as no car.
+    const roll = rand();
+    const vehicle = roll < 0.34 ? 'NULL' : roll < 0.72 ? '1' : '0';
     lines.push(
-      `INSERT INTO visits (id, device_visit_id, client_id, property_id, rep_id, disposition, notes, occurred_at, recorded_at) VALUES (${q(`vis_seed_${visitSeq}`)}, ${q(`dev_seed_${visitSeq}`)}, 'cl_allstar', ${q(id)}, ${q(reps[i % 2][0])}, ${q(disposition)}, NULL, ${q(iso(occurred))}, ${q(iso(occurred))});`
+      `INSERT INTO visits (id, device_visit_id, client_id, property_id, rep_id, disposition, notes, vehicle_present, occurred_at, recorded_at) VALUES (${q(`vis_seed_${visitSeq}`)}, ${q(`dev_seed_${visitSeq}`)}, 'cl_allstar', ${q(id)}, ${q(reps[i % 2][0])}, ${q(stage)}, NULL, ${vehicle}, ${q(iso(occurred))}, ${q(iso(occurred))});`
     );
     visitSeq++;
-  }
+  });
 }
 
 process.stderr.write(`demo password: ${password}\n`);

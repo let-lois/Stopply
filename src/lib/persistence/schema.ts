@@ -77,6 +77,8 @@ const dispositionSchema = z.enum([
   'not_interested',
   'interested',
   'appointment_set',
+  'appointment_kept',
+  'appointment_missed',
   'closed_sale',
   'do_not_knock',
 ]);
@@ -102,6 +104,10 @@ export const visitSchema = z.object({
   repId: z.string(),
   disposition: dispositionSchema,
   notes: z.string().nullable(),
+  // Defaulted rather than required, because visits written by a build from
+  // before this field existed are already in people's browsers. Requiring it
+  // would fail the whole record and silently throw their demo work away.
+  vehiclePresent: z.boolean().nullable().default(null),
   occurredAt: z.iso.datetime(),
 });
 

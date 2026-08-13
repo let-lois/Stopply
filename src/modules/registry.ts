@@ -44,6 +44,7 @@ const AdvertisingDashboard = lazy(() => import('@/modules/advertising/views/Dash
 const AdvertisingCampaigns = lazy(() => import('@/modules/advertising/views/Campaigns'));
 const AdvertisingLeads = lazy(() => import('@/modules/advertising/views/Leads'));
 const FieldSalesDashboard = lazy(() => import('@/modules/field-sales/views/Dashboard'));
+const FieldSalesFunnel = lazy(() => import('@/modules/field-sales/views/Funnel'));
 const FieldSalesCanvass = lazy(() => import('@/modules/field-sales/views/Canvass'));
 const FieldSalesProperties = lazy(() => import('@/modules/field-sales/views/Properties'));
 const FieldSalesTerritories = lazy(() => import('@/modules/field-sales/views/Territories'));
@@ -80,6 +81,7 @@ export const MODULE_REGISTRY: Record<ModuleId, ModuleDefinition> = {
     defaultView: 'dashboard',
     views: {
       dashboard: { label: 'Dashboard', Component: FieldSalesDashboard, showInNav: true },
+      funnel: { label: 'Funnel', Component: FieldSalesFunnel, showInNav: true },
       canvass: { label: 'Canvass', Component: FieldSalesCanvass, showInNav: true },
       properties: { label: 'Properties', Component: FieldSalesProperties, showInNav: true },
       territories: { label: 'Territories', Component: FieldSalesTerritories, showInNav: true },

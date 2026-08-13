@@ -27,6 +27,8 @@ const LOGGABLE: PropertyDisposition[] = [
   'not_interested',
   'interested',
   'appointment_set',
+  'appointment_kept',
+  'appointment_missed',
   'closed_sale',
   'do_not_knock',
 ];
