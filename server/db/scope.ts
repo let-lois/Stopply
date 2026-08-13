@@ -62,7 +62,15 @@ export function readCookie(request: Request, name: string): string | null {
  */
 export async function requireSession(request: Request, env: Env): Promise<Session> {
   const token = readCookie(request, SESSION_COOKIE);
-  if (!token) throw unauthorized();
+  if (!token) {
+    // A rep hitting a dashboard route gets told why rather than a bare 401
+    // that reads as "your password is wrong". The cookies are separate, so
+    // this is a message, not a barrier: the barrier is that a field token
+    // hashes to a row in field_sessions, which this query never touches.
+    const { rejectFieldCookie } = await import('@server/db/fieldScope');
+    rejectFieldCookie(request);
+    throw unauthorized();
+  }
 
   const sessionId = await hashSessionToken(token);
   const now = new Date().toISOString();

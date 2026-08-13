@@ -83,7 +83,14 @@ export const fieldSalesDataSchema = z.object({
 export const logVisitRequestSchema = z.object({
   deviceVisitId: z.string().min(8).max(64),
   propertyId: z.string().min(1),
-  repId: z.string().min(1),
+  /**
+   * Who knocked.
+   *
+   * Sent by the dashboard, where a manager logs on a rep's behalf. The rep
+   * app omits it and the server takes the rep from the session instead: a
+   * phone must not be able to attribute a knock to a colleague.
+   */
+  repId: z.string().min(1).optional(),
   disposition: dispositionSchema,
   notes: z.string().max(2000).nullable(),
   occurredAt: z.string().datetime({ offset: true }),
@@ -100,4 +107,37 @@ export const logVisitResponseSchema = z.object({
    * forever. Never change this to an error response.
    */
   duplicate: z.boolean(),
+});
+
+// ---------------------------------------------------------------------------
+// The rep app
+// ---------------------------------------------------------------------------
+
+export const fieldLoginRequestSchema = z.object({
+  email: z.string().email().max(320),
+  password: z.string().min(1).max(400),
+  turnstileToken: z.string().max(2048).optional(),
+});
+
+export const fieldSessionSchema = z.object({
+  repId: z.string(),
+  repName: z.string(),
+  clientId: z.string(),
+  clientName: z.string(),
+  territoryName: z.string().nullable(),
+});
+
+/**
+ * What a rep's phone holds.
+ *
+ * Their own territory's doors and nothing else: no other rep's day, no
+ * client-wide reporting, no dispositions belonging to another workspace. The
+ * whole payload is scoped from the session row, so there is no request a rep
+ * can craft that widens it.
+ */
+export const fieldDoorsSchema = z.object({
+  session: fieldSessionSchema,
+  properties: z.array(propertyWireSchema),
+  /** Only this rep's own recent knocks, for the day's tally. */
+  visits: z.array(visitWireSchema),
 });

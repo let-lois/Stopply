@@ -110,13 +110,16 @@ for (const [id, name, north, south, east, west, rep] of territories) {
   );
 }
 
+// Reps sign in with their own credential, against their own table, and get
+// their own cookie. They are never rows in `users`.
+const repPassword = process.env.REP_PASSWORD ?? 'test1234';
 const reps = [
-  ['rep_as_1', 'Marcus Webb', 'ter_as_1'],
-  ['rep_as_2', 'Priya Anand', 'ter_as_2'],
+  ['rep_as_1', 'Marcus Webb', 'ter_as_1', 'marcus@allstar.example.invalid'],
+  ['rep_as_2', 'Priya Anand', 'ter_as_2', 'priya@allstar.example.invalid'],
 ];
-for (const [id, name, territoryId] of reps) {
+for (const [id, name, territoryId, email] of reps) {
   lines.push(
-    `INSERT INTO reps (id, client_id, name, territory_id, user_id, created_at) VALUES (${q(id)}, 'cl_allstar', ${q(name)}, ${q(territoryId)}, NULL, ${q(iso(now))});`
+    `INSERT INTO reps (id, client_id, name, territory_id, user_id, created_at, email, password_hash, status) VALUES (${q(id)}, 'cl_allstar', ${q(name)}, ${q(territoryId)}, NULL, ${q(iso(now))}, ${q(email)}, ${q(hashPassword(repPassword))}, 'active');`
   );
 }
 
@@ -178,4 +181,5 @@ for (let i = 0; i < 96; i++) {
 
 process.stderr.write(`demo password: ${password}\n`);
 process.stderr.write(`team temporary password: ${teamPassword}\n`);
+process.stderr.write(`rep password: ${repPassword}\n`);
 process.stdout.write(lines.join('\n') + '\n');

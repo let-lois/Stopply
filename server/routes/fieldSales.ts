@@ -1,6 +1,6 @@
 // Field sales: reading a workspace's doors, and recording a knock.
 
-import { json, readJson, clientIp, notFound } from '@server/http';
+import { json, readJson, clientIp, notFound, badRequest } from '@server/http';
 import type { RouteContext } from '@server/router';
 import { requireSession, requireClientInScope, requireModuleEnabled } from '@server/db/scope';
 import { recordAudit } from '@server/db/audit';
@@ -139,10 +139,16 @@ export async function logVisit(ctx: RouteContext): Promise<Response> {
     .first<{ id: string; disposition: string }>();
   if (!property) throw notFound('No such property in this workspace.');
 
+  // Required on this route, optional in the shared schema. A manager logging
+  // on someone's behalf has to say whose knock it was; the rep app omits it
+  // and its own route takes the rep from the session instead.
+  if (!body.repId) throw badRequest('repId: say which rep knocked.');
+
   const rep = await ctx.env.DB.prepare('SELECT id FROM reps WHERE id = ?1 AND client_id = ?2')
     .bind(body.repId, clientId)
     .first<{ id: string }>();
   if (!rep) throw notFound('No such rep in this workspace.');
+  const repId = rep.id;
 
   const existing = await ctx.env.DB.prepare(
     'SELECT id, occurred_at FROM visits WHERE device_visit_id = ?1'
@@ -155,7 +161,7 @@ export async function logVisit(ctx: RouteContext): Promise<Response> {
       visit: {
         id: existing.id,
         propertyId: body.propertyId,
-        repId: body.repId,
+        repId,
         disposition: body.disposition,
         notes: body.notes,
         occurredAt: existing.occurred_at,
@@ -178,7 +184,7 @@ export async function logVisit(ctx: RouteContext): Promise<Response> {
       body.deviceVisitId,
       clientId,
       body.propertyId,
-      body.repId,
+      repId,
       body.disposition,
       body.notes,
       body.occurredAt,
@@ -208,7 +214,7 @@ export async function logVisit(ctx: RouteContext): Promise<Response> {
     visit: {
       id,
       propertyId: body.propertyId,
-      repId: body.repId,
+      repId,
       disposition: body.disposition,
       notes: body.notes,
       occurredAt: body.occurredAt,

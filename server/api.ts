@@ -22,6 +22,7 @@ import {
 } from '@server/routes/clients';
 import { createCredential, deleteCredential, listCredentials } from '@server/routes/credentials';
 import { getFieldSalesData, logVisit } from '@server/routes/fieldSales';
+import { fieldDoors, fieldLogVisit, fieldLogin, fieldLogout } from '@server/routes/field';
 
 export const routes = [
   route('POST', '/api/auth/login', login),
@@ -45,6 +46,14 @@ export const routes = [
   // dispatching on a string from the URL.
   route('GET', '/api/clients/:clientId/field-sales/data', getFieldSalesData),
   route('POST', '/api/clients/:clientId/field-sales/visits', logVisit),
+
+  // The rep app. A separate prefix with a separate cookie and a separate
+  // session table, so nothing here can reach a client's reporting and nothing
+  // above can be reached with a rep's credential.
+  route('POST', '/api/field/login', fieldLogin),
+  route('POST', '/api/field/logout', fieldLogout),
+  route('GET', '/api/field/doors', fieldDoors),
+  route('POST', '/api/field/visits', fieldLogVisit),
 ] as const;
 
 export const dispatch = createRouter(routes);
