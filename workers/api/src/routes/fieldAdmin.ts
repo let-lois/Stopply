@@ -229,6 +229,16 @@ fieldAdminRoutes.get('/addresses', async (c) => {
   });
 });
 
+// Where this client's reps sign in. Always the tenant's own hostname, never
+// the agency host: a field session is only valid there. Sent with the
+// roster because that is where somebody is deciding who to hand it to.
+function fieldAppUrl(c: { get: (k: 'tenant') => { slug: string; custom_hostname: string | null } | null; env: { TENANT_HOST_SUFFIX: string } }): string {
+  const tenant = c.get('tenant');
+  if (!tenant) return '';
+  const suffix = (c.env.TENANT_HOST_SUFFIX ?? '').split(',')[0] ?? '';
+  return `https://${tenant.custom_hostname ?? `${tenant.slug}${suffix}`}/field`;
+}
+
 // Roster.
 fieldAdminRoutes.get('/reps', async (c) => {
   const d1 = tenantD1Client(c.env);
@@ -237,7 +247,7 @@ fieldAdminRoutes.get('/reps', async (c) => {
     `SELECT id, email, name, phone, role, team, active, last_login_at, created_at
      FROM field_reps ORDER BY active DESC, name`
   );
-  return c.json({ reps: results });
+  return c.json({ reps: results, fieldAppUrl: fieldAppUrl(c) });
 });
 
 const createRepSchema = z

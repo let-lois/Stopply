@@ -359,7 +359,12 @@ export function AppShell({
             ((settings?.viewConfig?.tabs ?? ['performance']) as SectionKey[]).includes(s)
           ).filter((s) => s !== 'present' && s !== 'data-team')
         : CLIENT_SECTIONS
-  ).filter((s) => s !== 'field' || hasFieldReps === true);
+    // Door to door shows for anyone who could set it up, whether or not this
+    // client has a crew yet: gating it on the roster meant the section hid
+    // itself from the very person who still had to add the first rep. The
+    // client's own read only viewers are spared an empty section until
+    // there is actually activity to read.
+  ).filter((s) => s !== 'field' || hasFieldReps === true || !isViewer);
 
   const staleCount = sources.filter((s) => s.freshness === 'red').length;
 

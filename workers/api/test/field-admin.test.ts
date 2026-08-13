@@ -305,3 +305,60 @@ describe('field reporting', () => {
     });
   });
 });
+
+describe('field app address', () => {
+  let env: ReturnType<typeof makeEnv>;
+  let tenantDb: SqliteTenantD1;
+
+  beforeEach(async () => {
+    clearResolverCache();
+    tenantDb = new SqliteTenantD1();
+    env = makeEnv({ __tenantD1: tenantDb });
+    (env.CONTROL_DB as FakeD1)
+      .on(/FROM tenants WHERE slug = \?/, (params) => ({
+        first: params[0] === 'all-star' ? TENANT_ROW : null,
+      }))
+      .on(/FROM tenants WHERE custom_hostname = \?/, () => ({ first: null }))
+      .on(/INSERT INTO audit_log/, () => ({}));
+  });
+
+  async function reps(headers: Record<string, string>) {
+    const res = await app.request(`${HOST}/api/tenant/field/reps`, { headers }, env as unknown as Env);
+    return (await res.json()) as { reps: unknown[]; fieldAppUrl: string };
+  }
+
+  it('points reps at the tenant subdomain, never the agency host', async () => {
+    const { token, csrf } = await createSession(env as unknown as Env, {
+      userType: 'tenant',
+      userId: 'u_admin',
+      role: 'account_admin',
+      tenantId: 't_allstar',
+      assignedTenants: null,
+    });
+    const body = await reps({ cookie: `lbi_session=${token}`, 'x-csrf-token': csrf });
+    // A field session is only valid on the tenant's own host, so this is the
+    // only address that can work however the admin reached the dashboard.
+    expect(body.fieldAppUrl).toBe('https://all-star.bi.letlois.com/field');
+    expect(body.reps).toHaveLength(0);
+  });
+
+  it('prefers a client custom domain when one is set up', async () => {
+    // A fresh control plane: FakeD1 answers with the first handler whose
+    // pattern matches, so re-registering on the existing one would never win.
+    clearResolverCache();
+    const branded = { ...TENANT_ROW, custom_hostname: 'dash.allstar.com' };
+    env = makeEnv({ __tenantD1: tenantDb });
+    (env.CONTROL_DB as FakeD1)
+      .on(/FROM tenants WHERE slug = \?/, () => ({ first: branded }))
+      .on(/FROM tenants WHERE custom_hostname = \?/, () => ({ first: null }));
+    const { token, csrf } = await createSession(env as unknown as Env, {
+      userType: 'tenant',
+      userId: 'u_admin',
+      role: 'account_admin',
+      tenantId: 't_allstar',
+      assignedTenants: null,
+    });
+    const body = await reps({ cookie: `lbi_session=${token}`, 'x-csrf-token': csrf });
+    expect(body.fieldAppUrl).toBe('https://dash.allstar.com/field');
+  });
+});

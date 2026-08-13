@@ -97,6 +97,7 @@ export function FieldActivityTab({ canWrite, timezone }: { canWrite: boolean; ti
   const [reps, setReps] = useState<RepRecord[] | null>(null);
   const [repFilter, setRepFilter] = useState('');
   const [showRoster, setShowRoster] = useState(false);
+  const [fieldAppUrl, setFieldAppUrl] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -125,9 +126,12 @@ export function FieldActivityTab({ canWrite, timezone }: { canWrite: boolean; ti
   }, [load]);
 
   const loadReps = useCallback(() => {
-    api<{ reps: RepRecord[] }>('/api/tenant/field/reps')
-      .then((r) => setReps(r.reps))
-      .catch(() => undefined);
+    api<{ reps: RepRecord[]; fieldAppUrl: string }>('/api/tenant/field/reps')
+      .then((r) => {
+        setReps(r.reps);
+        setFieldAppUrl(r.fieldAppUrl);
+      })
+      .catch(() => setReps([]));
   }, []);
 
   useEffect(loadReps, [loadReps]);
@@ -135,6 +139,34 @@ export function FieldActivityTab({ canWrite, timezone }: { canWrite: boolean; ti
   if (error) return <p className="delta-down">{error}</p>;
 
   const t = overview?.totals;
+
+  // No crew yet. Rather than an empty funnel of zeros, this explains what
+  // the section is and gives the one action that starts it. Reporting has
+  // nothing to say until somebody has knocked a door.
+  if (reps !== null && reps.length === 0) {
+    return (
+      <div className="stack">
+        <div className="card stack">
+          <h3 className="section-title">No field crew yet</h3>
+          <p className="muted" style={{ margin: 0, maxWidth: 620 }}>
+            Add a rep and this section fills with their door to door activity: knocks,
+            conversations, appointments and sales, a leaderboard, and the full visit log.
+          </p>
+          <FieldAppLink url={fieldAppUrl} />
+          {canWrite ? (
+            <button className="primary" style={{ alignSelf: 'flex-start' }} onClick={() => setShowRoster(true)}>
+              Add your first rep
+            </button>
+          ) : (
+            <p className="muted" style={{ margin: 0 }}>
+              An account admin adds reps from Data and Team.
+            </p>
+          )}
+        </div>
+        {canWrite && showRoster && <Roster reps={reps} fieldAppUrl={fieldAppUrl} onChanged={loadReps} />}
+      </div>
+    );
+  }
 
   return (
     <div className="stack">
@@ -206,11 +238,11 @@ export function FieldActivityTab({ canWrite, timezone }: { canWrite: boolean; ti
           </div>
 
           {t.visits === 0 && (
-            <div className="card">
+            <div className="card stack">
               <p className="muted" style={{ margin: 0 }}>
-                No door to door activity logged in this range. Reps log knocks from the field app at{' '}
-                <code>/field</code> on this dashboard&apos;s address.
+                No door to door activity logged in this range.
               </p>
+              <FieldAppLink url={fieldAppUrl} />
             </div>
           )}
 
@@ -286,7 +318,7 @@ export function FieldActivityTab({ canWrite, timezone }: { canWrite: boolean; ti
         </>
       )}
 
-      {canWrite && showRoster && <Roster reps={reps} onChanged={loadReps} />}
+      {canWrite && showRoster && <Roster reps={reps} fieldAppUrl={fieldAppUrl} onChanged={loadReps} />}
 
       {visits && visits.length > 0 && (
         <div className="card stack">
@@ -405,10 +437,14 @@ function dayTitle(p: DayPoint, timezone: string): string {
 // way to add the first rep.
 export function FieldRepsSection({ onRosterChanged }: { onRosterChanged?: () => void }) {
   const [reps, setReps] = useState<RepRecord[] | null>(null);
+  const [fieldAppUrl, setFieldAppUrl] = useState('');
 
   const load = useCallback(() => {
-    api<{ reps: RepRecord[] }>('/api/tenant/field/reps')
-      .then((r) => setReps(r.reps))
+    api<{ reps: RepRecord[]; fieldAppUrl: string }>('/api/tenant/field/reps')
+      .then((r) => {
+        setReps(r.reps);
+        setFieldAppUrl(r.fieldAppUrl);
+      })
       // A tenant database provisioned before the field tables existed has
       // no roster to read. An empty crew is the honest answer.
       .catch(() => setReps([]));
@@ -419,6 +455,7 @@ export function FieldRepsSection({ onRosterChanged }: { onRosterChanged?: () => 
   return (
     <Roster
       reps={reps}
+      fieldAppUrl={fieldAppUrl}
       onChanged={() => {
         load();
         onRosterChanged?.();
@@ -427,9 +464,30 @@ export function FieldRepsSection({ onRosterChanged }: { onRosterChanged?: () => 
   );
 }
 
+// The address reps actually open. Worth showing plainly wherever somebody
+// is adding a rep, because it is the one piece of setup that happens off
+// this screen and on somebody else's phone.
+function FieldAppLink({ url }: { url: string }) {
+  if (!url) return null;
+  return (
+    <p className="muted" style={{ margin: 0 }}>
+      Reps sign in at <a href={url}>{url}</a>. It installs to a phone home screen and keeps
+      working with no signal.
+    </p>
+  );
+}
+
 // Rep roster: add somebody, hand them a first password, change their role,
 // or take them off the crew.
-function Roster({ reps, onChanged }: { reps: RepRecord[] | null; onChanged: () => void }) {
+function Roster({
+  reps,
+  fieldAppUrl,
+  onChanged,
+}: {
+  reps: RepRecord[] | null;
+  fieldAppUrl: string;
+  onChanged: () => void;
+}) {
   const toast = useToast();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -485,11 +543,10 @@ function Roster({ reps, onChanged }: { reps: RepRecord[] | null; onChanged: () =
     <div className="card stack">
       <h3>Field reps</h3>
       <p className="muted" style={{ margin: 0 }}>
-        Reps log door to door activity from the field app. It lives at{' '}
-        <code>/field</code> on this dashboard&apos;s address, and installs to a phone home
-        screen. A rep signs in there with the password issued below, not with a dashboard
-        login.
+        Reps log door to door activity from the field app, signing in with the password
+        issued here rather than a dashboard login.
       </p>
+      <FieldAppLink url={fieldAppUrl} />
 
       {issued && (
         <div className="field-issued">
