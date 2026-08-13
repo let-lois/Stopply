@@ -25,17 +25,33 @@ function linkClass({ isActive }: { isActive: boolean }): string {
   ].join(' ');
 }
 
-export function PlatformSidebar() {
+export function PlatformSidebar({
+  open,
+  onNavigate,
+}: {
+  /** Drawer state. Ignored at and above the medium breakpoint. */
+  open: boolean;
+  onNavigate: () => void;
+}) {
   const { clientId } = useParams<{ clientId: string }>();
   const { clients } = usePlatform();
   const client = clients.find((c) => c.id === clientId);
 
   return (
-    <aside className="min-h-0 overflow-y-auto border-r border-[var(--color-hairline)] bg-[var(--color-surface-raised)]/60 p-4">
+    <aside
+      // Fixed overlay on a phone, a real grid column from md up. Hidden
+      // rather than merely off screen when closed, so its links are not
+      // reachable by tab from behind the backdrop.
+      className={[
+        'z-40 min-h-0 w-64 overflow-y-auto border-r border-[var(--color-hairline)] bg-[var(--color-surface-raised)] p-4',
+        'fixed inset-y-0 left-0 top-(--spacing-header) md:static md:w-auto md:bg-[var(--color-surface-raised)]/60',
+        open ? 'block' : 'hidden md:block',
+      ].join(' ')}
+    >
       <nav className="flex flex-col gap-1">
         <p className="micro-label px-3 pb-2">Platform</p>
         {PLATFORM_LINKS.map(({ to, label, Icon }) => (
-          <NavLink key={to} to={to} className={linkClass}>
+          <NavLink key={to} to={to} className={linkClass} onClick={onNavigate}>
             <Icon size={16} aria-hidden="true" />
             {label}
           </NavLink>
@@ -55,6 +71,7 @@ export function PlatformSidebar() {
                 <NavLink
                   to={routes.workspace(client.id, id, def.defaultView)}
                   className={linkClass}
+                  onClick={onNavigate}
                   end={false}
                 >
                   <def.Icon size={16} className={accentClasses(def.accent).text} aria-hidden="true" />
@@ -67,6 +84,7 @@ export function PlatformSidebar() {
                       <NavLink
                         key={viewId}
                         to={routes.workspace(client.id, id, viewId)}
+                        onClick={onNavigate}
                         className={({ isActive }) =>
                           [
                             'rounded-lg px-3 py-1.5 text-xs transition',
@@ -84,7 +102,7 @@ export function PlatformSidebar() {
             );
           })}
 
-          <NavLink to={routes.workspaceSettings(client.id)} className={linkClass}>
+          <NavLink to={routes.workspaceSettings(client.id)} className={linkClass} onClick={onNavigate}>
             <Settings size={16} aria-hidden="true" />
             Workspace settings
           </NavLink>

@@ -162,5 +162,14 @@ export default tseslint.config(
     files: ['*.config.ts', '*.config.js'],
     languageOptions: { globals: globals.node },
     rules: { 'no-restricted-imports': 'off' },
+  },
+
+  // The QA harness is a Node script that drives a browser, so it legitimately
+  // holds both sets of globals: Node around the outside, and the page's DOM
+  // inside the evaluate() callbacks that Playwright serializes into it.
+  {
+    files: ['qa/**/*.mjs'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+    rules: { 'no-restricted-imports': 'off' },
   }
 );

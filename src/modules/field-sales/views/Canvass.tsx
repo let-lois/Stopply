@@ -31,7 +31,13 @@ const FILTERS: Array<{ id: 'all' | PropertyDisposition; label: string }> = [
 export default function FieldSalesCanvass() {
   const { data, mode, isLoading, error } = useModuleData('field_sales');
   const [filter, setFilter] = useState<'all' | PropertyDisposition>('all');
-  const [territoryId, setTerritoryId] = useState<string>('all');
+  // A rep canvasses one territory, not the whole city, and plotting every
+  // territory into one box squeezes each into a tenth of the plot: pins then
+  // overlap and one intercepts another's click, which is a door nobody can
+  // tap. Defaulting to a single territory is both truer to the job and what
+  // keeps the pins individually reachable. 'all' stays available as an
+  // overview where density is expected.
+  const [territoryId, setTerritoryId] = useState<string>('first');
   // The id, not the object. Holding a snapshot is what left the prototype's
   // detail panel showing a stale status after a visit was logged.
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -41,9 +47,17 @@ export default function FieldSalesCanvass() {
   // every render, which would invalidate every downstream useMemo below it.
   const properties = useMemo(() => data?.properties ?? [], [data]);
 
+  const activeTerritoryId = useMemo(() => {
+    if (territoryId !== 'first') return territoryId;
+    return data?.territories[0]?.id ?? 'all';
+  }, [territoryId, data]);
+
   const inTerritory = useMemo(
-    () => (territoryId === 'all' ? properties : properties.filter((p) => p.territoryId === territoryId)),
-    [properties, territoryId]
+    () =>
+      activeTerritoryId === 'all'
+        ? properties
+        : properties.filter((p) => p.territoryId === activeTerritoryId),
+    [properties, activeTerritoryId]
   );
 
   // The projection is built from the territory's full extent, never from the
@@ -83,7 +97,7 @@ export default function FieldSalesCanvass() {
             </Button>
           ))}
           <select
-            value={territoryId}
+            value={activeTerritoryId}
             onChange={(e) => setTerritoryId(e.target.value)}
             aria-label="Territory"
             className="ml-auto min-h-10 rounded-xl border border-[var(--color-hairline)] bg-white/6 px-3 text-sm"
@@ -98,7 +112,7 @@ export default function FieldSalesCanvass() {
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
-          <Card className="relative min-h-[26rem] overflow-hidden">
+          <Card className="relative min-h-[34rem] overflow-hidden">
             <p className="micro-label">
               {visible.length.toLocaleString()} of {inTerritory.length.toLocaleString()} doors
             </p>
@@ -114,7 +128,7 @@ export default function FieldSalesCanvass() {
                     onClick={() => setSelectedId(p.id)}
                     aria-label={`${p.address}, ${DISPOSITION_LABELS[p.disposition]}`}
                     aria-pressed={selectedId === p.id}
-                    className="absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-black/40 transition-transform hover:scale-150"
+                    className="absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-black/40 transition-transform hover:scale-150"
                     style={{
                       left: `${xPct}%`,
                       top: `${yPct}%`,

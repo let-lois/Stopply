@@ -52,8 +52,12 @@ export default function ClientsPage() {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {clients.map((client) => (
-          <div key={client.id} className="flex flex-col gap-2">
+          // Cards stretch to the tallest in their row and the card body grows
+          // inside them, so a client with one module chip and a client with
+          // four still line their Configure buttons up on the same baseline.
+          <div key={client.id} className="flex h-full flex-col gap-2">
           <CardButton
+            className="flex flex-1 flex-col"
             label={`Open ${client.name}`}
             onClick={() => open(client.id, client.enabledModules)}
           >
@@ -86,7 +90,7 @@ export default function ClientsPage() {
               })}
             </ul>
 
-            <p className="mt-4 text-xs text-[var(--color-ink-faint)]">
+            <p className="mt-auto pt-4 text-xs text-[var(--color-ink-faint)]">
               {client.plan} · active {relativeTime(client.lastActive)}
             </p>
           </CardButton>
