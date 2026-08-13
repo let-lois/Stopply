@@ -124,3 +124,13 @@ body {
   outline: 2px solid var(--color-accent-indigo);
   outline-offset: 2px;
 }
+
+/* The rep app runs edge to edge on a phone, so the notch and the home
+   indicator have to be accounted for or the sign-out control sits under one
+   and the outcome buttons under the other. */
+.field-root {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}

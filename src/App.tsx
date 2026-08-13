@@ -16,6 +16,9 @@ import { MODULE_ORDER, MODULE_REGISTRY } from '@/modules/registry';
 import { ROUTE_PATTERNS, moduleSlug, routes } from '@/types/routes';
 
 const LoginPage = lazy(() => import('@/platform/auth/LoginPage'));
+// The rep app. Its own tree, its own session, its own chunk: a phone never
+// downloads the dashboard and a desk never downloads the field app.
+const FieldApp = lazy(() => import('@/field/FieldApp'));
 const ClientsPage = lazy(() => import('@/platform/clients/ClientsPage'));
 const TeamPage = lazy(() => import('@/platform/team/TeamPage'));
 const AuditLogPage = lazy(() => import('@/platform/audit/AuditLogPage'));
@@ -40,6 +43,17 @@ const moduleRoutes: RouteObject[] = MODULE_ORDER.flatMap((moduleId) => {
 const router = createBrowserRouter([
   // Sign-in sits outside the shell. Drawing the nav and the workspace banner
   // around a login form would be claiming a session that does not exist.
+  // Outside RequireSession entirely. A rep has no dashboard session and must
+  // never be bounced to the dashboard's sign-in page.
+  {
+    path: `${ROUTE_PATTERNS.field}/*`,
+    element: (
+      <Suspense fallback={null}>
+        <FieldApp />
+      </Suspense>
+    ),
+  },
+
   {
     path: ROUTE_PATTERNS.login,
     element: (

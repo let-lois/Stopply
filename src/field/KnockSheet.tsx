@@ -1,0 +1,186 @@
+// Recording what happened at a door.
+//
+// A bottom sheet rather than a centred dialog, because the outcome buttons
+// have to land under a thumb and the top third of a phone is the hardest
+// place to reach one-handed.
+//
+// The outcome is one tap and saves immediately. A note is optional and behind
+// that, since most knocks have nothing worth typing and asking for one every
+// time is how a rep stops logging them.
+
+import { useEffect, useRef, useState } from 'react';
+import { X } from 'lucide-react';
+import { useFieldActions, type Disposition, type Door } from '@/lib/field/FieldSessionProvider';
+import { DISPOSITION_LABELS } from '@/modules/field-sales/selectors';
+import { ApiRequestError } from '@/lib/api/client';
+
+// Ordered by how often a rep taps them, not by the order they appear in the
+// enum. No answer is most of a day, so it comes first.
+//
+// Do not knock is not in this list. It is the one outcome that cannot be
+// undone: the server keeps it sticky whatever arrives afterwards, precisely so
+// a household that asked to be left alone stays left alone. Rendering it as a
+// seventh pastel button next to No answer, which it closely resembled, meant a
+// mis-tap was permanent. It is separated, styled as a warning rather than a
+// choice, and asks a second time.
+const OUTCOMES: Array<{ id: Disposition; tone: string }> = [
+  { id: 'no_answer', tone: 'bg-[var(--color-accent-slate)]' },
+  { id: 'come_back', tone: 'bg-[var(--color-accent-amber)]' },
+  { id: 'not_interested', tone: 'bg-[var(--color-negative)]' },
+  { id: 'interested', tone: 'bg-[var(--color-accent-sky)]' },
+  { id: 'appointment_set', tone: 'bg-[var(--color-accent-purple)]' },
+  { id: 'closed_sale', tone: 'bg-[var(--color-positive)]' },
+];
+
+export function KnockSheet({ door, onClose }: { door: Door; onClose: () => void }) {
+  const { logKnock } = useFieldActions();
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState<Disposition | null>(null);
+  const [confirmingDnk, setConfirmingDnk] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  const save = async (disposition: Disposition) => {
+    setSaving(disposition);
+    setError(null);
+    try {
+      await logKnock({ propertyId: door.id, disposition, notes: notes.trim() || null });
+      onClose();
+    } catch (cause) {
+      setError(
+        cause instanceof ApiRequestError ? cause.message : 'Could not save. It will retry.'
+      );
+      setSaving(null);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-40 flex flex-col justify-end">
+      <button
+        type="button"
+        aria-label="Close"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/70"
+      />
+
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Log a knock at ${door.address}`}
+        className="relative max-h-[92dvh] overflow-y-auto rounded-t-3xl border-t border-[var(--color-hairline)] bg-[var(--color-surface-raised)] p-5 pb-8"
+      >
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-lg font-semibold">{door.address}</p>
+            <p className="text-sm text-[var(--color-ink-soft)]">
+              {door.city}, {door.state} {door.postalCode}
+            </p>
+            <p className="mt-1 text-sm text-[var(--color-ink-faint)]">
+              Currently {DISPOSITION_LABELS[door.disposition].toLowerCase()}
+            </p>
+          </div>
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="grid size-12 shrink-0 place-items-center rounded-2xl border border-[var(--color-hairline)]"
+          >
+            <X size={20} aria-hidden="true" />
+          </button>
+        </div>
+
+        {door.ownerName && (
+          <p className="mb-4 text-sm">
+            {door.ownerName}
+            {door.ownerPhone && (
+              <a
+                href={`tel:${door.ownerPhone}`}
+                className="ml-2 underline decoration-[var(--color-ink-faint)]"
+              >
+                {door.ownerPhone}
+              </a>
+            )}
+          </p>
+        )}
+
+        <label className="mb-4 block">
+          <span className="text-sm font-medium">Note (optional)</span>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={2}
+            placeholder="Anything worth remembering"
+            className="mt-2 w-full rounded-2xl border-2 border-[var(--color-hairline)] bg-black/30 p-3 text-base outline-none focus-visible:border-[var(--color-accent-indigo)]"
+          />
+        </label>
+
+        {error && (
+          <p role="alert" className="mb-3 text-sm font-medium text-[var(--color-negative)]">
+            {error}
+          </p>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          {OUTCOMES.map((outcome) => (
+            <button
+              key={outcome.id}
+              type="button"
+              disabled={saving !== null}
+              onClick={() => void save(outcome.id)}
+              className={`min-h-16 rounded-2xl px-3 text-base font-semibold text-black disabled:opacity-40 ${outcome.tone}`}
+            >
+              {saving === outcome.id ? 'Saving…' : DISPOSITION_LABELS[outcome.id]}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-6 border-t border-[var(--color-hairline)] pt-4">
+          {confirmingDnk ? (
+            <div className="flex flex-col gap-3">
+              <p className="text-sm">
+                This household will be marked do not knock permanently. Nobody on the crew
+                will be offered this door again, and it cannot be undone from the app.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDnk(false)}
+                  className="min-h-14 flex-1 rounded-2xl border-2 border-[var(--color-hairline)] text-base font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={saving !== null}
+                  onClick={() => void save('do_not_knock')}
+                  className="min-h-14 flex-1 rounded-2xl bg-[var(--color-negative)] text-base font-semibold text-white disabled:opacity-40"
+                >
+                  {saving === 'do_not_knock' ? 'Saving…' : 'Yes, do not knock'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={saving !== null}
+              onClick={() => setConfirmingDnk(true)}
+              className="min-h-14 w-full rounded-2xl border-2 border-[var(--color-negative)] text-base font-semibold text-[var(--color-negative)] disabled:opacity-40"
+            >
+              Do not knock
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
