@@ -183,6 +183,13 @@ belongs next to that outbound call.
   API and none of those integrations exists. Each becomes a case in
   `src/lib/data/live/index.ts` when its integration is built, and no view
   changes on that day.
+- **The LetLois team share one temporary password**, `test1234`, which is
+  written down in `scripts/seed.mjs` and therefore known to anyone who can read
+  this repository. Each account has its own salt, so the stored hashes differ,
+  but that does not make the password itself any less shared. Running
+  `scripts/import-bi-users.mjs` replaces it with each person's real
+  bi.letlois.com hash, after which their existing password works here and this
+  one stops mattering.
 - **A rep cannot sign in yet.** `reps.user_id` exists for it, and `fieldScope`
   style separation between rep and dashboard sessions has not been built here.
 
@@ -233,7 +240,40 @@ node qa/login-qa.mjs                  # 10 sign-in checks
 with `wrangler pages secret put` against
 `CLOUDFLARE_ACCOUNT_ID=af6cdf4448e16dc7a72f84c3dd7cf7fb`.
 
-The seeded accounts are `admin@letlois.example.invalid` (platform) and
+Two sets of accounts are seeded.
+
+The demo pair, `admin@letlois.example.invalid` (platform-wide) and
 `admin@allstar.example.invalid` (one workspace, which is what proves scoping
-restricts rather than merely filters a sidebar). The password comes from
-`SEED_PASSWORD` and defaults to a demo value printed by the seed script.
+restricts rather than merely filters a sidebar). Their password comes from
+`SEED_PASSWORD`.
+
+And the real LetLois team, carried over from the bi.letlois.com team page with
+the same roles: four platform admins, plus Roh scoped to Allstar alone. Their
+temporary password comes from `TEAM_PASSWORD` and defaults to `test1234`. See
+"Still not true" above.
+
+### Carrying passwords over from bi.letlois.com
+
+A hash cannot be converted between algorithms, so the only way somebody's
+existing password can work here is for this server to verify the old format.
+It does: `verifyPassword` accepts `pbkdf2$iterations$salt$hash`, which is what
+that platform stores, and login re-hashes with Argon2id the first time a
+legacy hash verifies. Nobody has to do anything, and the upgrade happens at
+the one moment in an account's life when the plaintext is in hand.
+
+The export has to be run by someone with access to the LetLois Cloudflare
+account, because the two platforms live in different accounts and neither can
+read the other's database:
+
+```sh
+npx wrangler d1 execute letlois-bi-control --remote --json \
+  --command "SELECT id, email, name, role, password_hash, assigned_tenants_json, active FROM agency_users" \
+  > bi-users.json
+
+node scripts/import-bi-users.mjs < bi-users.json > import.sql
+npx wrangler d1 execute stopply-platform --remote --file import.sql
+```
+
+The tradeoff is the point rather than a side effect: two systems accepting the
+same credential means a password compromised on one is compromised on both.
+Dropping `password_hash` from the export gives you the accounts without that.

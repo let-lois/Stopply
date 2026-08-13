@@ -30,9 +30,12 @@ function toB64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-function fromB64(value: string): Uint8Array {
+// Typed against a plain ArrayBuffer rather than ArrayBufferLike, because
+// WebCrypto's BufferSource will not accept a view that might be backed by a
+// SharedArrayBuffer.
+function fromB64(value: string): Uint8Array<ArrayBuffer> {
   const binary = atob(value);
-  const out = new Uint8Array(binary.length);
+  const out = new Uint8Array(new ArrayBuffer(binary.length));
   for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
   return out;
 }
@@ -66,13 +69,64 @@ function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 /**
- * Verify a password against a stored hash.
+ * Verify a password against a hash produced by the BI platform.
+ *
+ * bi.letlois.com stores `pbkdf2$iterations$saltB64$hashB64`, at 100,000
+ * iterations of PBKDF2-HMAC-SHA-256, because that is the Workers runtime cap
+ * (workers/api/src/crypto.ts in that repo).
+ *
+ * A hash cannot be converted between algorithms, so the only way for someone's
+ * existing password to work here is for this server to be able to check the
+ * old format. It reads the iteration count from the stored string rather than
+ * assuming 100,000, so a row written under a different cap still verifies.
+ */
+async function verifyPbkdf2(password: string, stored: string): Promise<boolean> {
+  const match = /^pbkdf2\$(\d+)\$([^$]+)\$([^$]+)$/.exec(stored);
+  if (!match) return false;
+
+  const [, iterationsRaw, saltRaw, hashRaw] = match;
+  if (!iterationsRaw || !saltRaw || !hashRaw) return false;
+
+  const iterations = Number(iterationsRaw);
+  // An attacker who could write this column could otherwise set iterations to
+  // 1 and make every hash cheap to forge offline.
+  if (!Number.isInteger(iterations) || iterations < 1000 || iterations > 1_000_000) return false;
+
+  try {
+    const expected = fromB64(hashRaw);
+    const key = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(password),
+      'PBKDF2',
+      false,
+      ['deriveBits']
+    );
+    const bits = await crypto.subtle.deriveBits(
+      { name: 'PBKDF2', salt: fromB64(saltRaw), iterations, hash: 'SHA-256' },
+      key,
+      expected.length * 8
+    );
+    return equalBytes(new Uint8Array(bits), expected);
+  } catch {
+    return false;
+  }
+}
+
+/** True for a hash in the BI platform's format, which login upgrades on use. */
+export function isLegacyHash(stored: string): boolean {
+  return stored.startsWith('pbkdf2$');
+}
+
+/**
+ * Verify a password against a stored hash, in either format.
  *
  * Returns false for anything it cannot parse rather than throwing, so a
  * corrupt or legacy row is a failed login rather than a 500 that tells the
  * caller the account exists.
  */
-export function verifyPassword(password: string, stored: string): boolean {
+export async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  if (isLegacyHash(stored)) return verifyPbkdf2(password, stored);
+
   const match = /^\$argon2id\$v=19\$m=(\d+),t=(\d+),p=(\d+)\$([^$]+)\$([^$]+)$/.exec(stored);
   if (!match) return false;
 

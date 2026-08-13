@@ -6,7 +6,7 @@
 // that decides whose data you see, and the two places that must fail closed.
 
 import { matchPath } from '@server/router';
-import { hashPassword, verifyPassword } from '@server/crypto/password';
+import { hashPassword, isLegacyHash, verifyPassword } from '@server/crypto/password';
 import { readCookie, scopeFilter, SESSION_COOKIE, type Session } from '@server/db/scope';
 import { sealSecret, last4 } from '@server/crypto/seal';
 import { requireBinding, MissingBindingError, type Env } from '@server/env';
@@ -114,14 +114,14 @@ describe('scopeFilter', () => {
 });
 
 describe('password hashing', () => {
-  it('verifies a correct password', () => {
+  it('verifies a correct password', async () => {
     const stored = hashPassword('correct horse battery staple');
-    expect(verifyPassword('correct horse battery staple', stored)).toBe(true);
+    await expect(verifyPassword('correct horse battery staple', stored)).resolves.toBe(true);
   });
 
-  it('rejects a wrong password', () => {
+  it('rejects a wrong password', async () => {
     const stored = hashPassword('correct horse battery staple');
-    expect(verifyPassword('Correct horse battery staple', stored)).toBe(false);
+    await expect(verifyPassword('Correct horse battery staple', stored)).resolves.toBe(false);
   });
 
   it('salts, so the same password stores differently every time', () => {
@@ -132,18 +132,56 @@ describe('password hashing', () => {
     expect(hashPassword('x')).toMatch(/^\$argon2id\$v=19\$m=19456,t=2,p=1\$/);
   });
 
-  it('returns false rather than throwing on a hash it cannot parse', () => {
-    // A corrupt or legacy row has to be a failed login. Throwing would be a
-    // 500, which tells an attacker the account exists.
-    expect(verifyPassword('x', 'not-a-hash')).toBe(false);
-    expect(verifyPassword('x', '')).toBe(false);
-    expect(verifyPassword('x', '$argon2id$v=19$m=19456,t=2,p=1$!!!$!!!')).toBe(false);
+  it('returns false rather than throwing on a hash it cannot parse', async () => {
+    // A corrupt or unrecognised row has to be a failed login. Throwing would
+    // be a 500, which tells an attacker the account exists.
+    await expect(verifyPassword('x', 'not-a-hash')).resolves.toBe(false);
+    await expect(verifyPassword('x', '')).resolves.toBe(false);
+    await expect(verifyPassword('x', '$argon2id$v=19$m=19456,t=2,p=1$!!!$!!!')).resolves.toBe(false);
   });
 
-  it('rejects a hash whose stored digest has been altered', () => {
+  it('rejects a hash whose stored digest has been altered', async () => {
     const stored = hashPassword('secret value');
     const tampered = stored.slice(0, -4) + (stored.endsWith('AAAA') ? 'BBBB' : 'AAAA');
-    expect(verifyPassword('secret value', tampered)).toBe(false);
+    await expect(verifyPassword('secret value', tampered)).resolves.toBe(false);
+  });
+});
+
+describe('passwords carried over from the BI platform', () => {
+  // A real hash in bi.letlois.com's format, generated with the same WebCrypto
+  // calls that platform uses: PBKDF2-HMAC-SHA-256 at 100,000 iterations, the
+  // Workers runtime cap. The password is "correct horse battery staple".
+  const LEGACY =
+    'pbkdf2$100000$3zJLlkGFHt1Q42gTkPPuYg==$5+AywGqW53z384d5WpCtjWObN/y61HI5uD6lkQBYILY=';
+
+  it('accepts a password that works on the BI platform today', async () => {
+    // Hashes cannot be converted between algorithms, so this is the only way
+    // somebody's existing password can work here without them retyping it.
+    await expect(verifyPassword('correct horse battery staple', LEGACY)).resolves.toBe(true);
+  });
+
+  it('still rejects the wrong password against a carried-over hash', async () => {
+    await expect(verifyPassword('correct horse battery stapl', LEGACY)).resolves.toBe(false);
+    await expect(verifyPassword('', LEGACY)).resolves.toBe(false);
+  });
+
+  it('recognises which hashes need upgrading, and which do not', () => {
+    expect(isLegacyHash(LEGACY)).toBe(true);
+    expect(isLegacyHash(hashPassword('x'))).toBe(false);
+  });
+
+  it('refuses an implausible iteration count', async () => {
+    // Someone who could write this column could otherwise set iterations to 1
+    // and make every hash cheap to forge offline. The count is read from the
+    // row, so it has to be bounded rather than trusted.
+    const weak = LEGACY.replace('$100000$', '$1$');
+    await expect(verifyPassword('correct horse battery staple', weak)).resolves.toBe(false);
+  });
+
+  it('rejects a malformed legacy hash rather than throwing', async () => {
+    await expect(verifyPassword('x', 'pbkdf2$100000$!!!$!!!')).resolves.toBe(false);
+    await expect(verifyPassword('x', 'pbkdf2$notanumber$aaaa$bbbb')).resolves.toBe(false);
+    await expect(verifyPassword('x', 'pbkdf2$100000$onlytwo')).resolves.toBe(false);
   });
 });
 

@@ -56,8 +56,9 @@ for (const [id, code, name, industry, plan, modules] of clients) {
   }
 }
 
-// One platform admin, and one client-scoped admin used to prove that tenant
-// scoping actually restricts rather than merely filters the sidebar.
+// Two demo accounts with a known password: one platform-wide, one scoped to a
+// single workspace. The second is what proves tenant scoping restricts rather
+// than merely filtering a sidebar, so it earns its place.
 const users = [
   ['usr_admin', 'admin@letlois.example.invalid', 'Alex Rivera', 'super_admin', null],
   ['usr_allstar', 'admin@allstar.example.invalid', 'Dana Fields', 'client_admin', 'cl_allstar'],
@@ -66,6 +67,34 @@ const users = [
 for (const [id, email, name, role, clientId] of users) {
   lines.push(
     `INSERT INTO users (id, email, name, role, client_id, status, password_hash, created_at) VALUES (${q(id)}, ${q(email)}, ${q(name)}, ${q(role)}, ${clientId ? q(clientId) : 'NULL'}, 'active', ${q(hashPassword(password))}, ${q(iso(now))});`
+  );
+}
+
+// The real LetLois team, from bi.letlois.com.
+//
+// They share one temporary password so the accounts are usable immediately.
+// Each row still gets its own salt, so the stored hashes differ and cracking
+// one tells you nothing about the others, but the password itself is written
+// down here and is therefore known to anyone who can read this repository.
+//
+// It is meant to be replaced, and there are two ways to do that. Running
+// scripts/import-bi-users.mjs brings each person's existing bi.letlois.com
+// hash across, after which their real password works here and this one stops
+// mattering. Failing that, set TEAM_PASSWORD and re-seed.
+const team = [
+  ['usr_curtis', 'curtis@letlois.com', 'Curtis Smith', 'super_admin', null],
+  ['usr_josh', 'josh@letlois.com', 'LetLois Admin', 'super_admin', null],
+  ['usr_noah', 'noah@letlois.com', 'Noah Rance', 'super_admin', null],
+  ['usr_rohel', 'rohel@letlois.com', 'Rohel', 'super_admin', null],
+  // Staff, scoped to Allstar, exactly as the BI team page has them.
+  ['usr_roh', 'rohellegson@protonmail.com', 'Roh', 'client_admin', 'cl_allstar'],
+];
+
+const teamPassword = process.env.TEAM_PASSWORD ?? 'test1234';
+
+for (const [id, email, name, role, clientId] of team) {
+  lines.push(
+    `INSERT INTO users (id, email, name, role, client_id, status, password_hash, created_at) VALUES (${q(id)}, ${q(email)}, ${q(name)}, ${q(role)}, ${clientId ? q(clientId) : 'NULL'}, 'active', ${q(hashPassword(teamPassword))}, ${q(iso(now))});`
   );
 }
 
@@ -147,5 +176,6 @@ for (let i = 0; i < 96; i++) {
   }
 }
 
-process.stderr.write(`seed password: ${password}\n`);
+process.stderr.write(`demo password: ${password}\n`);
+process.stderr.write(`team temporary password: ${teamPassword}\n`);
 process.stdout.write(lines.join('\n') + '\n');
