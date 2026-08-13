@@ -10,6 +10,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import type { FieldRepRow } from '@letlois/db';
 import {
+  buildSampleData,
   byDay,
   byDisposition,
   byRep,
@@ -511,4 +512,195 @@ fieldAdminRoutes.put('/dispositions/:key', tenantWrite, async (c) => {
     after: body.data,
   });
   return c.json({ ok: true });
+});
+
+// Sample activity, so a client can see their reporting working before the
+// crew has knocked anything.
+//
+// Every row it writes is flagged is_sample, and the delete below matches on
+// that flag alone. Nothing here can reach a real knock, which is the whole
+// reason the flag exists rather than a date cutoff or a naming convention.
+const sampleSchema = z
+  .object({ days: z.number().int().min(1).max(120).optional() })
+  .strict();
+
+fieldAdminRoutes.post('/sample', tenantWrite, async (c) => {
+  const tenant = c.get('tenant')!;
+  const session = c.get('session')!;
+  const body = sampleSchema.safeParse((await c.req.json().catch(() => ({}))) ?? {});
+  if (!body.success) return c.json({ error: 'invalid request' }, 400);
+
+  const d1 = tenantD1Client(c.env);
+  // Replaced rather than added to, so pressing the button twice gives one
+  // demo instead of two overlapping ones.
+  const cleared = await clearSample(d1, dbId(c));
+  if (!cleared) {
+    return c.json({ error: 'field tracking is not set up on this client yet' }, 503);
+  }
+
+  const data = buildSampleData({
+    now: new Date(),
+    days: body.data.days ?? 30,
+    // Anchored to the client so the demo reads as their neighbourhood.
+    seed: `stopply-field-${tenant.slug}`,
+  });
+
+  // A shared password for the sample crew, printed once. These accounts are
+  // real enough to sign into the field app with, which is the point: the
+  // client can walk the app end to end before hiring anybody.
+  const samplePassword = randomToken(6);
+  const passwordHash = await hashPassword(samplePassword);
+
+  for (const rep of data.reps) {
+    await d1.query(
+      dbId(c),
+      `INSERT OR IGNORE INTO field_reps (id, email, name, phone, role, team, password_hash, active, is_sample)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1)`,
+      [rep.id, rep.email, rep.name, rep.phone, rep.role, rep.team, passwordHash]
+    );
+  }
+
+  for (const address of data.addresses) {
+    await d1.query(
+      dbId(c),
+      `INSERT OR IGNORE INTO field_addresses
+         (id, address_key, street, city, state, postal_code, lat, lng, is_sample)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      [
+        address.id,
+        address.addressKey,
+        address.street,
+        address.city,
+        address.state,
+        address.postalCode,
+        address.lat,
+        address.lng,
+      ]
+    );
+  }
+
+  for (const visit of data.visits) {
+    await d1.query(
+      dbId(c),
+      `INSERT OR IGNORE INTO field_visits
+         (id, client_uuid, address_id, rep_id, disposition, notes, contact_name, contact_phone,
+          contact_email, occurred_at, follow_up_at, source, is_sample)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'import', 1)`,
+      [
+        visit.id,
+        visit.clientUuid,
+        visit.addressId,
+        visit.repId,
+        visit.disposition,
+        visit.notes,
+        visit.contactName,
+        visit.contactPhone,
+        visit.contactEmail,
+        visit.occurredAt,
+        visit.followUpAt,
+      ]
+    );
+  }
+
+  // The door rollups the real write path maintains, recomputed in one pass
+  // rather than incrementally, since the whole sample lands at once.
+  await d1.query(
+    dbId(c),
+    `UPDATE field_addresses SET
+       visit_count = (SELECT COUNT(*) FROM field_visits v WHERE v.address_id = field_addresses.id),
+       first_visited_at = (SELECT MIN(v.occurred_at) FROM field_visits v WHERE v.address_id = field_addresses.id),
+       last_visited_at = (SELECT MAX(v.occurred_at) FROM field_visits v WHERE v.address_id = field_addresses.id),
+       last_disposition = (SELECT v.disposition FROM field_visits v WHERE v.address_id = field_addresses.id
+                           ORDER BY v.occurred_at DESC LIMIT 1)
+     WHERE is_sample = 1`
+  );
+  await d1.query(
+    dbId(c),
+    `UPDATE field_addresses SET do_not_knock = 1
+     WHERE is_sample = 1 AND id IN (
+       SELECT v.address_id FROM field_visits v
+       JOIN field_dispositions d ON d.key = v.disposition
+       WHERE d.marks_do_not_knock = 1
+     )`
+  );
+
+  await writeAudit(c.env, {
+    actorType: session.userType === 'agency' ? 'agency' : 'tenant',
+    actorId: session.userId,
+    tenantId: tenant.id,
+    action: 'field_sample.load',
+    target: tenant.slug,
+    after: { reps: data.reps.length, addresses: data.addresses.length, visits: data.visits.length },
+  });
+
+  return c.json({
+    ok: true,
+    reps: data.reps.length,
+    addresses: data.addresses.length,
+    visits: data.visits.length,
+    samplePassword,
+    sampleEmails: data.reps.map((r) => r.email),
+  });
+});
+
+fieldAdminRoutes.delete('/sample', tenantWrite, async (c) => {
+  const tenant = c.get('tenant')!;
+  const session = c.get('session')!;
+  const d1 = tenantD1Client(c.env);
+  const cleared = await clearSample(d1, dbId(c));
+  if (!cleared) {
+    return c.json({ error: 'field tracking is not set up on this client yet' }, 503);
+  }
+  await writeAudit(c.env, {
+    actorType: session.userType === 'agency' ? 'agency' : 'tenant',
+    actorId: session.userId,
+    tenantId: tenant.id,
+    action: 'field_sample.clear',
+    target: tenant.slug,
+  });
+  return c.json({ ok: true });
+});
+
+// Deletes sample rows and nothing else. Every statement is filtered on
+// is_sample = 1: a real rep, a real door and a real knock are untouchable
+// from here, whatever else is in the database.
+async function clearSample(
+  d1: ReturnType<typeof tenantD1Client>,
+  databaseId: string
+): Promise<boolean> {
+  try {
+    await d1.query(databaseId, `DELETE FROM field_visits WHERE is_sample = 1`);
+    await d1.query(databaseId, `DELETE FROM field_addresses WHERE is_sample = 1`);
+    await d1.query(databaseId, `DELETE FROM field_reps WHERE is_sample = 1`);
+    return true;
+  } catch (err) {
+    if (isMissingFieldTables(err)) return false;
+    throw err;
+  }
+}
+
+// How much of what is showing is a demonstration. The dashboard needs this
+// to label sample activity as sample: a client reading fabricated numbers
+// as their own is the one failure this feature could cause.
+fieldAdminRoutes.get('/sample', async (c) => {
+  const d1 = tenantD1Client(c.env);
+  const counts = await d1
+    .query<{ sample: number; real: number }>(
+      dbId(c),
+      `SELECT
+         SUM(CASE WHEN is_sample = 1 THEN 1 ELSE 0 END) AS sample,
+         SUM(CASE WHEN is_sample = 1 THEN 0 ELSE 1 END) AS real
+       FROM field_visits`
+    )
+    .catch((err) => {
+      if (isMissingFieldTables(err)) return null;
+      throw err;
+    });
+  if (!counts) return c.json({ ready: false, sampleVisits: 0, realVisits: 0 });
+  const row = counts.results[0];
+  return c.json({
+    ready: true,
+    sampleVisits: Number(row?.sample ?? 0),
+    realVisits: Number(row?.real ?? 0),
+  });
 });

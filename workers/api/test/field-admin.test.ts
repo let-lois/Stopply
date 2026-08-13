@@ -454,3 +454,163 @@ describe('a client whose database predates the field tables', () => {
     expect(res.status).toBe(500);
   });
 });
+
+describe('sample data', () => {
+  let env: ReturnType<typeof makeEnv>;
+  let tenantDb: SqliteTenantD1;
+  let headers: Record<string, string>;
+
+  beforeEach(async () => {
+    clearResolverCache();
+    tenantDb = new SqliteTenantD1();
+    env = makeEnv({ __tenantD1: tenantDb });
+    (env.CONTROL_DB as FakeD1)
+      .on(/FROM tenants WHERE slug = \?/, (params) => ({
+        first: params[0] === 'all-star' ? TENANT_ROW : null,
+      }))
+      .on(/FROM tenants WHERE custom_hostname = \?/, () => ({ first: null }))
+      .on(/INSERT INTO audit_log/, () => ({}));
+    const { token, csrf } = await createSession(env as unknown as Env, {
+      userType: 'tenant',
+      userId: 'u_admin',
+      role: 'account_admin',
+      tenantId: 't_allstar',
+      assignedTenants: null,
+    });
+    headers = { cookie: `lbi_session=${token}`, 'x-csrf-token': csrf, 'content-type': 'application/json' };
+  });
+
+  const load = () =>
+    app.request(
+      `${HOST}/api/tenant/field/sample`,
+      { method: 'POST', headers, body: JSON.stringify({ days: 14 }) },
+      env as unknown as Env
+    );
+
+  const clear = () =>
+    app.request(
+      `${HOST}/api/tenant/field/sample`,
+      { method: 'DELETE', headers },
+      env as unknown as Env
+    );
+
+  it('loads a crew and a window of activity', async () => {
+    const res = await load();
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { visits: number; reps: number; samplePassword: string };
+    expect(body.reps).toBeGreaterThan(0);
+    expect(body.visits).toBeGreaterThan(100);
+    expect(body.samplePassword.length).toBeGreaterThan(8);
+
+    const rows = await tenantDb.query<{ n: number }>(
+      'db-allstar',
+      `SELECT COUNT(*) AS n FROM field_visits WHERE is_sample = 1`
+    );
+    expect(rows.results[0]?.n).toBe(body.visits);
+  });
+
+  it('shows up in the reporting like any other activity', async () => {
+    await load();
+    const res = await app.request(
+      `${HOST}/api/tenant/field/overview`,
+      { headers },
+      env as unknown as Env
+    );
+    const body = (await res.json()) as { totals: { visits: number; sales: number }; reps: unknown[] };
+    expect(body.totals.visits).toBeGreaterThan(0);
+    expect(body.reps.length).toBeGreaterThan(1);
+  });
+
+  it('replaces rather than stacks when loaded twice', async () => {
+    const first = (await (await load()).json()) as { visits: number };
+    const second = (await (await load()).json()) as { visits: number };
+    const rows = await tenantDb.query<{ n: number }>(
+      'db-allstar',
+      `SELECT COUNT(*) AS n FROM field_visits WHERE is_sample = 1`
+    );
+    expect(first.visits).toBe(second.visits);
+    expect(rows.results[0]?.n).toBe(second.visits);
+  });
+
+  it('removes only sample rows and never a real knock', async () => {
+    // This is the guarantee the whole feature rests on.
+    await tenantDb.query(
+      'db-allstar',
+      `INSERT INTO field_reps (id, email, name, role, password_hash, active, is_sample)
+       VALUES ('fr_real', 'real@allstar.test', 'Real Rep', 'rep', 'x', 1, 0)`
+    );
+    await tenantDb.query(
+      'db-allstar',
+      `INSERT INTO field_addresses (id, address_key, street, is_sample)
+       VALUES ('fa_real', 'real|key', '9 Real St', 0)`
+    );
+    await tenantDb.query(
+      'db-allstar',
+      `INSERT INTO field_visits (id, client_uuid, address_id, rep_id, disposition, occurred_at, is_sample)
+       VALUES ('fv_real', 'uuid-real', 'fa_real', 'fr_real', 'sale', '2026-08-12T18:00:00.000Z', 0)`
+    );
+
+    await load();
+    expect((await clear()).status).toBe(200);
+
+    const visits = await tenantDb.query<{ id: string }>('db-allstar', `SELECT id FROM field_visits`);
+    const reps = await tenantDb.query<{ id: string }>('db-allstar', `SELECT id FROM field_reps`);
+    const addrs = await tenantDb.query<{ id: string }>('db-allstar', `SELECT id FROM field_addresses`);
+    expect(visits.results.map((r) => r.id)).toEqual(['fv_real']);
+    expect(reps.results.map((r) => r.id)).toEqual(['fr_real']);
+    expect(addrs.results.map((r) => r.id)).toEqual(['fa_real']);
+  });
+
+  it('reports how much of what is showing is a demonstration', async () => {
+    await tenantDb.query(
+      'db-allstar',
+      `INSERT INTO field_addresses (id, address_key, street, is_sample) VALUES ('fa_real', 'real|key', '9 Real St', 0)`
+    );
+    await tenantDb.query(
+      'db-allstar',
+      `INSERT INTO field_visits (id, client_uuid, address_id, rep_id, disposition, occurred_at, is_sample)
+       VALUES ('fv_real', 'uuid-real', 'fa_real', 'fr_real', 'sale', '2026-08-12T18:00:00.000Z', 0)`
+    );
+    await load();
+    const body = (await (
+      await app.request(`${HOST}/api/tenant/field/sample`, { headers }, env as unknown as Env)
+    ).json()) as { sampleVisits: number; realVisits: number };
+    expect(body.realVisits).toBe(1);
+    expect(body.sampleVisits).toBeGreaterThan(100);
+  });
+
+  it('carries the do-not-knock flag onto the doors that asked for it', async () => {
+    await load();
+    const rows = await tenantDb.query<{ n: number }>(
+      'db-allstar',
+      `SELECT COUNT(*) AS n FROM field_addresses
+       WHERE do_not_knock = 1 AND id IN (
+         SELECT address_id FROM field_visits WHERE disposition = 'do_not_knock')`
+    );
+    const asked = await tenantDb.query<{ n: number }>(
+      'db-allstar',
+      `SELECT COUNT(DISTINCT address_id) AS n FROM field_visits WHERE disposition = 'do_not_knock'`
+    );
+    expect(rows.results[0]?.n).toBe(asked.results[0]?.n);
+  });
+
+  it('is refused to a viewer', async () => {
+    const { token, csrf } = await createSession(env as unknown as Env, {
+      userType: 'tenant',
+      userId: 'u_viewer',
+      role: 'viewer',
+      tenantId: 't_allstar',
+      assignedTenants: null,
+    });
+    const res = await app.request(
+      `${HOST}/api/tenant/field/sample`,
+      {
+        method: 'POST',
+        headers: { cookie: `lbi_session=${token}`, 'x-csrf-token': csrf, 'content-type': 'application/json' },
+        body: '{}',
+      },
+      env as unknown as Env
+    );
+    expect(res.status).toBe(403);
+  });
+});

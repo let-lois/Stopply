@@ -13,6 +13,61 @@ import { fmtNum, fmtPct, fmtStamp } from '@/lib/format';
 import { useToast } from '../Toasts';
 import { CodeBox } from '../CodeBox';
 
+// Applies pending tenant migrations from the console.
+//
+// The Worker holds the account API token, so this needs no terminal and no
+// checkout. Agency admins only: it changes a client's database schema.
+function MigrateButton({ onDone }: { onDone: () => void }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [tenantId, setTenantId] = useState<string | null>(null);
+
+  useEffect(() => {
+    api<{ tenant: { id: string } }>('/api/tenant/settings')
+      .then((s) => setTenantId(s.tenant.id))
+      .catch(() => undefined);
+  }, []);
+
+  const run = async () => {
+    if (!tenantId) return;
+    setBusy(true);
+    try {
+      const res = await api<{ applied: number }>(`/api/agency/tenants/${tenantId}/migrate`, {
+        method: 'POST',
+        json: {},
+      });
+      toast(res.applied > 0 ? 'Database updated' : 'Already up to date');
+      onDone();
+    } catch (err) {
+      toast(
+        err instanceof Error && err.message === 'forbidden'
+          ? 'An agency admin has to run this'
+          : err instanceof Error
+            ? err.message
+            : 'the migration did not run'
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="stack" style={{ gap: 8, alignItems: 'flex-start' }}>
+      <button className="primary" disabled={busy || !tenantId} onClick={() => void run()}>
+        {busy ? 'Setting up' : 'Set up field tracking for this client'}
+      </button>
+      <details className="disclosure">
+        <summary>Or run it from a terminal</summary>
+        <CodeBox
+          code="CONTROL_DB_ID=... CF_API_TOKEN=... CF_ACCOUNT_ID=... pnpm migrate:tenants"
+          label="Migration command"
+          hint="Applies pending migrations to every client database."
+        />
+      </details>
+    </div>
+  );
+}
+
 interface Totals {
   visits: number;
   doors: number;
@@ -155,12 +210,7 @@ export function FieldActivityTab({ canWrite, timezone }: { canWrite: boolean; ti
           field tables created yet. That is a one time migration an agency admin runs, after
           which reps can be added here.
         </p>
-        <CodeBox
-          code="CONTROL_DB_ID=... CF_API_TOKEN=... CF_ACCOUNT_ID=... pnpm migrate:tenants"
-          label="Migration to run"
-          hint="Applies pending tenant migrations to every client database."
-          defaultOpen
-        />
+        <MigrateButton onDone={() => window.location.reload()} />
       </div>
     );
   }
@@ -238,6 +288,8 @@ export function FieldActivityTab({ canWrite, timezone }: { canWrite: boolean; ti
       </div>
 
       {loading && !overview && <div className="skeleton" style={{ minHeight: 160 }} />}
+
+      <SampleBanner />
 
       {t && (
         <>
@@ -488,6 +540,110 @@ export function FieldRepsSection({ onRosterChanged }: { onRosterChanged?: () => 
         onRosterChanged?.();
       }}
     />
+  );
+}
+
+// Says so, plainly, whenever what is on screen is a demonstration. A
+// client mistaking fabricated activity for their own crew's is the only
+// real harm sample data can do.
+function SampleBanner() {
+  const [state, setState] = useState<{ sampleVisits: number } | null>(null);
+  useEffect(() => {
+    api<{ sampleVisits: number }>('/api/tenant/field/sample')
+      .then(setState)
+      .catch(() => setState(null));
+  }, []);
+  if (!state || state.sampleVisits === 0) return null;
+  return (
+    <div className="field-sample-note">
+      Showing sample data. These knocks were generated to demonstrate the reporting and are not
+      your crew&apos;s work. Remove them from Data and Team.
+    </div>
+  );
+}
+
+// Sample activity: load it to show the reporting working before a crew
+// exists, remove it when the real knocks start.
+//
+// The removal only ever matches rows flagged is_sample in the database, so
+// it cannot reach a real rep's day. The banner exists because the opposite
+// mistake is the dangerous one: a client reading fabricated numbers as
+// their own.
+export function SampleDataControls({ onChanged }: { onChanged?: () => void }) {
+  const toast = useToast();
+  const [state, setState] = useState<{ ready: boolean; sampleVisits: number; realVisits: number } | null>(
+    null
+  );
+  const [busy, setBusy] = useState(false);
+  const [issued, setIssued] = useState<{ samplePassword: string; sampleEmails: string[] } | null>(null);
+
+  const load = useCallback(() => {
+    api<{ ready: boolean; sampleVisits: number; realVisits: number }>('/api/tenant/field/sample')
+      .then(setState)
+      .catch(() => setState(null));
+  }, []);
+
+  useEffect(load, [load]);
+
+  const run = async (action: 'load' | 'clear') => {
+    setBusy(true);
+    try {
+      if (action === 'load') {
+        const res = await api<{ visits: number; samplePassword: string; sampleEmails: string[] }>(
+          '/api/tenant/field/sample',
+          { method: 'POST', json: { days: 30 } }
+        );
+        setIssued({ samplePassword: res.samplePassword, sampleEmails: res.sampleEmails });
+        toast(`Loaded ${res.visits.toLocaleString('en-US')} sample knocks`);
+      } else {
+        await api('/api/tenant/field/sample', { method: 'DELETE' });
+        setIssued(null);
+        toast('Sample data removed');
+      }
+      load();
+      onChanged?.();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'that did not work');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!state?.ready) return null;
+  const hasSample = state.sampleVisits > 0;
+
+  return (
+    <div className="card stack">
+      <h3>Sample data</h3>
+      <p className="muted" style={{ margin: 0, maxWidth: 640 }}>
+        {hasSample
+          ? `This client is showing ${state.sampleVisits.toLocaleString('en-US')} sample knocks alongside ${state.realVisits.toLocaleString('en-US')} real ones. Remove the sample data before the client reads these numbers as their own.`
+          : 'Load a month of realistic door to door activity so the reporting can be demonstrated before a crew exists. Removing it later only deletes rows marked as sample, never a real knock.'}
+      </p>
+
+      {issued && (
+        <div className="field-issued">
+          <p style={{ margin: 0 }}>
+            The sample reps can sign into the field app with this password, shown once:
+          </p>
+          <code>{issued.samplePassword}</code>
+          <button className="small" onClick={() => setIssued(null)}>
+            Done
+          </button>
+        </div>
+      )}
+
+      <div className="row" style={{ gap: 8 }}>
+        <button className="primary" disabled={busy} onClick={() => void run('load')}>
+          {busy ? 'Working' : hasSample ? 'Regenerate sample data' : 'Load sample data'}
+        </button>
+        {hasSample && (
+          <button disabled={busy} onClick={() => void run('clear')}>
+            Remove sample data
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 

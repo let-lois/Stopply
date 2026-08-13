@@ -7,6 +7,7 @@ import { provisionTenant } from '../provisioning';
 import { hashPassword, randomToken } from '../crypto';
 import { writeAudit } from '../audit';
 import { listAgencySettings, setAgencySetting, isManagedKey, canManageSecrets } from '../agencySettings';
+import { getTenantById, clearResolverCache } from '../tenantResolver';
 
 export const agencyRoutes = new Hono<AppContext>();
 agencyRoutes.use('*', agencyOnly);
@@ -136,6 +137,42 @@ agencyRoutes.put('/tenants/:id/budget', requireRole('agency_admin'), async (c) =
 });
 
 // Agency overview grid from agency_rollup snapshots.
+// Applies pending tenant migrations to one client's database.
+//
+// Schema changes ship with a deploy but reach a tenant database only when
+// somebody runs the migration command, which needs the account API token
+// and a checkout. That gap is why a client can sit staring at a feature
+// that is live in the code and absent from their data. The Worker already
+// holds the token, so an agency admin can close the gap from the console
+// instead of from a terminal.
+//
+// Safe to repeat: applyTenantMigrations skips anything at or below the
+// recorded schema_version, and the migrations themselves are written
+// CREATE TABLE IF NOT EXISTS / INSERT OR IGNORE throughout.
+agencyRoutes.post('/tenants/:id/migrate', requireRole('agency_admin'), async (c) => {
+  const session = c.get('session')!;
+  const tenant = await getTenantById(c.env, c.req.param('id') ?? '');
+  if (!tenant?.d1_database_id) return c.json({ error: 'not found' }, 404);
+
+  const { applyTenantMigrations } = await import('../provisioning');
+  const from = tenant.schema_version ?? 0;
+  const to = await applyTenantMigrations(c.env, tenant.d1_database_id, from);
+  await c.env.CONTROL_DB.prepare(`UPDATE tenants SET schema_version = ? WHERE id = ?`)
+    .bind(to, tenant.id)
+    .run();
+  clearResolverCache();
+  await writeAudit(c.env, {
+    actorType: 'agency',
+    actorId: session.userId,
+    tenantId: tenant.id,
+    action: 'tenant.migrate',
+    target: tenant.slug,
+    before: { schemaVersion: from },
+    after: { schemaVersion: to },
+  });
+  return c.json({ ok: true, slug: tenant.slug, from, to, applied: to - from });
+});
+
 agencyRoutes.get('/overview', async (c) => {
   const session = c.get('session')!;
   const month = new Date().toISOString().slice(0, 7);

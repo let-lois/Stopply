@@ -27,6 +27,9 @@ export interface TenantRow {
   hostname_status: string | null;
   footer_credit: number;
   funnel_labels_json: string | null;
+  // Which dashboard sections this client sees. NULL means the historical
+  // default, the full ads dashboard. See DASHBOARD_SECTIONS.
+  sections_json: string | null;
   monthly_ad_spend_budget: number | null;
   ad_platforms_json: string | null;
   ad_platform_budget_json: string | null;
@@ -226,6 +229,50 @@ export function sourceFreshness(
   }
   if (source.verified_at && new Date(source.verified_at) >= latest) return 'green';
   return 'gray';
+}
+
+// Every section a client's dashboard can show. A client that knocks doors
+// has no use for Meta or Google Ads, and a client that only buys ads has no
+// crew; showing either the other's sections describes a business that is
+// not theirs.
+export const DASHBOARD_SECTIONS = [
+  'performance',
+  'field',
+  'meta',
+  'google',
+  'present',
+  'data-team',
+] as const;
+
+export type DashboardSection = (typeof DASHBOARD_SECTIONS)[number];
+
+// What a client sees when nobody has chosen: the ads shaped dashboard the
+// platform started as. Existing clients keep it without a backfill.
+export const DEFAULT_SECTIONS: DashboardSection[] = [
+  'performance',
+  'meta',
+  'google',
+  'present',
+  'data-team',
+];
+
+// A door to door client. No ad accounts, so no spend, no channels, no
+// campaign breakdowns; their activity is the funnel.
+export const FIELD_ONLY_SECTIONS: DashboardSection[] = ['field', 'present', 'data-team'];
+
+export function parseSections(json: string | null | undefined): DashboardSection[] {
+  if (!json) return DEFAULT_SECTIONS;
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    if (!Array.isArray(parsed)) return DEFAULT_SECTIONS;
+    const allowed = new Set<string>(DASHBOARD_SECTIONS);
+    const kept = parsed.filter((s): s is DashboardSection => typeof s === 'string' && allowed.has(s));
+    // An empty or unrecognisable list would leave a client staring at a
+    // dashboard with nothing on it, which is worse than the default.
+    return kept.length > 0 ? kept : DEFAULT_SECTIONS;
+  } catch {
+    return DEFAULT_SECTIONS;
+  }
 }
 
 export interface DashboardLayout {

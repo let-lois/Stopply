@@ -1,0 +1,11 @@
+-- Which sections a client's dashboard shows.
+--
+-- The platform started as marketing attribution, so every client got the
+-- same ads shaped dashboard: spend, channels, Meta, Google. That is wrong
+-- for a client whose work is knocking doors. All Star has no ad accounts;
+-- showing them an empty Meta section and a spend KPI of zero describes a
+-- business that is not theirs.
+--
+-- NULL means the historical default (the full ads dashboard), so every
+-- existing client is unaffected and nothing has to be backfilled.
+ALTER TABLE tenants ADD COLUMN sections_json TEXT;

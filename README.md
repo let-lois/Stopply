@@ -236,6 +236,39 @@ The funnel reads the disposition catalog's flags (`is_contact`, `is_lead`,
 rename "Appointment set" to "Demo booked", or add an outcome of their own,
 without a stage dropping out of the reporting.
 
+### Sample data
+
+A client needs to see the reporting working before their crew has knocked
+anything. Data and Team -> Sample data loads a month of believable
+activity: five reps, a worked neighbourhood, and a funnel weighted the way
+a real day goes (most doors reach nobody, sales are rare).
+
+Every row it writes carries `is_sample = 1`, and "Remove sample data"
+matches on that flag and nothing else, so it can never take a real knock
+with it. Any range containing sample rows is labelled as such on the
+dashboard.
+
+The sample reps are real accounts with a shared password, printed once, so
+the field app can be walked end to end before anybody is hired.
+
+### Which sections a client sees
+
+`tenants.sections_json` decides what a client's dashboard shows, set from
+Data and Team. A door to door client (All Star) gets Door to Door and
+nothing about ad spend; an ads client gets the channel reporting and no
+Door to Door section. NULL means the historical ads dashboard, so existing
+clients are unchanged.
+
+### Applying migrations to a client
+
+Schema ships with a deploy, but reaches a tenant database only when
+migrations run. An agency admin can do that from the console (the button on
+an unconfigured client's Door to Door section), or from a terminal:
+
+```sh
+CONTROL_DB_ID=... CF_API_TOKEN=... CF_ACCOUNT_ID=... pnpm migrate:tenants
+```
+
 ### Onboarding a crew
 
 Add reps from Data and Team -> Field reps, or in bulk:

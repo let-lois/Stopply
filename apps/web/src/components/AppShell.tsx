@@ -349,6 +349,16 @@ export function AppShell({
       ]
     : [];
 
+  // NULL sections on the tenant means the historical default, resolved
+  // server side, so an unconfigured client is unchanged.
+  const enabledSections = (settings?.tenant.sections ?? [
+    'performance',
+    'meta',
+    'google',
+    'present',
+    'data-team',
+  ]) as SectionKey[];
+
   // The sections of the one-page client dashboard this user may see, in
   // page order. Viewers get only what their view config grants.
   const sectionKeys: SectionKey[] = (
@@ -364,7 +374,11 @@ export function AppShell({
     // itself from the very person who still had to add the first rep. The
     // client's own read only viewers are spared an empty section until
     // there is actually activity to read.
-  ).filter((s) => s !== 'field' || hasFieldReps === true || !isViewer);
+  )
+    .filter((s) => s !== 'field' || hasFieldReps === true || !isViewer)
+    // What this client's dashboard is for. Data and Team stays reachable
+    // whatever is configured, since it is where the configuring happens.
+    .filter((s) => enabledSections.includes(s) || s === 'data-team');
 
   const staleCount = sources.filter((s) => s.freshness === 'red').length;
 

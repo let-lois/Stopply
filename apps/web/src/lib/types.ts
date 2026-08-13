@@ -22,6 +22,10 @@ export interface TenantSettings {
     theme: Record<string, string> | null;
     layout: { cards: Array<{ id: string; type: string; visible: boolean; label?: string }> } | null;
     funnelLabels: FunnelLabels | null;
+    // Which sections this client's dashboard shows. A door to door client
+    // has no ad accounts, so Meta, Google and the spend KPIs are not theirs
+    // to look at; an ads client has no crew and no Door to Door section.
+    sections?: string[];
     footerCredit: boolean;
     customHostname: string | null;
     hostnameStatus: string | null;

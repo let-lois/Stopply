@@ -1832,3 +1832,14 @@ a.button {
   border: 1px solid var(--hairline);
   user-select: all;
 }
+
+/* Sample data is labelled wherever it shows. A client reading fabricated
+   activity as their crew's own work is the only real harm this feature can
+   cause, so the notice is not subtle and does not collapse. */
+.field-sample-note {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--amber) 45%, var(--hairline));
+  background: color-mix(in srgb, var(--amber) 12%, var(--card));
+  font-size: 13px;
+}
