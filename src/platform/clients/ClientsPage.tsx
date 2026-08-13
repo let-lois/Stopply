@@ -5,6 +5,7 @@ import { MODULE_ORDER, MODULE_REGISTRY, defaultViewFor } from '@/modules/registr
 import { routes } from '@/types/routes';
 import { Badge, Button, CardButton, EmptyState } from '@/components/ui';
 import { NewClientDialog } from '@/platform/clients/NewClientDialog';
+import { ClientConfigDialog } from '@/platform/clients/ClientConfigDialog';
 import { useCan } from '@/lib/auth/useCan';
 import { relativeTime } from '@/lib/format/datetime';
 import { accentClasses } from '@/types/accent';
@@ -14,6 +15,11 @@ export default function ClientsPage() {
   const navigate = useNavigate();
   const can = useCan();
   const [creating, setCreating] = useState(false);
+  // The id, not the client object. Deriving it on render means the dialog
+  // reflects a module toggled inside it, rather than the snapshot taken when
+  // it opened.
+  const [configuringId, setConfiguringId] = useState<string | null>(null);
+  const configuring = clients.find((c) => c.id === configuringId) ?? null;
 
   // One implementation of "which view does this client land on", called from
   // one place. The prototype had the same six-branch chain here and in an
@@ -46,8 +52,8 @@ export default function ClientsPage() {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {clients.map((client) => (
+          <div key={client.id} className="flex flex-col gap-2">
           <CardButton
-            key={client.id}
             label={`Open ${client.name}`}
             onClick={() => open(client.id, client.enabledModules)}
           >
@@ -84,12 +90,28 @@ export default function ClientsPage() {
               {client.plan} · active {relativeTime(client.lastActive)}
             </p>
           </CardButton>
+          {can('client.configure', { clientId: client.id }) && (
+            <Button className="self-start" onClick={() => setConfiguringId(client.id)}>
+              Configure
+            </Button>
+          )}
+          </div>
         ))}
       </div>
 
-      {/* Mounted only while open, so the next client cannot inherit this
-          one's module selection. */}
+      {/* Both dialogs mount only while open, so neither can carry state into
+          its next subject. The config dialog is additionally keyed by client,
+          so switching client remounts it rather than reusing a tab position
+          from the previous one. */}
       {creating && <NewClientDialog open onClose={() => setCreating(false)} />}
+      {configuring && (
+        <ClientConfigDialog
+          key={configuring.id}
+          client={configuring}
+          open
+          onClose={() => setConfiguringId(null)}
+        />
+      )}
     </div>
   );
 }

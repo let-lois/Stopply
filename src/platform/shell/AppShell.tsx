@@ -18,6 +18,7 @@ import { PlatformHeader } from '@/platform/shell/PlatformHeader';
 import { PlatformSidebar } from '@/platform/shell/PlatformSidebar';
 import { Skeleton } from '@/components/ui';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { WorkspaceBanner } from '@/platform/shell/WorkspaceBanner';
 
 export function AppShell() {
   return (
@@ -25,7 +26,9 @@ export function AppShell() {
       <PlatformHeader />
       <div className="grid min-h-0 grid-cols-1 md:grid-cols-[16rem_1fr]">
         <PlatformSidebar />
-        <main className="min-w-0 overflow-y-auto p-6">
+        <main className="min-w-0 overflow-y-auto">
+          <WorkspaceBanner />
+          <div className="p-6">
           {/* Remounting the boundary per route means one broken view does not
               leave the whole shell wedged after navigating away. */}
           <ErrorBoundary>
@@ -33,6 +36,7 @@ export function AppShell() {
               <Outlet />
             </Suspense>
           </ErrorBoundary>
+          </div>
         </main>
       </div>
     </div>

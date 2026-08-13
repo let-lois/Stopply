@@ -27,7 +27,7 @@ const moduleRoutes: RouteObject[] = MODULE_ORDER.flatMap((moduleId) => {
   return Object.entries(def.views).map(([viewId, view]) => ({
     path: `c/:clientId/${moduleSlug(moduleId)}/${viewId}`,
     element: (
-      <ModuleGuard>
+      <ModuleGuard moduleId={moduleId}>
         <view.Component />
       </ModuleGuard>
     ),

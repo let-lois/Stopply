@@ -13,7 +13,7 @@
 import type { z } from 'zod';
 
 const NAMESPACE = 'stopply';
-const VERSION = 1;
+const VERSION = 2;
 
 export const STORAGE_KEYS = {
   clients: `${NAMESPACE}:clients`,
@@ -33,14 +33,18 @@ interface Envelope<T> {
 /**
  * Upgrades a payload written by an older build.
  *
- * Version 1 is the first shape, so there is nothing to migrate yet. The hook
- * exists now because the alternative, discovered later, is a key named `_v1`
- * with no way to move off it.
+ * Version 2 reseeded the demo workspaces under different client ids, so a
+ * version 1 payload would pin a browser to clients that no longer exist and
+ * no amount of reseeding would dislodge it. Discarding is the correct
+ * migration: the data is a demo, and the seed is better than a stale copy.
+ *
+ * The hook exists at all because the alternative, discovered later, is a key
+ * named `_v1` with no way to move off it.
  */
 function migrate(from: number, to: number, data: unknown): unknown {
   if (from === to) return data;
-  // No older versions exist. An unrecognised version is discarded rather than
-  // guessed at, and the caller falls back to seed data.
+  // Nothing older is worth carrying forward. An unrecognised version is
+  // discarded rather than guessed at, and the caller falls back to seed data.
   return undefined;
 }
 
