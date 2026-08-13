@@ -5,13 +5,31 @@ import { ErrorState } from '@/components/ui/ErrorState';
 // blank page with no way back.
 interface State {
   error: Error | null;
+  resetKey: string | undefined;
 }
 
-export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
-  override state: State = { error: null };
+interface Props {
+  children: ReactNode;
+  /**
+   * Change this to clear a caught error. The shell mounts one boundary above
+   * the outlet, so without it a view that threw keeps its failure on screen
+   * after you have navigated somewhere else entirely, and the whole platform
+   * reads as broken. Reset on props rather than in an effect: the fallback
+   * must never be rendered for the new location, not even for one frame.
+   */
+  resetKey?: string;
+}
 
-  static getDerivedStateFromError(error: Error): State {
+export class ErrorBoundary extends Component<Props, State> {
+  override state: State = { error: null, resetKey: this.props.resetKey };
+
+  static getDerivedStateFromError(error: Error): Partial<State> {
     return { error };
+  }
+
+  static getDerivedStateFromProps(props: Props, state: State): Partial<State> | null {
+    if (props.resetKey === state.resetKey) return null;
+    return { error: null, resetKey: props.resetKey };
   }
 
   override componentDidCatch(error: Error, info: ErrorInfo): void {

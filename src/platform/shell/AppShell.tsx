@@ -17,7 +17,7 @@
 // phone had to scroll past the entire navigation to reach the page.
 
 import { Suspense, useCallback, useEffect, useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { PlatformHeader } from '@/platform/shell/PlatformHeader';
 import { PlatformSidebar } from '@/platform/shell/PlatformSidebar';
 import { Skeleton } from '@/components/ui';
@@ -27,6 +27,7 @@ import { FieldSalesProvider } from '@/lib/state/FieldSalesProvider';
 
 export function AppShell() {
   const [navOpen, setNavOpen] = useState(false);
+  const { pathname } = useLocation();
 
   // The drawer closes from the click that navigates, not from an effect
   // watching the URL. Closing it is a consequence of the interaction, and
@@ -68,8 +69,8 @@ export function AppShell() {
             <WorkspaceBanner />
             <div className="p-4 sm:p-6">
               {/* One broken view must not leave the shell wedged after
-                  navigating away. */}
-              <ErrorBoundary>
+                  navigating away, which is what keying it on the path buys. */}
+              <ErrorBoundary resetKey={pathname}>
                 <Suspense fallback={<Skeleton className="h-64" />}>
                   <Outlet />
                 </Suspense>
