@@ -3,7 +3,7 @@ import { useModuleData } from '@/lib/data/useModuleData';
 import { ModuleGate } from '@/components/ModuleStates';
 import { Badge, Button, Card } from '@/components/ui';
 import { LogVisitDialog } from '@/modules/field-sales/components/LogVisitDialog';
-import { basemapConfigured } from '@/modules/field-sales/mapConfig';
+
 import { DISPOSITION_LABELS } from '@/modules/field-sales/selectors';
 import type { PropertyDisposition } from '@/modules/field-sales/types';
 import { relativeTime } from '@/lib/format/datetime';
@@ -125,14 +125,6 @@ export default function FieldSalesCanvass() {
               <p className="micro-label">
                 {visible.length.toLocaleString()} of {inTerritory.length.toLocaleString()} doors
               </p>
-              {!basemapConfigured && (
-                // Says what is missing rather than letting a blank background
-                // read as a broken map. The doors are in their true places
-                // either way.
-                <p className="text-xs text-[var(--color-ink-faint)]">
-                  Streets are not configured for this deployment
-                </p>
-              )}
             </div>
             <div className="min-h-0 flex-1">
               <Suspense fallback={<Skeleton className="size-full" />}>

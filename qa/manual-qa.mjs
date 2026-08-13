@@ -311,7 +311,16 @@ await mobile.screenshot({ path: `${SHOTS}/10-mobile-after-nav.png`, fullPage: tr
 // challenges.cloudflare.com. On a real deployment it loads. Note that the
 // consequence of it not loading is a disabled sign-in button, never a
 // bypass: the server refuses a request with no token.
-const EXPECTED = [/401 \(Unauthorized\)/, /ERR_TUNNEL_CONNECTION_FAILED/, /challenges\.cloudflare\.com/];
+const EXPECTED = [
+  /401 \(Unauthorized\)/,
+  /ERR_TUNNEL_CONNECTION_FAILED/,
+  /challenges\.cloudflare\.com/,
+  // Map tiles. This sandbox's network policy blocks the basemap host, so
+  // every tile fails here and none of them fail in a real browser. The check
+  // that matters, that the doors themselves are drawn, does not depend on the
+  // basemap and is asserted separately above.
+  /basemaps\.cartocdn\.com/,
+];
 const unexpected = consoleErrors.filter((e) => !EXPECTED.some((p) => p.test(e)));
 check(
   'no unexpected console errors during the pass',

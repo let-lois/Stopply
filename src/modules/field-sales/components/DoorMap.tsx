@@ -53,7 +53,7 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { FeatureCollection } from 'geojson';
 import type { Property, PropertyDisposition, Territory } from '@/modules/field-sales/types';
-import { MAP_STYLE_URL } from '@/modules/field-sales/mapConfig';
+import { DEFAULT_BASEMAP, MAP_STYLE_URL } from '@/modules/field-sales/mapConfig';
 
 setWorkerUrl(workerUrl);
 
@@ -145,20 +145,9 @@ export function DoorMap({ properties, territory, selectedId, onSelect }: DoorMap
 
     const map = new MapLibreMap({
       container: containerRef.current,
-      // A style is required, so without a configured basemap we supply an
-      // empty one. The map is fully functional; it simply has no streets
-      // drawn under the doors.
-      style: MAP_STYLE_URL ?? {
-        version: 8,
-        sources: {},
-        layers: [
-          {
-            id: 'background',
-            type: 'background',
-            paint: { 'background-color': '#0f1115' },
-          },
-        ],
-      },
+      // A provider's style when one is configured, otherwise the free
+      // OpenStreetMap basemap. Either way the doors sit on streets.
+      style: MAP_STYLE_URL ?? DEFAULT_BASEMAP,
       center: [-111.63, 33.41],
       zoom: 12,
       attributionControl: false,
@@ -177,13 +166,22 @@ export function DoorMap({ properties, territory, selectedId, onSelect }: DoorMap
       'top-right'
     );
     map.addControl(new ScaleControl({ unit: 'imperial' }), 'bottom-left');
-    if (MAP_STYLE_URL) {
-      // Required by every tile provider worth using, and by OpenStreetMap's
-      // licence when the tiles derive from it.
-      map.addControl(new AttributionControl({ compact: true }), 'bottom-right');
-    }
+    // Unconditional. OpenStreetMap's licence requires it and every provider
+    // worth using requires it, so it is not something a configuration change
+    // may switch off.
+    map.addControl(new AttributionControl({ compact: true }), 'bottom-right');
 
-    map.on('load', () => {
+    // 'style.load', not 'load'.
+    //
+    // 'load' waits for the style *and* for every visible tile to settle, so a
+    // basemap that is slow or failing delays it indefinitely and the doors are
+    // never added at all. That is not hypothetical: pointing at a tile host
+    // this sandbox blocks reproduced it exactly, with a valid style, a healthy
+    // canvas and zero doors. A rep on a weak signal is the same case.
+    //
+    // 'style.load' fires as soon as the style is parsed, which is the moment
+    // it becomes legal to add a source, and owes nothing to the network.
+    map.on('style.load', () => {
       map.addSource(SOURCE, { type: 'geojson', data: toFeatureCollection([]) });
 
       map.addLayer({
@@ -251,7 +249,7 @@ export function DoorMap({ properties, territory, selectedId, onSelect }: DoorMap
     };
 
     if (readyRef.current) apply();
-    else void map.once('load', apply);
+    else void map.once('style.load', apply);
   }, [properties]);
 
   useEffect(() => {
@@ -263,7 +261,7 @@ export function DoorMap({ properties, territory, selectedId, onSelect }: DoorMap
       }
     };
     if (readyRef.current) apply();
-    else void map.once('load', apply);
+    else void map.once('style.load', apply);
   }, [selectedId]);
 
   // Reframe only when the territory changes, never when the filter does.
@@ -274,7 +272,7 @@ export function DoorMap({ properties, territory, selectedId, onSelect }: DoorMap
     if (!map) return;
     const apply = () => fitTo(map, properties, territory);
     if (readyRef.current) apply();
-    else void map.once('load', apply);
+    else void map.once('style.load', apply);
     // properties is deliberately not a dependency: see above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [territory, fitTo]);
