@@ -1,0 +1,4 @@
+# Client-side routing: every path serves the app shell, and React Router
+# resolves it. Without this a refresh on /c/<id>/field-sales/canvass is a
+# Pages 404, which is exactly the deep-link the prototype could not do at all.
+/*  /index.html  200

@@ -1,0 +1,79 @@
+import { useNavigate } from 'react-router-dom';
+import { usePlatform } from '@/lib/state/PlatformProvider';
+import { MODULE_ORDER, MODULE_REGISTRY, defaultViewFor } from '@/modules/registry';
+import { routes } from '@/types/routes';
+import { Badge, CardButton, EmptyState } from '@/components/ui';
+import { relativeTime } from '@/lib/format/datetime';
+import { accentClasses } from '@/types/accent';
+
+export default function ClientsPage() {
+  const { clients } = usePlatform();
+  const navigate = useNavigate();
+
+  // One implementation of "which view does this client land on", called from
+  // one place. The prototype had the same six-branch chain here and in an
+  // App effect; both ran on Open Workspace and the effect won, making this
+  // one dead code that happened to agree.
+  const open = (clientId: string, enabledModules: typeof clients[number]['enabledModules']) => {
+    const target = defaultViewFor(enabledModules);
+    void navigate(
+      target ? routes.workspace(clientId, target.moduleId, target.viewId) : routes.workspaceSettings(clientId)
+    );
+  };
+
+  if (clients.length === 0) {
+    return <EmptyState title="No clients yet" body="Create a client workspace to get started." />;
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-2xl font-semibold">Clients</h1>
+        <p className="micro-label mt-1">{clients.length} workspaces</p>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {clients.map((client) => (
+          <CardButton
+            key={client.id}
+            label={`Open ${client.name}`}
+            onClick={() => open(client.id, client.enabledModules)}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold">{client.name}</h2>
+                <p className="text-sm text-[var(--color-ink-soft)]">{client.industry}</p>
+              </div>
+              <Badge accent={client.status === 'active' ? 'emerald' : 'amber'}>
+                {client.status}
+              </Badge>
+            </div>
+
+            {/* Colour and icon come from the registry. The prototype
+                duplicated this as an inline ternary whose fallback gave
+                analytics the wrong colour. */}
+            <ul className="mt-4 flex flex-wrap gap-2">
+              {MODULE_ORDER.filter((id) => client.enabledModules.includes(id)).map((id) => {
+                const def = MODULE_REGISTRY[id];
+                const a = accentClasses(def.accent);
+                return (
+                  <li
+                    key={id}
+                    className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${a.soft} ${a.text} ${a.border}`}
+                  >
+                    <def.Icon size={12} aria-hidden="true" />
+                    {def.name}
+                  </li>
+                );
+              })}
+            </ul>
+
+            <p className="mt-4 text-xs text-[var(--color-ink-faint)]">
+              {client.plan} · active {relativeTime(client.lastActive)}
+            </p>
+          </CardButton>
+        ))}
+      </div>
+    </div>
+  );
+}
