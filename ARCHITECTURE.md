@@ -448,6 +448,35 @@ node qa/login-qa.mjs                  # 10 sign-in checks
 with `wrangler pages secret put` against
 `CLOUDFLARE_ACCOUNT_ID=af6cdf4448e16dc7a72f84c3dd7cf7fb`.
 
+### Deploying, and the order it has to happen in
+
+```sh
+npm run verify                        # typecheck, lint, tests, build
+npx wrangler pages deploy dist --project-name stopply-platform --branch main
+```
+
+**`--branch main` is not optional.** Without it, wrangler infers the current
+git branch and the deploy lands as a Preview. It reports success and gives you
+a URL that works, so nothing looks wrong, and `stopply-platform.pages.dev`
+keeps serving whatever was there before. Check with
+`wrangler pages deployment list` that the top row says Production.
+
+**There is one database, and every deployment shares it.** So a change that
+widens what the database may contain has to reach the browser *before* it
+reaches the data, not after. Adding `appointment_kept` and then seeding rows
+with it, while production still ran the build before that, gave every page on
+production "That data could not be loaded": the old contract correctly refused
+a value it had never heard of. The contract was not the bug. The order was.
+
+The rule, in order:
+
+1. Deploy the frontend that understands the new value, to production.
+2. Apply the migration.
+3. Write the new values.
+
+A tab left open across step 1 is still running the old contract and will show
+the same error until it is reloaded, which is why `ApiContractError` says so.
+
 Two sets of accounts are seeded.
 
 The demo pair, `admin@letlois.example.invalid` (platform-wide) and

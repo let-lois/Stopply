@@ -25,10 +25,21 @@ export class ApiRequestError extends Error {
   }
 }
 
-/** A response that did not match its contract. Always a bug, never user error. */
+/**
+ * A response that did not match its contract. Never user error.
+ *
+ * Usually a bug, but there is one benign cause worth naming in the message
+ * rather than making somebody guess: a tab left open across a deploy is still
+ * running the old contract, and a field that has since widened (a new
+ * disposition, say) reads to it as invalid. That is exactly what it looks
+ * like, and reloading fixes it, so the message says so.
+ */
 export class ApiContractError extends Error {
   constructor(path: string, detail: string) {
-    super(`The server's response for ${path} did not match the expected shape: ${detail}`);
+    super(
+      `The server's response for ${path} did not match the expected shape: ${detail}. ` +
+        'If this page has been open a while, reload it: it may be running an older version of the app.'
+    );
     this.name = 'ApiContractError';
   }
 }
