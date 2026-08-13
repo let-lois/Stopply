@@ -1,23 +1,23 @@
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
 import { useModuleData } from '@/lib/data/useModuleData';
 import { ModuleGate } from '@/components/ModuleStates';
 import { Badge, Button, Card } from '@/components/ui';
 import { LogVisitDialog } from '@/modules/field-sales/components/LogVisitDialog';
-import { boundsFor, projectToBounds } from '@/modules/field-sales/geo';
+import { basemapConfigured } from '@/modules/field-sales/mapConfig';
 import { DISPOSITION_LABELS } from '@/modules/field-sales/selectors';
 import type { PropertyDisposition } from '@/modules/field-sales/types';
 import { relativeTime } from '@/lib/format/datetime';
+import { Skeleton } from '@/components/ui';
 
-const DISPOSITION_COLOR: Record<PropertyDisposition, string> = {
-  not_visited: 'var(--color-ink-faint)',
-  no_answer: 'var(--color-accent-slate)',
-  come_back: 'var(--color-accent-amber)',
-  not_interested: 'var(--color-negative)',
-  interested: 'var(--color-accent-sky)',
-  appointment_set: 'var(--color-accent-purple)',
-  closed_sale: 'var(--color-positive)',
-  do_not_knock: 'var(--color-ink)',
-};
+// MapLibre is around 200KB gzipped, which is worth it here and worth nothing
+// on the five views that do not draw a map. Canvass is already a lazy route,
+// so this keeps the map out of even that chunk until the view renders.
+const DoorMap = lazy(() =>
+  import('@/modules/field-sales/components/DoorMap').then((m) => ({ default: m.DoorMap }))
+);
+
+// Door colours live with the map, which needs them as literals for a paint
+// expression evaluated on the GPU.
 
 const FILTERS: Array<{ id: 'all' | PropertyDisposition; label: string }> = [
   { id: 'all', label: 'All doors' },
@@ -60,9 +60,13 @@ export default function FieldSalesCanvass() {
     [properties, activeTerritoryId]
   );
 
-  // The projection is built from the territory's full extent, never from the
-  // filtered subset, so narrowing the filter cannot move a pin.
-  const bounds = useMemo(() => boundsFor(inTerritory), [inTerritory]);
+  // The map frames itself on the territory's own extent, never on the
+  // filtered subset, so narrowing the filter cannot move the view. Undefined
+  // for "all territories", where the map fits the doors instead.
+  const activeTerritory = useMemo(
+    () => data?.territories.find((t) => t.id === activeTerritoryId),
+    [data, activeTerritoryId]
+  );
 
   const visible = useMemo(
     () => (filter === 'all' ? inTerritory : inTerritory.filter((p) => p.disposition === filter)),
@@ -73,6 +77,10 @@ export default function FieldSalesCanvass() {
     () => properties.find((p) => p.id === selectedId) ?? null,
     [properties, selectedId]
   );
+
+  // Stable, so the map's click handler does not have to be rebound and the
+  // map never has to be torn down and rebuilt to pick up a new closure.
+  const handleSelect = useCallback((id: string) => setSelectedId(id), []);
 
   const lastVisit = useMemo(() => {
     if (!selected || !data) return null;
@@ -112,33 +120,29 @@ export default function FieldSalesCanvass() {
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
-          <Card className="relative min-h-[34rem] overflow-hidden">
-            <p className="micro-label">
-              {visible.length.toLocaleString()} of {inTerritory.length.toLocaleString()} doors
-            </p>
-            <div className="absolute inset-6 top-14">
-              {visible.map((p) => {
-                const { xPct, yPct } = projectToBounds(p, bounds);
-                return (
-                  <button
-                    // Keyed by id, never by index, so React never reuses one
-                    // house's node for another when the filter changes.
-                    key={p.id}
-                    type="button"
-                    onClick={() => setSelectedId(p.id)}
-                    aria-label={`${p.address}, ${DISPOSITION_LABELS[p.disposition]}`}
-                    aria-pressed={selectedId === p.id}
-                    className="absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-black/40 transition-transform hover:scale-150"
-                    style={{
-                      left: `${xPct}%`,
-                      top: `${yPct}%`,
-                      background: DISPOSITION_COLOR[p.disposition],
-                      outline: selectedId === p.id ? '2px solid var(--color-ink)' : undefined,
-                      outlineOffset: 2,
-                    }}
-                  />
-                );
-              })}
+          <Card className="relative flex min-h-[34rem] flex-col overflow-hidden p-0">
+            <div className="flex items-center justify-between gap-3 px-6 pt-6 pb-3">
+              <p className="micro-label">
+                {visible.length.toLocaleString()} of {inTerritory.length.toLocaleString()} doors
+              </p>
+              {!basemapConfigured && (
+                // Says what is missing rather than letting a blank background
+                // read as a broken map. The doors are in their true places
+                // either way.
+                <p className="text-xs text-[var(--color-ink-faint)]">
+                  Streets are not configured for this deployment
+                </p>
+              )}
+            </div>
+            <div className="min-h-0 flex-1">
+              <Suspense fallback={<Skeleton className="size-full" />}>
+                <DoorMap
+                  properties={visible}
+                  territory={activeTerritory}
+                  selectedId={selectedId}
+                  onSelect={handleSelect}
+                />
+              </Suspense>
             </div>
           </Card>
 

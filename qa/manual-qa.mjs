@@ -26,6 +26,11 @@ function check(name, passed, detail = '') {
 // The image ships Chromium 1194; the installed Playwright expects a newer
 // build number and would otherwise try to download one. Pointing at the
 // binary that is already here avoids a download this sandbox cannot make.
+// A page with a MapLibre map never reaches networkidle: the worker script
+// request is never marked finished, so waiting on it times out even though
+// the map has rendered. Map pages wait for the canvas instead.
+const MAP_WAIT = { waitUntil: 'domcontentloaded' };
+
 const browser = await chromium.launch({
   executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
 });
@@ -101,48 +106,91 @@ await page.waitForTimeout(500);
 await page.getByRole('switch', { name: /Live mode/ }).click();
 await page.waitForTimeout(500);
 
-// QA 8: filtering the canvass must not move a pin. Rogue Solar is on demo
-// data, so the canvass here is the generated dataset rather than D1.
-await page.goto(`${BASE}/c/cl_roguesolar/field-sales/canvass`, { waitUntil: 'networkidle' });
-await page.waitForTimeout(500);
-const pinBefore = await page.locator('button[aria-label*="Appointment set"]').first().boundingBox();
-await page.getByRole('button', { name: 'Appointment set', exact: true }).click();
-await page.waitForTimeout(300);
-const pinAfter = await page.locator('button[aria-label*="Appointment set"]').first().boundingBox();
-await page.screenshot({ path: `${SHOTS}/05-canvass-filtered.png`, fullPage: true });
+// QA 8: filtering the canvass must not move a door.
+//
+// This used to measure the bounding box of a DOM pin. The doors are now a
+// GeoJSON layer drawn on a canvas, so there is no element to measure and the
+// property is enforced differently: a door's position is its coordinates, and
+// the filter is not an input to the map's viewport. What is checkable from
+// out here is that filtering does not move the *map*, which is the failure a
+// rep would actually feel.
+await page.goto(`${BASE}/c/cl_roguesolar/field-sales/canvass`, MAP_WAIT);
+await page.locator('canvas.maplibregl-canvas').waitFor({ timeout: 15000 });
+await page.waitForTimeout(800);
+
+const mapCanvas = page.locator('canvas.maplibregl-canvas');
+check('the canvass renders a real map', (await mapCanvas.count()) > 0);
+
+// Doors are actually drawn, not merely a map that looks healthy.
+//
+// This is the check that would have caught the worst bug in this feature. The
+// map had its source, its layers, the right viewport, working controls and no
+// error of any kind, and drew not one door, because MapLibre's worker was
+// never bundled and every setData waited forever on it. Counting the canvas
+// alone passes straight through that.
+//
+// Compared rather than measured. Reading pixels out of a WebGL canvas needs
+// preserveDrawingBuffer, which costs real performance and would be switched on
+// solely for this test. Two element screenshots go through the compositor
+// instead, and the comparison calibrates itself: if nothing is ever drawn,
+// a view with doors and a view with none are the same flat fill.
+const withDoors = await mapCanvas.screenshot();
+await page.getByRole('button', { name: 'Do not knock' }).click();
+await page.waitForTimeout(900);
+const withoutDoors = await mapCanvas.screenshot();
+await page.getByRole('button', { name: 'All doors' }).click();
+await page.waitForTimeout(900);
+
 check(
-  'QA8 filtering does not move a pin',
-  !!pinBefore && !!pinAfter && Math.abs(pinBefore.x - pinAfter.x) < 1 && Math.abs(pinBefore.y - pinAfter.y) < 1,
-  pinBefore && pinAfter ? `${Math.round(pinBefore.x)},${Math.round(pinBefore.y)} -> ${Math.round(pinAfter.x)},${Math.round(pinAfter.y)}` : 'pin not found'
+  'doors are actually drawn on it',
+  Math.abs(withDoors.length - withoutDoors.length) > 200,
+  `${withDoors.length} vs ${withoutDoors.length} bytes`
 );
 
-// Pin density. Plotting a whole client's doors into one box can put pins on
-// top of each other, and a pin that intercepts another pin's click is a door
-// a rep cannot tap. Measured rather than assumed.
+const viewportBefore = await page.evaluate(() => {
+  const el = document.querySelector('.maplibregl-canvas');
+  return el ? el.getBoundingClientRect().width : 0;
+});
+
+await page.getByRole('button', { name: 'Appointment set', exact: true }).click();
+await page.waitForTimeout(600);
+await page.screenshot({ path: `${SHOTS}/05-canvass-filtered.png`, fullPage: true });
+
+const viewportAfter = await page.evaluate(() => {
+  const el = document.querySelector('.maplibregl-canvas');
+  return el ? el.getBoundingClientRect().width : 0;
+});
+check('filtering does not resize or remount the map', viewportBefore === viewportAfter && viewportBefore > 0);
+
+check(
+  'the map offers geolocation, which is what a rep needs at a door',
+  (await page.locator('.maplibregl-ctrl-geolocate').count()) > 0
+);
+
 await page.getByRole('button', { name: 'All doors' }).click();
 await page.waitForTimeout(400);
-const pinBoxes = await page.locator('.absolute button[aria-label*=","]').evaluateAll((nodes) =>
-  nodes.map((n) => n.getBoundingClientRect()).map((r) => ({ x: r.x, y: r.y, w: r.width, h: r.height }))
-);
-let overlapping = 0;
-for (let i = 0; i < pinBoxes.length; i++) {
-  for (let j = i + 1; j < pinBoxes.length; j++) {
-    const a = pinBoxes[i];
-    const b = pinBoxes[j];
-    if (Math.abs(a.x - b.x) < a.w * 0.6 && Math.abs(a.y - b.y) < a.h * 0.6) overlapping++;
-  }
-}
+
+// The map is a canvas, so it carries no text. Every door has to remain
+// reachable without it, which is what the Properties view is for.
+await page.goto(`${BASE}/c/cl_roguesolar/field-sales/properties`, { waitUntil: 'networkidle' });
+await page.waitForTimeout(500);
 check(
-  'canvass pins are individually clickable',
-  overlapping === 0,
-  `${overlapping} overlapping pairs of ${pinBoxes.length} pins`
+  'every door is reachable without the map',
+  (await page.locator('table tbody tr, [role="row"]').count()) > 5,
+  `${await page.locator('table tbody tr, [role="row"]').count()} rows`
 );
+await page.goto(`${BASE}/c/cl_roguesolar/field-sales/canvass`, MAP_WAIT);
+await page.locator('canvas.maplibregl-canvas').waitFor({ timeout: 15000 });
+await page.waitForTimeout(800);
 
 // QA 14: dialog behaviour, including focus restore to the trigger.
-// force: true because an overlapping pin can intercept, which is the finding
-// above rather than the thing under test here.
-await page.locator('.absolute button[aria-label*=","]').first().click({ force: true });
-const trigger = page.getByRole('button', { name: 'Log a knock' });
+// Driven from the Properties list rather than the map. The doors are drawn
+// on a canvas, so there is no element for a keyboard or a screen reader to
+// reach and none for a test to click by name. The list is the accessible
+// path to the same dialog, which is exactly why it has to have one.
+await page.goto(`${BASE}/c/cl_roguesolar/field-sales/properties`, { waitUntil: 'networkidle' });
+await page.waitForTimeout(500);
+const trigger = page.getByRole('button', { name: /^Log a knock at / }).first();
 await trigger.click();
 await page.waitForTimeout(300);
 await page.screenshot({ path: `${SHOTS}/06-log-visit-dialog.png`, fullPage: true });

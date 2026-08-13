@@ -1,12 +1,16 @@
 import { useMemo, useState } from 'react';
 import { useModuleData } from '@/lib/data/useModuleData';
 import { ModuleGate } from '@/components/ModuleStates';
-import { Badge, Card } from '@/components/ui';
+import { Badge, Button, Card } from '@/components/ui';
 import { DISPOSITION_LABELS } from '@/modules/field-sales/selectors';
+import { LogVisitDialog } from '@/modules/field-sales/components/LogVisitDialog';
 
 export default function FieldSalesProperties() {
   const { data, mode, isLoading, error } = useModuleData('field_sales');
   const [query, setQuery] = useState('');
+  // The id, not the row, so the dialog and the table agree after a knock is
+  // saved rather than the dialog holding a snapshot taken when it opened.
+  const [loggingId, setLoggingId] = useState<string | null>(null);
 
   const rows = useMemo(() => {
     const all = data?.properties ?? [];
@@ -16,6 +20,18 @@ export default function FieldSalesProperties() {
       .filter((p) => `${p.address} ${p.ownerName ?? ''}`.toLowerCase().includes(needle))
       .slice(0, 200);
   }, [data, query]);
+
+  // Knocking from the list, not only from the map.
+  //
+  // The canvass is a canvas, so it has no elements a screen reader or a
+  // keyboard can reach, and a door is a few pixels wide even for someone
+  // using a mouse. This table is the same doors in a form anyone can work
+  // with, and until now it was a dead end: you could find the house and then
+  // had to go and hunt for its dot to record anything.
+  const logging = useMemo(
+    () => data?.properties.find((p) => p.id === loggingId) ?? null,
+    [data, loggingId]
+  );
 
   return (
     <ModuleGate isLoading={isLoading} error={error} mode={mode} hasData={!!data?.properties.length}>
@@ -37,6 +53,7 @@ export default function FieldSalesProperties() {
                 <th className="micro-label pb-3">Address</th>
                 <th className="micro-label pb-3">Owner</th>
                 <th className="micro-label pb-3">Outcome</th>
+                <th className="micro-label pb-3"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -49,6 +66,11 @@ export default function FieldSalesProperties() {
                       {DISPOSITION_LABELS[p.disposition]}
                     </Badge>
                   </td>
+                  <td className="py-3 pl-4 text-right">
+                    <Button onClick={() => setLoggingId(p.id)} aria-label={`Log a knock at ${p.address}`}>
+                      Log a knock
+                    </Button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -60,6 +82,15 @@ export default function FieldSalesProperties() {
           )}
         </Card>
       </div>
+
+      {logging && (
+        <LogVisitDialog
+          property={logging}
+          reps={data?.reps ?? []}
+          open
+          onClose={() => setLoggingId(null)}
+        />
+      )}
     </ModuleGate>
   );
 }

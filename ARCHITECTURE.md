@@ -166,6 +166,64 @@ guarantee is cheapest to keep when the code that could break it does not
 exist. When an integration eventually needs to spend a credential, the decrypt
 belongs next to that outbound call.
 
+## The canvass map
+
+MapLibre GL, with doors as a GeoJSON source and a circle layer rather than DOM
+markers. A real territory is thousands of houses, and thousands of absolutely
+positioned elements make panning stutter on the phone a rep is actually
+holding; circles render on the GPU and stay smooth into six figures.
+
+What this replaced was honest but was not a map: real coordinates projected
+into a fixed box, so pins sat correctly relative to each other and nowhere in
+particular otherwise. A rep navigates by streets.
+
+### The basemap is optional, and unset here
+
+`VITE_MAP_STYLE_URL` points at a MapLibre style. Without it the map still pans,
+zooms, scales, geolocates and places every door at its true coordinates; it
+simply has no streets drawn underneath. The Canvass says so rather than letting
+a dark background read as a broken map.
+
+Two ways to set it, and the choice has a running cost attached:
+
+- **Protomaps on R2.** Self-hosted vector tiles. One `.pmtiles` extract for the
+  area being canvassed, uploaded to R2, served from the account this already
+  deploys to. No per-request bill and no third party in the path, at the cost
+  of a one-time setup and re-cutting the extract when the coverage area grows.
+- **A hosted provider** (MapTiler, Mapbox). A style URL and a key, working in
+  minutes, metered forever.
+
+Protomaps fits this stack better. Nothing in the code depends on which is
+chosen: the style URL is the entire integration.
+
+### The worker has to be bundled, not copied
+
+```ts
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
+setWorkerUrl(workerUrl);
+```
+
+Both halves of that are load-bearing, and getting either wrong produces the
+same silent failure: a map with its source, its layers, the right viewport,
+working controls, no console error, and not one door drawn.
+
+MapLibre 6 resolves its worker at runtime from `import.meta.url`, which the
+bundler cannot see, so without `setWorkerUrl` the file is never emitted, the
+request falls through to the SPA's `index.html`, and every `setData` waits
+forever on a worker that will never answer.
+
+And the suffix must be `?worker&url`. Plain `?url` copies the file verbatim,
+but the worker imports MapLibre's shared chunk relative to itself, so the copy
+resolves that import to a file that was never emitted and fails the same silent
+way. `?worker` bundles the dependency in: 18KB emitted is the broken version,
+470KB is the working one.
+
+`qa/manual-qa.mjs` guards this by comparing two canvas screenshots, one with
+doors and one with none. If nothing is ever drawn the two are identical, which
+is what the check reports. Verified by reintroducing the bug: "the canvass
+renders a real map" keeps passing and the doors check fails, which is precisely
+why the second check exists.
+
 ## Still not true
 
 - **The Turnstile keys on the deployment are Cloudflare's test pair**, which
