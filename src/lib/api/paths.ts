@@ -19,6 +19,12 @@ export const apiPaths = {
   credentials: () => '/api/credentials',
   credential: (id: string) => `/api/credentials/${encodeURIComponent(id)}`,
 
+  territories: (clientId: string) => `/api/clients/${encodeURIComponent(clientId)}/territories`,
+  territory: (clientId: string, territoryId: string) =>
+    `/api/clients/${encodeURIComponent(clientId)}/territories/${encodeURIComponent(territoryId)}`,
+  rep: (clientId: string, repId: string) =>
+    `/api/clients/${encodeURIComponent(clientId)}/reps/${encodeURIComponent(repId)}`,
+
   fieldSalesData: (clientId: string) =>
     `/api/clients/${encodeURIComponent(clientId)}/field-sales/data`,
   fieldSalesVisits: (clientId: string) =>

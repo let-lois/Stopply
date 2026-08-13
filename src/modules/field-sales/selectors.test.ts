@@ -141,7 +141,7 @@ describe('selectTerritoryCoverage', () => {
       id: 'ter_a',
       name: 'North Ridge',
       bounds: { north: 1, south: 0, east: 1, west: 0 },
-      assignedRepId: 'rep_1',
+      boundary: null, repIds: ['rep_1'],
     },
   ];
   const reps: Rep[] = [{ id: 'rep_1', name: 'Dana Reyes', territoryId: 'ter_a' }];
@@ -154,17 +154,31 @@ describe('selectTerritoryCoverage', () => {
     expect(rows[0]?.coveragePct).toBeCloseTo(0.5);
   });
 
-  it('names the assigned rep, and copes with none', () => {
+  it('names every rep on the territory, and copes with none', () => {
+    // Plural, because a territory can genuinely have a crew on it. The single
+    // assignedRepId this replaces was a second copy of reps.territoryId
+    // pointing the other way, and the two could disagree about who was
+    // working an area.
     const withRep = selectTerritoryCoverage(territories, [], [], reps);
-    expect(withRep[0]?.assignedRepName).toBe('Dana Reyes');
+    expect(withRep[0]?.assignedRepNames).toEqual(['Dana Reyes']);
 
     const unassigned = selectTerritoryCoverage(
-      [{ ...territories[0]!, assignedRepId: null }],
+      [{ ...territories[0]!, boundary: null, repIds: [] }],
       [],
       [],
       reps
     );
-    expect(unassigned[0]?.assignedRepName).toBeNull();
+    expect(unassigned[0]?.assignedRepNames).toEqual([]);
+  });
+
+  it('drops a rep id that matches nobody rather than rendering a blank name', () => {
+    const ghost = selectTerritoryCoverage(
+      [{ ...territories[0]!, repIds: ['rep_gone', reps[0]!.id] }],
+      [],
+      [],
+      reps
+    );
+    expect(ghost[0]?.assignedRepNames).toEqual(['Dana Reyes']);
   });
 });
 

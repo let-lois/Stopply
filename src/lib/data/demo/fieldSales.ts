@@ -76,7 +76,13 @@ export function fieldSalesDemo(clientId: string, now: Date): FieldSalesData {
       id: seed.id,
       name: seed.name,
       bounds: { north, south, east, west },
-      assignedRepId: reps[t]?.id ?? null,
+      boundary: [
+        [west, south],
+        [east, south],
+        [east, north],
+        [west, north],
+      ],
+      repIds: reps[t] ? [reps[t].id] : [],
     });
 
     for (let r = 0; r < rows; r++) {

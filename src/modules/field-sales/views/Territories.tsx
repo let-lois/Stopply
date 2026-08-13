@@ -18,7 +18,9 @@ export default function FieldSalesTerritories() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {rows.map((t) => (
           <Card key={t.territoryId}>
-            <p className="micro-label">{t.assignedRepName ?? 'Unassigned'}</p>
+            <p className="micro-label">
+              {t.assignedRepNames.length > 0 ? t.assignedRepNames.join(', ') : 'Unassigned'}
+            </p>
             <h3 className="mt-1 text-lg font-semibold">{t.name}</h3>
             <p className="numeric-display mt-4 text-3xl">
               {Math.round(t.coveragePct * 100)}%

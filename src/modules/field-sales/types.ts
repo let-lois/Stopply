@@ -14,9 +14,12 @@ export type PropertyDisposition =
 export interface Territory {
   id: string;
   name: string;
-  /** The extent the map projects against. Real coordinates, actually read. */
+  /** Derived from `boundary` on write. An index for framing, not a definition. */
   bounds: { north: number; south: number; east: number; west: number };
-  assignedRepId: string | null;
+  /** The ring a manager drew, [lng, lat]. */
+  boundary: Array<[number, number]> | null;
+  /** Every rep on this territory, derived from reps.territoryId. */
+  repIds: string[];
 }
 
 export interface Rep {

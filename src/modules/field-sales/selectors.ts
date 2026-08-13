@@ -128,7 +128,7 @@ export interface TerritoryCoverage {
   totalProperties: number;
   visitedProperties: number;
   coveragePct: number;
-  assignedRepName: string | null;
+  assignedRepNames: string[];
 }
 
 export function selectTerritoryCoverage(
@@ -149,9 +149,12 @@ export function selectTerritoryCoverage(
       totalProperties: owned.length,
       visitedProperties: visited,
       coveragePct: owned.length > 0 ? visited / owned.length : 0,
-      assignedRepName: territory.assignedRepId
-        ? (repsById.get(territory.assignedRepId)?.name ?? null)
-        : null,
+      // Every rep on the territory, not one. The single assignedRepId this
+      // replaces was a second copy of reps.territoryId pointing the other
+      // way, and the two could disagree about who was working an area.
+      assignedRepNames: territory.repIds
+        .map((id) => repsById.get(id)?.name)
+        .filter((name): name is string => Boolean(name)),
     };
   });
 }

@@ -19,16 +19,51 @@ export const dispositionSchema = z.enum([
   'do_not_knock',
 ]);
 
+/** A drawn ring, [lng, lat], in the order it was drawn. */
+export const ringSchema = z
+  .array(z.tuple([z.number().min(-180).max(180), z.number().min(-90).max(90)]))
+  .min(3)
+  .max(500);
+
 export const territoryWireSchema = z.object({
   id: z.string(),
   name: z.string(),
+  /**
+   * Derived from the boundary on every write, never edited on its own. The map
+   * frames itself with it; nothing decides membership with it.
+   */
   bounds: z.object({
     north: z.number(),
     south: z.number(),
     east: z.number(),
     west: z.number(),
   }),
-  assignedRepId: z.string().nullable(),
+  /** Null only for a territory that predates shapes and was never backfilled. */
+  boundary: ringSchema.nullable(),
+  /**
+   * Every rep working this territory.
+   *
+   * Plural, and derived from reps.territory_id, which is the column field
+   * scoping actually reads. The old single assignedRepId was a second copy of
+   * the same fact pointing the other way, and the two could disagree.
+   */
+  repIds: z.array(z.string()),
+});
+
+export const saveTerritoryRequestSchema = z.object({
+  name: z.string().min(1).max(80),
+  boundary: ringSchema,
+});
+
+export const assignRepRequestSchema = z.object({
+  /** Null takes the rep off any territory, which is how a new hire starts. */
+  territoryId: z.string().nullable(),
+});
+
+export const territoriesResponseSchema = z.object({
+  territories: z.array(territoryWireSchema),
+  /** How many doors each territory holds, so a manager can see the split. */
+  doorCounts: z.record(z.string(), z.number()),
 });
 
 export const repWireSchema = z.object({

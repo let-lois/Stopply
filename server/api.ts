@@ -23,6 +23,13 @@ import {
 import { createCredential, deleteCredential, listCredentials } from '@server/routes/credentials';
 import { getFieldSalesData, logVisit } from '@server/routes/fieldSales';
 import { fieldDoors, fieldLogVisit, fieldLogin, fieldLogout } from '@server/routes/field';
+import {
+  assignRep,
+  createTerritory,
+  deleteTerritory,
+  listTerritories,
+  updateTerritory,
+} from '@server/routes/territories';
 
 export const routes = [
   route('POST', '/api/auth/login', login),
@@ -46,6 +53,13 @@ export const routes = [
   // dispatching on a string from the URL.
   route('GET', '/api/clients/:clientId/field-sales/data', getFieldSalesData),
   route('POST', '/api/clients/:clientId/field-sales/visits', logVisit),
+
+  // Territories, and who works them.
+  route('GET', '/api/clients/:clientId/territories', listTerritories),
+  route('POST', '/api/clients/:clientId/territories', createTerritory),
+  route('PATCH', '/api/clients/:clientId/territories/:territoryId', updateTerritory),
+  route('DELETE', '/api/clients/:clientId/territories/:territoryId', deleteTerritory),
+  route('PATCH', '/api/clients/:clientId/reps/:repId', assignRep),
 
   // The rep app. A separate prefix with a separate cookie and a separate
   // session table, so nothing here can reach a client's reporting and nothing

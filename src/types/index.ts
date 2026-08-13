@@ -99,7 +99,11 @@ export type AuditAction =
   | 'LOG_VISIT'
   | 'ADD_PROPERTY'
   | 'ADD_CREDENTIAL'
-  | 'REMOVE_CREDENTIAL';
+  | 'REMOVE_CREDENTIAL'
+  | 'CREATE_TERRITORY'
+  | 'UPDATE_TERRITORY'
+  | 'DELETE_TERRITORY'
+  | 'ASSIGN_REP';
 
 export const AUDIT_ACTIONS: readonly AuditAction[] = [
   'CREATE_CLIENT',
@@ -112,6 +116,10 @@ export const AUDIT_ACTIONS: readonly AuditAction[] = [
   'ADD_PROPERTY',
   'ADD_CREDENTIAL',
   'REMOVE_CREDENTIAL',
+  'CREATE_TERRITORY',
+  'UPDATE_TERRITORY',
+  'DELETE_TERRITORY',
+  'ASSIGN_REP',
 ] as const;
 
 export interface AuditLogEntry {

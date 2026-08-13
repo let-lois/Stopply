@@ -16,6 +16,10 @@ const ACTION_ACCENT: Record<AuditAction, 'emerald' | 'rose' | 'indigo' | 'amber'
   ADD_PROPERTY: 'slate',
   ADD_CREDENTIAL: 'indigo',
   REMOVE_CREDENTIAL: 'rose',
+  CREATE_TERRITORY: 'indigo',
+  UPDATE_TERRITORY: 'amber',
+  DELETE_TERRITORY: 'rose',
+  ASSIGN_REP: 'emerald',
 };
 
 export default function AuditLogPage() {

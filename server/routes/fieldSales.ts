@@ -11,12 +11,30 @@ import {
   logVisitResponseSchema,
 } from '@/modules/field-sales/contracts';
 import type { z } from 'zod';
+import { isUsableRing, type Ring } from '@/modules/field-sales/polygon';
 
 type FieldSalesData = z.infer<typeof fieldSalesDataSchema>;
 type LogVisitResponse = z.infer<typeof logVisitResponseSchema>;
 type Visit = FieldSalesData['visits'][number];
 
 const MODULE_ID = 'field_sales';
+
+/**
+ * Read a stored ring, or null.
+ *
+ * Returns null for anything it cannot parse rather than throwing: a territory
+ * with a corrupt shape should render as one without a shape, not take the
+ * whole dashboard down.
+ */
+export function parseRing(json: string | null): Ring | null {
+  if (!json) return null;
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return isUsableRing(parsed as Ring) ? (parsed as Ring) : null;
+  } catch {
+    return null;
+  }
+}
 
 export async function getFieldSalesData(ctx: RouteContext): Promise<Response> {
   const session = await requireSession(ctx.request, ctx.env);
@@ -35,7 +53,7 @@ export async function getFieldSalesData(ctx: RouteContext): Promise<Response> {
         south: number;
         east: number;
         west: number;
-        assigned_rep_id: string | null;
+        boundary_json: string | null;
       }>(),
     ctx.env.DB.prepare('SELECT * FROM reps WHERE client_id = ?1 ORDER BY name')
       .bind(clientId)
@@ -77,7 +95,9 @@ export async function getFieldSalesData(ctx: RouteContext): Promise<Response> {
       id: t.id,
       name: t.name,
       bounds: { north: t.north, south: t.south, east: t.east, west: t.west },
-      assignedRepId: t.assigned_rep_id,
+      boundary: parseRing(t.boundary_json),
+      // Derived from the reps, which is the only place the assignment lives.
+      repIds: reps.results.filter((r) => r.territory_id === t.id).map((r) => r.id),
     })),
     reps: reps.results.map((r) => ({ id: r.id, name: r.name, territoryId: r.territory_id })),
     properties: properties.results.map((p) => ({
