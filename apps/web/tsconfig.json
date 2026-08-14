@@ -1,34 +1,34 @@
 {
   "compilerOptions": {
-    "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
     "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
     "jsx": "react-jsx",
-    "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "allowJs": false,
+    "skipLibCheck": true,
+    "types": ["vitest/globals", "@testing-library/jest-dom"],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@server/*": ["./server/*"]
     }
   },
-  "include": [
-    "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts",
-    "**/*.mts"
-  ],
-  "exclude": ["node_modules"]
+  // server/ and functions/ are typechecked by this same project rather than a
+  // second one. They keep the DOM lib and import the handful of Cloudflare
+  // types they need explicitly: pulling in @cloudflare/workers-types globally
+  // redeclares Request, Response and fetch, and reconciling two definitions of
+  // those across one codebase costs more than it buys.
+  //
+  // The contracts in src/lib/api are shared by both sides, so one tsconfig
+  // means a change to a wire shape breaks the server and the client in the
+  // same run.
+  "include": ["src", "server", "functions"]
 }

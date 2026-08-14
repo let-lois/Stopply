@@ -1,25 +1,57 @@
-// Service worker for the field app.
+// The rep app's service worker.
 //
-// Its only job is to make sure a rep who opens the app with no signal gets
-// the app, not the browser's offline page. Their queued knocks already live
-// in localStorage, so once the shell loads they can keep working and the
-// queue drains later.
+// One job: make the app open with no signal. A rep who closes it in a dead
+// zone and reopens it must get their door list, not the browser's dinosaur.
 //
-// It deliberately does NOT cache API responses. Field data is other
-// people's live work, and a stale roster or a stale "do not knock" list is
-// worse than no list at all. Requests to /api pass straight through and
-// fail honestly when there is no connection, which the app already handles.
+// The rule that matters more than the caching: this never caches /api. Not
+// once, not stale-while-revalidate, not "just the door list". A stale
+// do-not-knock list means a rep knocks a household that asked not to be, which
+// is the one mistake this whole system exists to prevent. Door data comes from
+// the outbox and from the network, never from here.
+//
+// Registered with scope /field, so nothing about the dashboard passes through
+// it. A service worker controls the pages in its scope and every request those
+// pages make, which is why assets outside /field are still handled here while
+// the dashboard's identical requests are not.
 
 const CACHE = 'stopply-field-v1';
-const SHELL = ['/field', '/field/index.html'];
+
+const SHELL = ['/field', '/index.html', '/icon-192.png'];
+
+/**
+ * The assets the page needs to boot at all.
+ *
+ * Hashed filenames are not known when this file is written, so they are read
+ * out of the HTML at install time instead of listed here or hard-coded by a
+ * build step. Without this the first visit caches the shell and none of the
+ * scripts: those were requested before the worker took control, so it never
+ * saw them, and a reload offline served a document referencing files that were
+ * not there. The app appeared to have offline support and did not.
+ *
+ * Everything else, including the lazily loaded route chunks, is cached as it
+ * is first fetched by the handler below.
+ */
+async function precacheEntryAssets(cache) {
+  try {
+    const response = await fetch('/index.html', { cache: 'reload' });
+    const html = await response.text();
+    const assets = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map((m) => m[1]);
+    await cache.addAll([...new Set(assets)]);
+  } catch (error) {
+    // A failed precache is not a failed install. The worker is still worth
+    // having: it will cache what it sees from here on.
+    console.warn('[field-sw] could not precache entry assets', error);
+  }
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(CACHE)
-      // Individually, so one missing path cannot fail the whole install and
-      // leave the app with no worker at all.
-      .then((cache) => Promise.allSettled(SHELL.map((path) => cache.add(path))))
+      .then(async (cache) => {
+        await cache.addAll(SHELL);
+        await precacheEntryAssets(cache);
+      })
       .then(() => self.skipWaiting())
   );
 });
@@ -35,37 +67,40 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const request = event.request;
-  if (request.method !== 'GET') return;
-
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
-  // Live data only. See the note above.
-  if (url.pathname.startsWith('/api/')) return;
 
-  // Navigations: network first so a rep with signal always gets the current
-  // build, falling back to the cached shell when they do not.
+  // Anything that changes state, and anything at all under /api, goes to the
+  // network untouched. A POST that a service worker "helpfully" served from a
+  // cache would be a knock that never happened.
+  if (request.method !== 'GET' || url.pathname.startsWith('/api/')) return;
+  if (url.origin !== self.location.origin) return;
+
+  // A navigation: try the network so a deployed update is picked up, and fall
+  // back to the cached shell when there is nothing to reach. React Router
+  // resolves the actual route once the shell is running.
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
         .then((response) => {
           const copy = response.clone();
-          caches.open(CACHE).then((cache) => cache.put('/field', copy));
+          void caches.open(CACHE).then((cache) => cache.put('/field', copy));
           return response;
         })
-        .catch(() => caches.match('/field').then((hit) => hit ?? caches.match('/field/index.html')))
+        .catch(() => caches.match('/field').then((hit) => hit ?? caches.match('/index.html')))
     );
     return;
   }
 
-  // Static assets: cache first, since a build's assets are immutable and
-  // this is what makes a cold offline open fast.
+  // Build assets carry a content hash in the filename, so a cached copy can
+  // never be the wrong version of itself. Cache first, and populate on the way
+  // past.
   event.respondWith(
     caches.match(request).then((hit) => {
       if (hit) return hit;
       return fetch(request).then((response) => {
         if (response.ok && response.type === 'basic') {
           const copy = response.clone();
-          caches.open(CACHE).then((cache) => cache.put(request, copy));
+          void caches.open(CACHE).then((cache) => cache.put(request, copy));
         }
         return response;
       });

@@ -19,7 +19,8 @@ This is the LetLois multi-tenant BI dashboard (`bi.letlois.com`). It tracks lead
 ## Tech stack
 
 - **Monorepo:** pnpm workspaces (`pnpm-workspace.yaml`) — packages under `apps/*`, `workers/*`, `packages/*`.
-- **Frontend (`apps/web`):** Next.js, static export (`output: 'export'`, `images: { unoptimized: true }`). Build output: `apps/web/out/`.
+- **Frontend (`apps/web`):** React + Vite single page app, built to `apps/web/out/`. It replaced the Next.js static export, and the output directory is deliberately still `out` because the Cloudflare Pages project is configured in the dashboard to publish that path. Vite's default is `dist`; a build writing there succeeds and publishes nothing, which reads exactly like a deploy that worked.
+- **The frontend talks to `workers/api`, not to its own server.** It ships a `server/` and a `functions/` directory of its own, from when it ran standalone at `stopply-platform.pages.dev`, and on `bi.letlois.com` none of that is reachable: the Worker route owns `/api/*` and Worker routes take precedence over Pages Functions. `apps/web/.env.production` sets `VITE_BACKEND=platform` for exactly that reason, and `apps/web/src/lib/api/platform/` is the adapter layer that speaks the Worker's protocol. Do not delete `workers/` or `packages/`: the frontend depends on that Worker being deployed and serving.
 - **API (`workers/api`):** Cloudflare Worker (Hono), bindings defined in root `wrangler.toml`: D1 (`CONTROL_DB`), R2 (`ASSETS`, `CSV_BUCKET`), KV (`SESSIONS`). Secrets (`CF_API_TOKEN`, `CRED_MASTER_KEY`, `ANTHROPIC_API_KEY`, `INGEST_PEPPER`, etc.) are set via `wrangler secret put` and never committed.
 - **Other workers:** `workers/sync` (own `wrangler.toml`).
 - **Shared packages:** `packages/attribution` (click ID / channel normalization), `packages/connectors` (CSV parsers), `packages/db`, `packages/field` (door to door address normalization, disposition semantics, field reporting aggregation).
@@ -36,8 +37,9 @@ pnpm build                 # builds all packages (root script: pnpm -r build)
 pnpm test                  # runs all package test suites
 
 # Frontend only, from apps/web/:
-next dev
-next build
+npm run dev
+npm run build
+npm run verify        # typecheck, lint, tests, build
 ```
 
 ---

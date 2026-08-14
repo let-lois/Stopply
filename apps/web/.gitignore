@@ -1,41 +1,17 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
-
-# testing
-/coverage
-
-# next.js
-/.next/
-/out/
-
-# production
-/build
-
-# misc
+node_modules
+dist
+coverage
 .DS_Store
-*.pem
+*.local
+qa/screenshots
+.wrangler
+.dev.vars
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
+# Database exports. These carry password hashes, session token hashes and the
+# sealed credential blobs, so they belong on the machine doing a migration and
+# nowhere else. The runbook in migrate/README.md regenerates one in a command.
+migrate/*.sql
 
-# env files (can opt-in for committing if needed)
-.env*
-
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# Vite's build output. Named `out` to match the Cloudflare Pages project's
+# configured output directory, not Vite's default `dist`.
+out/
