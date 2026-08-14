@@ -99,16 +99,42 @@ export const clientSchema = z.object({
   id: z.string(),
   code: z.string(),
   name: z.string(),
-  industry: z.string(),
+  /**
+   * Optional, because not every backend records one.
+   *
+   * This app's own server asks for an industry when a workspace is created.
+   * The BI platform has no such column, and writing a plausible one in on its
+   * behalf would put a guess on screen as though the client had told us.
+   * Empty is the honest answer, and the places that show it drop the field
+   * rather than render a dangling separator.
+   */
+  industry: z.string().default(''),
   status: clientStatusSchema,
-  plan: clientPlanSchema,
+  /**
+   * The billing plan, as the backend spells it.
+   *
+   * Not an enum here, though it still is one on the create request below. The
+   * difference is deliberate: what this app offers when it creates a workspace
+   * is ours to enumerate, but what an existing workspace is already on is not.
+   * The BI platform's vocabulary is its own, and validating a real client's
+   * real plan against our list would reject it for being unfamiliar.
+   */
+  plan: z.string(),
   dataMode: dataModeSchema,
   enabledModules: z.array(moduleIdSchema),
   integrations: z.array(integrationSchema),
   createdAt: isoDateTime,
-  lastActive: isoDateTime,
-  contactEmail: z.string(),
-  contactName: z.string(),
+  /**
+   * Null when the backend does not track it.
+   *
+   * The BI platform records when a workspace was created and not when anyone
+   * last used it. Passing created_at off as last activity would show "active 5
+   * months ago" for a client whose crew knocked doors this morning, which is
+   * worse than showing nothing.
+   */
+  lastActive: isoDateTime.nullable().default(null),
+  contactEmail: z.string().default(''),
+  contactName: z.string().default(''),
   /**
    * IANA zone, the one this client's days are cut in.
    *

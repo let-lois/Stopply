@@ -12,6 +12,7 @@ import { usePlatformActions } from '@/lib/state/PlatformProvider';
 import { MODULE_ORDER, MODULE_REGISTRY } from '@/modules/registry';
 import { Button, Dialog, Switch } from '@/components/ui';
 import { accentClasses } from '@/types/accent';
+import { clientSubtitle } from '@/lib/format/clientSubtitle';
 
 // Every tab here has a button and a panel. The union is the source of both.
 const TABS = ['modules', 'data'] as const;
@@ -39,7 +40,7 @@ export function ClientConfigDialog({
       open={open}
       onClose={onClose}
       title={client.name}
-      description={`${client.plan} · ${client.industry}`}
+      description={clientSubtitle(client)}
       footer={<Button onClick={onClose}>Done</Button>}
     >
       <div className="flex flex-col gap-5">

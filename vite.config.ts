@@ -28,7 +28,15 @@ export default defineConfig({
     projects: [
       {
         extends: true,
-        test: { name: 'app', environment: 'jsdom', include: ['src/**/*.test.{ts,tsx}'] },
+        test: {
+          name: 'app',
+          environment: 'jsdom',
+          include: ['src/**/*.test.{ts,tsx}'],
+          // The BI platform adapters are tested against a real server rather
+          // than a stubbed fetch, because what is in question is whether this
+          // app and that platform agree on the wire. This starts it.
+          globalSetup: ['./qa/start-bi-fake.mjs'],
+        },
       },
       {
         extends: true,

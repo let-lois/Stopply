@@ -5,6 +5,7 @@ import { Card, Switch } from '@/components/ui';
 import { LogoSetting } from '@/platform/clients/LogoSetting';
 import { NotFoundView } from '@/platform/routing/NotFoundView';
 import { accentClasses } from '@/types/accent';
+import { clientSubtitle } from '@/lib/format/clientSubtitle';
 
 export default function WorkspaceSettingsPage() {
   const { clientId } = useParams<{ clientId: string }>();
@@ -20,9 +21,7 @@ export default function WorkspaceSettingsPage() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold">{client.name}</h1>
-        <p className="micro-label mt-1">
-          {client.plan} · {client.industry}
-        </p>
+        <p className="micro-label mt-1">{clientSubtitle(client)}</p>
       </div>
 
       {/* First, because it is the setting a client is most likely to have

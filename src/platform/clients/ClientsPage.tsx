@@ -64,7 +64,12 @@ export default function ClientsPage() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold">{client.name}</h2>
-                <p className="text-sm text-[var(--color-ink-soft)]">{client.industry}</p>
+                {/* Dropped rather than rendered empty. A backend that does not
+                    record an industry would otherwise leave a blank line here
+                    that reads as a missing value. */}
+                {client.industry && (
+                  <p className="text-sm text-[var(--color-ink-soft)]">{client.industry}</p>
+                )}
               </div>
               <Badge accent={client.status === 'active' ? 'emerald' : 'amber'}>
                 {client.status}
@@ -90,8 +95,13 @@ export default function ClientsPage() {
               })}
             </ul>
 
+            {/* Joined from whatever is actually known. The last active clause
+                disappears when the backend does not track it, rather than
+                dating the workspace by when it was created. */}
             <p className="mt-auto pt-4 text-xs text-[var(--color-ink-faint)]">
-              {client.plan} · active {relativeTime(client.lastActive)}
+              {[client.plan, client.lastActive && `active ${relativeTime(client.lastActive)}`]
+                .filter(Boolean)
+                .join(' · ')}
             </p>
           </CardButton>
           {can('client.configure', { clientId: client.id }) && (

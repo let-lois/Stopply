@@ -51,24 +51,41 @@ export interface IntegrationStatus {
 }
 
 export type ClientStatus = 'active' | 'paused' | 'onboarding';
+/**
+ * The plans this app offers when it creates a workspace.
+ *
+ * Still an enum, and still what the create form is built from. It is not the
+ * type of `Client.plan`, for the reason given there.
+ */
 export type ClientPlan = 'Enterprise' | 'Pro' | 'Growth';
 
 export interface Client {
   id: string;
   code: string;
   name: string;
+  /** May be empty: not every backend records one. */
   industry: string;
   status: ClientStatus;
-  plan: ClientPlan;
+  /**
+   * The billing plan as the backend spells it, shown and not interpreted.
+   *
+   * Not ClientPlan. A workspace this app did not create is on whatever plan
+   * the system holding it sells, and the BI platform's names are not this
+   * app's. Typing this as our own enum would make a real client's real plan
+   * unrepresentable.
+   */
+  plan: string;
   dataMode: DataMode;
   /** What this client has paid for. Enforced by ModuleGuard, and in Phase 2 by the server. */
   enabledModules: ModuleId[];
   integrations: IntegrationStatus[];
   /** ISO 8601. Every timestamp in this file is ISO 8601 and formatted at the render boundary. */
   createdAt: string;
-  /** ISO 8601. */
-  lastActive: string;
+  /** ISO 8601, or null when the backend does not track last activity. */
+  lastActive: string | null;
+  /** May be empty: not every backend records one. */
   contactEmail: string;
+  /** May be empty: not every backend records one. */
   contactName: string;
   /**
    * IANA zone. Reporting days are cut here, not in the reader's zone: a
