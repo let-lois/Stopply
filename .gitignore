@@ -6,3 +6,8 @@ coverage
 qa/screenshots
 .wrangler
 .dev.vars
+
+# Database exports. These carry password hashes, session token hashes and the
+# sealed credential blobs, so they belong on the machine doing a migration and
+# nowhere else. The runbook in migrate/README.md regenerates one in a command.
+migrate/*.sql
