@@ -13,28 +13,35 @@
 // genuinely believes it is 393px wide.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import deviceList from '@letlois/field-ui/devices.json';
 import './preview.css';
 
 interface Device {
   id: string;
   name: string;
+  platform: string;
   detail: string;
   width: number;
   height: number;
-  // Phones get a bezel; a laptop gets a browser-ish frame. Drawing a phone
-  // shell around a 1280px viewport would be a lie about what is being shown.
-  shell: 'phone' | 'tablet' | 'flat';
+  // Phones get a bezel, and an Android one is squarer than an iPhone. A
+  // laptop gets a plain window: drawing a phone shell around a 1280px
+  // viewport would be a lie about what is being shown.
+  shell: 'ios' | 'android' | 'tablet' | 'flat';
 }
 
-// Real sizes, not round numbers. The point of checking a layout at 375px is
-// that a rep somewhere is holding a phone that is exactly 375px.
-const DEVICES: Device[] = [
-  { id: 'se', name: 'iPhone SE', detail: 'the smallest phone still in use', width: 375, height: 667, shell: 'phone' },
-  { id: 'ip15', name: 'iPhone 15', detail: 'what most reps will have', width: 393, height: 852, shell: 'phone' },
-  { id: 'pixel', name: 'Pixel 8', detail: 'a typical Android', width: 412, height: 915, shell: 'phone' },
-  { id: 'ipad', name: 'iPad mini', detail: 'a manager reviewing on a tablet', width: 744, height: 1133, shell: 'tablet' },
-  { id: 'desktop', name: 'Desktop', detail: 'the web app at /field on a laptop', width: 1280, height: 800, shell: 'flat' },
-];
+// Shared with the single file preview so the two cannot disagree about what
+// the app looks like. See the note at the top of devices.json.
+const DEVICES = deviceList.devices as Device[];
+
+// Grouped so the platform is readable off the page. Ungrouped, a row of
+// device names reads as an Apple only list unless you already know which
+// company makes a Pixel.
+const GROUPS: Array<{ platform: string; devices: Device[] }> = [];
+for (const device of DEVICES) {
+  const group = GROUPS.find((g) => g.platform === device.platform);
+  if (group) group.devices.push(device);
+  else GROUPS.push({ platform: device.platform, devices: [device] });
+}
 
 export default function FieldPreviewPage() {
   const [device, setDevice] = useState<Device>(DEVICES[1]!);
@@ -110,18 +117,25 @@ export default function FieldPreviewPage() {
           <span className="fp-sub">test site, fixture data</span>
         </div>
 
-        <div className="fp-devices" role="group" aria-label="Screen size">
-          {DEVICES.map((d) => (
-            <button
-              key={d.id}
-              type="button"
-              className={d.id === device.id ? 'active' : ''}
-              aria-pressed={d.id === device.id}
-              title={`${d.detail}, ${d.width} by ${d.height}`}
-              onClick={() => setDevice(d)}
-            >
-              {d.name}
-            </button>
+        <div className="fp-platforms">
+          {GROUPS.map((group) => (
+            <div className="fp-platform" key={group.platform}>
+              <span className="fp-platform-label">{group.platform}</span>
+              <div className="fp-devices" role="group" aria-label={`${group.platform} screen sizes`}>
+                {group.devices.map((d) => (
+                  <button
+                    key={d.id}
+                    type="button"
+                    className={d.id === device.id ? 'active' : ''}
+                    aria-pressed={d.id === device.id}
+                    title={`${d.detail}, ${d.width} by ${d.height}`}
+                    onClick={() => setDevice(d)}
+                  >
+                    {d.name}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
 
@@ -178,7 +192,7 @@ export default function FieldPreviewPage() {
 
       <footer className="fp-foot">
         <span>
-          {device.name} · {device.width}&times;{device.height}
+          {device.platform} · {device.name} · {device.width}&times;{device.height}
           {scale < 1 && ` · shown at ${Math.round(scale * 100)}%`}
         </span>
         <span className="fp-hint">

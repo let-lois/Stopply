@@ -1,0 +1,85 @@
+{
+  "comment": [
+    "Screen sizes the preview harnesses offer, in CSS pixels, which is what",
+    "the app's own media queries and layout actually respond to.",
+    "",
+    "One list, read by both harnesses: the test site at /field-preview and",
+    "the single file preview built by apps/field-app. They must not disagree",
+    "about what the app looks like, and two copies of this list is exactly",
+    "how they would start to.",
+    "",
+    "Real sizes, not round numbers. The point of checking a layout at 360px",
+    "is that a rep somewhere is holding a phone that is exactly 360px. Note",
+    "that the narrowest phone here is a Samsung, not an iPhone: Android is",
+    "the tighter constraint, which is easy to get wrong by testing on an",
+    "iPhone and assuming the rest follows.",
+    "",
+    "shell picks the frame drawn around it. Android phones are squarer than",
+    "iPhones and it is worth being able to see which one you are looking at."
+  ],
+  "devices": [
+    {
+      "id": "se",
+      "name": "iPhone SE",
+      "platform": "iOS",
+      "detail": "the smallest iPhone still in use",
+      "width": 375,
+      "height": 667,
+      "shell": "ios"
+    },
+    {
+      "id": "ip15",
+      "name": "iPhone 15",
+      "platform": "iOS",
+      "detail": "what most iPhone reps will have",
+      "width": 393,
+      "height": 852,
+      "shell": "ios"
+    },
+    {
+      "id": "ipad",
+      "name": "iPad mini",
+      "platform": "iOS",
+      "detail": "a manager reviewing on an iPad",
+      "width": 744,
+      "height": 1133,
+      "shell": "tablet"
+    },
+    {
+      "id": "galaxy",
+      "name": "Galaxy S24",
+      "platform": "Android",
+      "detail": "the most common Android, and the narrowest screen here",
+      "width": 360,
+      "height": 780,
+      "shell": "android"
+    },
+    {
+      "id": "pixel",
+      "name": "Pixel 8",
+      "platform": "Android",
+      "detail": "a wider Android",
+      "width": 412,
+      "height": 915,
+      "shell": "android"
+    },
+    {
+      "id": "tab",
+      "name": "Galaxy Tab",
+      "platform": "Android",
+      "detail": "a manager reviewing on an Android tablet",
+      "width": 800,
+      "height": 1280,
+      "shell": "tablet"
+    },
+    {
+      "id": "desktop",
+      "name": "Desktop",
+      "platform": "Web",
+      "detail": "the web app at /field on a laptop",
+      "width": 1280,
+      "height": 800,
+      "shell": "flat"
+    }
+  ]
+}
