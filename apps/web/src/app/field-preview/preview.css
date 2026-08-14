@@ -39,6 +39,18 @@
   margin-right: auto;
 }
 
+.fp-back {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+
+.fp-back:hover { color: var(--accent); }
+
+.fp-back::before { content: '\2190\00a0'; }
+
 .fp-title {
   font-family: var(--font-display);
   font-size: 16px;

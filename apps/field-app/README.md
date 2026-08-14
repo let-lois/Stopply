@@ -105,6 +105,10 @@ Two ways, both running the real screens with the network replaced by
 `@letlois/field-ui/demo`. Neither can reach a client's data, and neither
 needs a rep's password.
 
+**The gallery, `/prototypes`.** Every app in build, what it is, which stores
+it targets, and what is still in the way of shipping it. Each card opens the
+app. Start here.
+
 **The test site, `/field-preview`.** Deployed with the dashboard, so every
 push to a branch gets a Cloudflare Pages URL and merging puts it on
 `bi.letlois.com/field-preview`. It runs the app in a frame sized to a real

@@ -103,6 +103,9 @@ export default function FieldPreviewPage() {
     <div className="fp">
       <header className="fp-bar">
         <div className="fp-identity">
+          <a className="fp-back" href="/prototypes">
+            Prototypes
+          </a>
           <span className="fp-title">All Star Field</span>
           <span className="fp-sub">test site, fixture data</span>
         </div>
@@ -161,6 +164,9 @@ export default function FieldPreviewPage() {
               transform: `scale(${scale})`,
             }}
           >
+            {/* Loaded once, as an attribute, and never navigated again.
+                See the note on the controls above, and the one on the
+                gallery link that opens this page. */}
             <iframe
               ref={frameRef}
               src="/field-demo"
