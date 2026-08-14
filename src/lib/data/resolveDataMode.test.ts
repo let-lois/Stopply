@@ -7,7 +7,7 @@ function client(over: Partial<Client> = {}): Client {
     plan: 'Pro', dataMode: 'demo', enabledModules: ['advertising'], integrations: [],
     createdAt: '2026-01-01T00:00:00.000Z', lastActive: '2026-01-01T00:00:00.000Z',
     contactEmail: 'a@example.invalid', contactName: 'A',
-    timezone: 'America/Los_Angeles',
+    timezone: 'America/Los_Angeles', logo: null,
     ...over,
   };
 }

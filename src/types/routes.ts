@@ -81,6 +81,13 @@ export const routes = {
   settings: () => '/settings',
   workspaceSettings: (clientId: string) => `/c/${clientId}/settings`,
   /**
+   * A workspace's front door, which redirects to its first enabled module.
+   *
+   * Exists because a client-scoped user has no client list to go home to: the
+   * header's mark has to lead somewhere they are allowed to be.
+   */
+  workspaceIndex: (clientId: string) => `/c/${clientId}`,
+  /**
    * `viewId` is typed at the call site by the registry: the workspace nav and
    * defaultViewFor both derive it from MODULE_REGISTRY[moduleId].views, so a
    * view that does not exist cannot be linked to.

@@ -165,6 +165,14 @@ export const fieldSessionSchema = z.object({
   repName: z.string(),
   clientId: z.string(),
   clientName: z.string(),
+  /**
+   * The employer's mark, so the rep app wears it too.
+   *
+   * A rep is the client's staff, not ours, and the phone in their hand is the
+   * most visible piece of this product. Defaulted rather than required so a
+   * phone running an older build against a newer server still validates.
+   */
+  clientLogo: z.string().nullable().default(null),
   territoryName: z.string().nullable(),
 });
 

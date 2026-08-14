@@ -26,7 +26,19 @@ export interface SessionState {
 }
 
 export interface SessionActions {
-  signIn: (email: string, password: string, turnstileToken: string) => Promise<void>;
+  /**
+   * Sign in, and hand back the session that resulted.
+   *
+   * Returning it rather than only storing it is what lets the login page send
+   * a client-scoped user to their own workspace. Reading it from context on
+   * the next render instead would mean redirecting to the client list first
+   * and bouncing off it.
+   */
+  signIn: (
+    email: string,
+    password: string,
+    turnstileToken: string
+  ) => Promise<SessionResponse>;
   signOut: () => Promise<void>;
 }
 
@@ -71,6 +83,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         sessionResponseSchema
       );
       apply(response);
+      return response;
     },
     [apply]
   );

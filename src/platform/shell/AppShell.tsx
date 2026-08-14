@@ -24,10 +24,16 @@ import { Skeleton } from '@/components/ui';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { WorkspaceBanner } from '@/platform/shell/WorkspaceBanner';
 import { FieldSalesProvider } from '@/lib/state/FieldSalesProvider';
+import { useBrand } from '@/lib/brand/useBrand';
+import { useDocumentBrand } from '@/lib/brand/useDocumentBrand';
 
 export function AppShell() {
   const [navOpen, setNavOpen] = useState(false);
   const { pathname } = useLocation();
+  // The tab, which is as much a part of "a client never sees Stopply" as the
+  // header is. Done at the shell rather than per view, so a page added later
+  // cannot forget.
+  useDocumentBrand(useBrand());
 
   // The drawer closes from the click that navigates, not from an effect
   // watching the URL. Closing it is a consequence of the interaction, and

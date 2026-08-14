@@ -495,6 +495,68 @@ on fourteen elements, three accents used as text on their own tint, and the
 primary button's own label. Those tokens moved. Both themes now pass at 4.5:1
 for small text and 3:1 for large.
 
+## White label
+
+A client never sees Stopply. That is one sentence, trivially satisfied on the
+page somebody looked at, and trivially broken on the one they did not, so it is
+enforced in one place and checked by `qa/whitelabel-qa.mjs`.
+
+**`useBrand()` is the only thing that decides whose brand a page wears**, and it
+has two rules:
+
+1. Inside a workspace route the brand is that workspace's, even for a LetLois
+   admin. They are looking at the client's product, not at ours.
+2. A client-scoped user is never shown ours, anywhere. Their session is pinned
+   to one workspace, so the team page lists their people and the activity page
+   is their trail. The distinguishing fact is `clientId === null`, which the
+   server issues only for a platform-wide account.
+
+**Sign-in is the exception, and the only one.** Both sign-ins, dashboard and
+rep, are reached before anyone knows which workspace the visitor belongs to, so
+there is no brand to wear yet and no client-facing surface to keep clean. Each
+carries a "Powered by Stopply" line. The rep sign-in lost its "Stopply Field"
+heading for the same reason.
+
+**The tab counts.** `useDocumentBrand` sets the title and every `link[rel=icon]`,
+because a workspace can be perfectly branded on screen and still say Stopply in
+the tab strip, which is where the eye goes with six tabs open. The favicon for a
+client with no uploaded mark is their monogram drawn on a canvas, not the
+Stopply icon: falling back to ours there would break the promise in the one
+place it is most visible.
+
+**The sidebar now filters by permission.** It used to offer all five platform
+links to everybody; the server refused the ones a client could not use, so
+nothing leaked, but a client was offered a "Clients" page listing every other
+client of the agency and got an error for their trouble. Under a white label
+that is worse than an error.
+
+### The logo lives in the row, not in a bucket
+
+`clients.logo` is a data URI. R2 is the obvious answer and was not taken: it
+means a binding, a serving path, an upload endpoint that streams, a cleanup
+story for orphaned objects, and a second place for a workspace's data to live.
+For an image measured in tens of kilobytes, read by the same people who just
+fetched the client row, the row is cheaper and more consistent, and a logo
+cannot go missing independently of the client that owns it.
+
+The cost is a ceiling: 96KB of encoded data, refused by the API above that. If a
+client ever needs artwork bigger than that, this column is the wrong home.
+
+**Raster only, no SVG.** An SVG is a document that one workspace member uploads
+and every other one renders. Rendering it through `<img>` does defuse that in
+current browsers, but the reason to allow it at all is convenience, which is not
+worth reasoning about a browser's script-blocking behaviour for.
+
+**`checkLogo` is imported by the server, not restated.** A rule written twice
+eventually differs, and the failure mode is a logo the picker accepted and the
+endpoint quietly refused.
+
+**Every client has a mark from the moment they exist.** The fallback is derived,
+not stored: initials on a colour hashed from the client id. The colour is stable
+per id rather than distinct across all ids, deliberately. Resolving collisions
+would make one workspace's colour depend on which others exist; the initials are
+what actually tell two workspaces apart.
+
 ## Brand assets
 
 `public/stopply-logo-mark.png` and `stopply-logo-wordmark.png` are the real

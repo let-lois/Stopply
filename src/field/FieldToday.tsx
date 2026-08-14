@@ -11,7 +11,9 @@ import { useField, useFieldActions, type Door } from '@/lib/field/FieldSessionPr
 import { distanceM, formatDistance, getFix, type Fix, type GeoState } from '@/lib/field/geo';
 import { DISPOSITION_LABELS } from '@/modules/field-sales/selectors';
 import { KnockSheet } from '@/field/KnockSheet';
-import { ThemeToggle } from '@/components/ui';
+import { BrandMark, ThemeToggle } from '@/components/ui';
+import { useDocumentBrand } from '@/lib/brand/useDocumentBrand';
+import type { Brand } from '@/lib/brand/useBrand';
 
 // Bright enough to read on a screen angled at the sky. The dashboard's
 // muted variants of these wash out completely outdoors.
@@ -88,6 +90,22 @@ export default function FieldToday() {
     [doors, selected]
   );
 
+  // The rep works for the client, not for us, so the app in their hand carries
+  // the client's name and mark. Built from the session rather than from the
+  // dashboard's brand hook, because this tree has no PlatformProvider and no
+  // client roster: it holds exactly the one workspace the rep belongs to.
+  const brand = useMemo<Brand>(
+    () => ({
+      name: data?.session.clientName ?? '',
+      tagline: null,
+      logo: data?.session.clientLogo ?? null,
+      key: data?.session.clientId ?? 'field',
+      isAgency: false,
+    }),
+    [data]
+  );
+  useDocumentBrand(brand);
+
   const onRefresh = () => {
     setRefreshing(true);
     void refresh().finally(() => setRefreshing(false));
@@ -99,11 +117,14 @@ export default function FieldToday() {
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-20 border-b border-[var(--color-hairline)] bg-[var(--color-surface-base)]/95 px-4 py-3 backdrop-blur">
         <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="truncate text-base font-semibold">{data.session.repName}</p>
-            <p className="truncate text-sm text-[var(--color-ink-soft)]">
-              {data.session.territoryName ?? data.session.clientName}
-            </p>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <BrandMark brand={brand} size={36} />
+            <div className="min-w-0">
+              <p className="truncate text-base font-semibold">{data.session.repName}</p>
+              <p className="truncate text-sm text-[var(--color-ink-soft)]">
+                {data.session.territoryName ?? data.session.clientName}
+              </p>
+            </div>
           </div>
           <div className="flex shrink-0 items-center gap-1">
             <button

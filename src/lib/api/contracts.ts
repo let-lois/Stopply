@@ -117,6 +117,25 @@ export const clientSchema = z.object({
    * cannot answer differently for the same client.
    */
   timezone: z.string().default('America/Los_Angeles'),
+  /**
+   * The client's own mark, as a data URI, or null to draw the monogram.
+   *
+   * Defaulted rather than required so a response from a deploy that predates
+   * the column still validates. That is not hypothetical here: shipping a
+   * required field before the reader that understands it is exactly what took
+   * the Canvass page down earlier.
+   */
+  logo: z.string().nullable().default(null),
+});
+
+/**
+ * Setting a workspace's mark.
+ *
+ * Null clears it and returns the workspace to its monogram, which is why this
+ * is nullable rather than a separate delete route.
+ */
+export const setClientLogoRequestSchema = z.object({
+  logo: z.string().max(200_000).nullable(),
 });
 
 export const clientsResponseSchema = z.object({ clients: z.array(clientSchema) });

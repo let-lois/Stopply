@@ -4,17 +4,33 @@
 import { NavLink, useParams } from 'react-router-dom';
 import { FileClock, KeyRound, Settings, Users2, Building2 } from 'lucide-react';
 import { usePlatform } from '@/lib/state/PlatformProvider';
+import { useCan, type Permission } from '@/lib/auth/useCan';
 import { MODULE_ORDER, MODULE_REGISTRY } from '@/modules/registry';
 import { routes } from '@/types/routes';
 import { accentClasses } from '@/types/accent';
 
+// Each link carries the permission that makes it usable, so the nav and the
+// server agree on who may go where.
+//
+// This used to show all five to everybody. The server refused the ones a
+// client-scoped user could not use, so nothing leaked, but they were offered
+// a "Clients" page listing every other client of the agency and got an error
+// for their trouble. Under a white label that is worse than an error: it is a
+// client being shown the shape of somebody else's business.
 const PLATFORM_LINKS = [
-  { to: routes.clients(), label: 'Clients', Icon: Building2 },
-  { to: routes.team(), label: 'Team', Icon: Users2 },
-  { to: routes.audit(), label: 'Activity', Icon: FileClock },
-  { to: routes.credentials(), label: 'Credentials', Icon: KeyRound },
-  { to: routes.settings(), label: 'Settings', Icon: Settings },
-];
+  { to: routes.clients(), label: 'Clients', Icon: Building2, needs: 'client.viewAll' },
+  { to: routes.team(), label: 'Team', Icon: Users2, needs: 'team.invite' },
+  { to: routes.audit(), label: 'Activity', Icon: FileClock, needs: 'audit.view' },
+  { to: routes.credentials(), label: 'Credentials', Icon: KeyRound, needs: 'credentials.view' },
+  // Platform-wide configuration, which is the agency's own and not a
+  // workspace's. A client has Workspace settings instead, further down.
+  { to: routes.settings(), label: 'Settings', Icon: Settings, needs: 'client.viewAll' },
+] as const satisfies ReadonlyArray<{
+  to: string;
+  label: string;
+  Icon: typeof Building2;
+  needs: Permission;
+}>;
 
 function linkClass({ isActive }: { isActive: boolean }): string {
   return [
@@ -34,8 +50,16 @@ export function PlatformSidebar({
   onNavigate: () => void;
 }) {
   const { clientId } = useParams<{ clientId: string }>();
-  const { clients } = usePlatform();
-  const client = clients.find((c) => c.id === clientId);
+  const { clients, currentUser } = usePlatform();
+  const can = useCan();
+
+  // A client-scoped user's own workspace, whichever page they are on, so their
+  // modules are in the nav rather than appearing only once they have navigated
+  // into a workspace route.
+  const activeId = currentUser?.clientId ?? clientId;
+  const client = clients.find((c) => c.id === activeId);
+
+  const platformLinks = PLATFORM_LINKS.filter((link) => can(link.needs));
 
   return (
     <aside
@@ -48,18 +72,25 @@ export function PlatformSidebar({
         open ? 'block' : 'hidden md:block',
       ].join(' ')}
     >
-      <nav className="flex flex-col gap-1">
-        <p className="micro-label px-3 pb-2">Platform</p>
-        {PLATFORM_LINKS.map(({ to, label, Icon }) => (
-          <NavLink key={to} to={to} className={linkClass} onClick={onNavigate}>
-            <Icon size={16} aria-hidden="true" />
-            {label}
-          </NavLink>
-        ))}
-      </nav>
+      {platformLinks.length > 0 && (
+        <nav className="flex flex-col gap-1">
+          {/* "Platform" is the agency's word for its own console. A client
+              sees their own workspace name over their own section below, and
+              this heading only where there is an agency to name. */}
+          {can('client.viewAll') && <p className="micro-label px-3 pb-2">Platform</p>}
+          {platformLinks.map(({ to, label, Icon }) => (
+            <NavLink key={to} to={to} className={linkClass} onClick={onNavigate}>
+              <Icon size={16} aria-hidden="true" />
+              {label}
+            </NavLink>
+          ))}
+        </nav>
+      )}
 
       {client && (
-        <nav className="mt-6 flex flex-col gap-1">
+        <nav
+          className={[platformLinks.length > 0 ? 'mt-6' : '', 'flex flex-col gap-1'].join(' ')}
+        >
           <p className="micro-label px-3 pb-2">{client.name}</p>
 
           {/* Only what this client has. The sidebar not drawing a button is a

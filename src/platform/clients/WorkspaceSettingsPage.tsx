@@ -2,13 +2,14 @@ import { useParams } from 'react-router-dom';
 import { usePlatform, usePlatformActions } from '@/lib/state/PlatformProvider';
 import { MODULE_ORDER, MODULE_REGISTRY } from '@/modules/registry';
 import { Card, Switch } from '@/components/ui';
+import { LogoSetting } from '@/platform/clients/LogoSetting';
 import { NotFoundView } from '@/platform/routing/NotFoundView';
 import { accentClasses } from '@/types/accent';
 
 export default function WorkspaceSettingsPage() {
   const { clientId } = useParams<{ clientId: string }>();
   const { clients } = usePlatform();
-  const { setModuleEnabled, setClientDataMode } = usePlatformActions();
+  const { setModuleEnabled, setClientDataMode, setClientLogo } = usePlatformActions();
   const client = clients.find((c) => c.id === clientId);
 
   if (!client) {
@@ -23,6 +24,11 @@ export default function WorkspaceSettingsPage() {
           {client.plan} · {client.industry}
         </p>
       </div>
+
+      {/* First, because it is the setting a client is most likely to have
+          come here to change: this page is where their product gets their
+          name on it. */}
+      <LogoSetting client={client} onSave={(logo) => setClientLogo(client.id, logo)} />
 
       <Card>
         <p className="micro-label mb-4">Modules</p>

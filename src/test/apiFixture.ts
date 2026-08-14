@@ -35,6 +35,7 @@ function client(overrides: Partial<Client> & Pick<Client, 'id' | 'name'>): Clien
     contactEmail: 'ops@example.invalid',
     contactName: 'Ops',
     timezone: 'America/Los_Angeles',
+    logo: null,
     ...overrides,
   };
 }

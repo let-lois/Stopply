@@ -16,8 +16,10 @@ import {
 import { recordAudit } from '@server/db/audit';
 import { newId } from '@server/crypto/tokens';
 import { moduleName } from '@/modules/catalog';
+import { checkLogo } from '@/lib/brand/logo';
 import {
   createClientRequestSchema,
+  setClientLogoRequestSchema,
   setDataModeRequestSchema,
   setModuleRequestSchema,
   type SessionUser,
@@ -45,6 +47,7 @@ interface ClientRow {
   created_at: string;
   last_active: string;
   timezone: string | null;
+  logo: string | null;
 }
 
 interface ModuleRow {
@@ -125,6 +128,9 @@ async function loadClients(db: D1Database, session: Session): Promise<ClientPayl
       // database that has not had migration 0005 applied rather than for a row
       // that could legitimately be missing one.
       timezone: row.timezone ?? 'America/Los_Angeles',
+      // Null is meaningful: it means this workspace has not uploaded a mark
+      // and should be drawn with its monogram. It is not a missing value.
+      logo: row.logo ?? null,
     };
   });
 }
@@ -217,6 +223,59 @@ export async function setClientDataMode(ctx: RouteContext): Promise<Response> {
     session,
     action: 'SWITCH_DATA_MODE',
     details: `Data mode set to ${body.dataMode}`,
+    clientId,
+    clientName: client?.name ?? null,
+    ipAddress: clientIp(ctx.request),
+  });
+
+  const payload: ClientsResponse = { clients: await loadClients(ctx.env.DB, session) };
+  return json(payload);
+}
+
+/**
+ * Set or clear a workspace's own mark.
+ *
+ * The validation is `checkLogo`, the same function the picker runs, imported
+ * rather than restated. A rule written twice is a rule that will eventually
+ * differ, and the failure mode is a logo the browser accepted and the server
+ * quietly refused.
+ *
+ * A client_admin may do this for their own workspace, because it is their
+ * brand. requireClientInScope is what stops them doing it for anybody else's:
+ * a client id in the URL is a hint checked against the session, never an
+ * instruction.
+ */
+export async function setClientLogo(ctx: RouteContext): Promise<Response> {
+  const session = await requireSession(ctx.request, ctx.env);
+  const clientId = await requireClientInScope(ctx.env.DB, session, ctx.params['clientId']);
+  const body = await readJson(ctx.request, setClientLogoRequestSchema);
+
+  if (session.user.role !== 'super_admin' && session.user.role !== 'client_admin') {
+    throw forbidden('Only an admin can change a workspace logo.');
+  }
+
+  if (body.logo !== null) {
+    const problem = checkLogo(body.logo);
+    // The message the picker would have shown, returned verbatim, so a caller
+    // that skipped the picker gets the same sentence rather than a generic
+    // rejection they cannot act on.
+    if (problem) throw new ApiError(400, 'invalid_logo', problem.message);
+  }
+
+  const client = await ctx.env.DB.prepare('SELECT name FROM clients WHERE id = ?1')
+    .bind(clientId)
+    .first<{ name: string }>();
+
+  await ctx.env.DB.prepare('UPDATE clients SET logo = ?1 WHERE id = ?2')
+    .bind(body.logo, clientId)
+    .run();
+
+  await recordAudit(ctx.env.DB, {
+    session,
+    action: 'UPDATE_CLIENT',
+    // What changed, not the value. A data URI in the trail would make every
+    // entry unreadable and put a copy of the image somewhere nobody expects.
+    details: body.logo === null ? 'Removed the workspace logo' : 'Updated the workspace logo',
     clientId,
     clientName: client?.name ?? null,
     ipAddress: clientIp(ctx.request),

@@ -41,12 +41,12 @@ export default function FieldLogin() {
   return (
     <div className="flex min-h-dvh flex-col justify-center px-5 py-10">
       <div className="mx-auto w-full max-w-md">
-        <div className="mb-8 flex items-center gap-3">
-          <img src="/icon-192.png" alt="" width={44} height={44} className="size-11" />
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">Stopply Field</h1>
-            <p className="text-sm text-[var(--color-ink-soft)]">Log your doors</p>
-          </div>
+        {/* Unbranded on purpose. This page is reached before anyone knows
+            which company the rep works for, so there is no mark to wear yet.
+            The moment they sign in the app becomes their employer's. */}
+        <div className="mb-8">
+          <h1 className="text-xl font-semibold tracking-tight">Field</h1>
+          <p className="text-sm text-[var(--color-ink-soft)]">Log your doors</p>
         </div>
 
         <form onSubmit={(e) => void onSubmit(e)} className="flex flex-col gap-5">
@@ -105,6 +105,8 @@ export default function FieldLogin() {
             You stay signed in for a month, so you should not see this often.
           </p>
         </form>
+
+        <p className="mt-8 text-xs text-[var(--color-ink-faint)]">Powered by Stopply</p>
       </div>
     </div>
   );

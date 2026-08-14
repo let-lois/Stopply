@@ -1,0 +1,23 @@
+-- A client's own mark, so the workspace can wear their brand instead of ours.
+--
+-- Stored as a data URI in the row rather than as a file in object storage.
+-- That is a deliberate trade and worth stating, because the obvious answer is
+-- R2:
+--
+--   This project has no bucket, and adding one means a binding, a public or
+--   signed serving path, an upload endpoint that streams, a cleanup story for
+--   orphaned objects, and a second place for a workspace's data to live. For
+--   an image that is measured in tens of kilobytes and read on every page load
+--   by the same people who just fetched the client row, the row is the cheaper
+--   and more consistent place. It also means a logo cannot go missing
+--   independently of the client that owns it.
+--
+--   The cost is a size ceiling. The API refuses anything over 96KB of encoded
+--   data, which is a generous logo and nowhere near D1's 1MB row limit. If a
+--   client ever needs artwork bigger than that, this column is the wrong home
+--   and R2 is the right one.
+--
+-- Nullable, and null is not a missing value: it means this client has not
+-- uploaded a mark and should be drawn with the generated monogram instead. No
+-- client is ever left without something to show.
+ALTER TABLE clients ADD COLUMN logo TEXT;

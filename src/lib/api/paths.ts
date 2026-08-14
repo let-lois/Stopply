@@ -12,6 +12,7 @@ export const apiPaths = {
   clients: () => '/api/clients',
   clientModules: (clientId: string) => `/api/clients/${encodeURIComponent(clientId)}/modules`,
   clientDataMode: (clientId: string) => `/api/clients/${encodeURIComponent(clientId)}/data-mode`,
+  clientLogo: (clientId: string) => `/api/clients/${encodeURIComponent(clientId)}/logo`,
 
   team: () => '/api/team',
   audit: (limit?: number) => (limit ? `/api/audit?limit=${limit}` : '/api/audit'),

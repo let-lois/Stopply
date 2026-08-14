@@ -64,7 +64,10 @@ async function loadDoors(db: D1Database, session: FieldSession): Promise<FieldDo
   const scope = await repTerritoryFilter(db, session);
 
   const [client, rep, properties, visits] = await Promise.all([
-    db.prepare('SELECT name FROM clients WHERE id = ?1').bind(session.clientId).first<{ name: string }>(),
+    db
+      .prepare('SELECT name, logo FROM clients WHERE id = ?1')
+      .bind(session.clientId)
+      .first<{ name: string; logo: string | null }>(),
     db
       .prepare(
         `SELECT t.name AS territory_name FROM reps r
@@ -115,6 +118,7 @@ async function loadDoors(db: D1Database, session: FieldSession): Promise<FieldDo
       repName: session.repName,
       clientId: session.clientId,
       clientName: client?.name ?? '',
+      clientLogo: client?.logo ?? null,
       territoryName: rep?.territory_name ?? null,
     },
     properties: properties.results.map((p) => ({

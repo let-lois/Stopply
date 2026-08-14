@@ -18,6 +18,7 @@ import {
   listClients,
   listTeam,
   setClientDataMode,
+  setClientLogo,
   setClientModule,
 } from '@server/routes/clients';
 import { createCredential, deleteCredential, listCredentials } from '@server/routes/credentials';
@@ -40,6 +41,7 @@ export const routes = [
   route('POST', '/api/clients', createClient),
   route('PATCH', '/api/clients/:clientId/modules', setClientModule),
   route('PATCH', '/api/clients/:clientId/data-mode', setClientDataMode),
+  route('PATCH', '/api/clients/:clientId/logo', setClientLogo),
 
   route('GET', '/api/team', listTeam),
   route('GET', '/api/audit', listAudit),

@@ -77,6 +77,14 @@ export interface Client {
    * crew's own count of their own day.
    */
   timezone: string;
+  /**
+   * The client's own mark, as a data URI, or null for the generated monogram.
+   *
+   * A workspace wears this instead of ours, which is the whole point: a client
+   * opening their dashboard should see their company and not their agency's
+   * software.
+   */
+  logo: string | null;
 }
 
 export interface PlatformUser {

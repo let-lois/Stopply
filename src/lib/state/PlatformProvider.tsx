@@ -52,6 +52,8 @@ export interface PlatformState {
 export interface PlatformActions {
   setModuleEnabled: (clientId: string, moduleId: ModuleId, enabled: boolean) => Promise<void>;
   setClientDataMode: (clientId: string, mode: DataMode) => Promise<void>;
+  /** Null clears the mark and returns the workspace to its monogram. */
+  setClientLogo: (clientId: string, logo: string | null) => Promise<void>;
   createClient: (input: CreateClientInput) => Promise<void>;
   /** Re-read everything the server owns. Called after any write. */
   refresh: () => Promise<void>;
@@ -170,6 +172,19 @@ export function PlatformProvider({ children }: { children: React.ReactNode }) {
     [patch, refreshAudit]
   );
 
+  const setClientLogo = useCallback<PlatformActions['setClientLogo']>(
+    async (clientId, logo) => {
+      const response = await api.patch(
+        apiPaths.clientLogo(clientId),
+        { logo },
+        clientsResponseSchema
+      );
+      patch({ clients: response.clients });
+      await refreshAudit();
+    },
+    [patch, refreshAudit]
+  );
+
   const createClient = useCallback<PlatformActions['createClient']>(
     async (input) => {
       const response = await api.post(apiPaths.clients(), input, clientsResponseSchema);
@@ -192,8 +207,8 @@ export function PlatformProvider({ children }: { children: React.ReactNode }) {
   );
 
   const actions = useMemo<PlatformActions>(
-    () => ({ setModuleEnabled, setClientDataMode, createClient, refresh }),
-    [setModuleEnabled, setClientDataMode, createClient, refresh]
+    () => ({ setModuleEnabled, setClientDataMode, setClientLogo, createClient, refresh }),
+    [setModuleEnabled, setClientDataMode, setClientLogo, createClient, refresh]
   );
 
   return (

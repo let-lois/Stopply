@@ -110,7 +110,10 @@ check('the queue accumulates', (await page.getByText(/waiting to send/).count())
 // worker this is the browser's error page and the rep's morning is unreachable.
 await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
 await page.waitForTimeout(1500);
-const survivedReload = (await page.getByText(/Stopply Field|Marcus Webb|waiting to send/).count()) > 0;
+// The rep's own name or their queue, not a brand: the heading this used to
+// match is gone, and matching on one would tie an offline check to whichever
+// company the rep happens to work for.
+const survivedReload = (await page.getByText(/Log your doors|Marcus Webb|waiting to send/).count()) > 0;
 await page.screenshot({ path: `${SHOTS}/25-field-offline-reload.png` });
 check('the app still opens with no connection', survivedReload);
 

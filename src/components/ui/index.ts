@@ -1,4 +1,5 @@
 export { Badge } from '@/components/ui/Badge';
+export { BrandMark } from '@/components/ui/BrandMark';
 export { Button } from '@/components/ui/Button';
 export { Card, CardButton } from '@/components/ui/Card';
 export { Dialog } from '@/components/ui/Dialog';

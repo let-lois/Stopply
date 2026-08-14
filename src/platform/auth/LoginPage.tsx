@@ -32,9 +32,17 @@ export default function LoginPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await signIn(email, password, token ?? '');
+      const session = await signIn(email, password, token ?? '');
       setPassword('');
-      void navigate(routes.clients(), { replace: true });
+      // A client-scoped user has no client list to land on: it is the agency's
+      // page and refuses them. They go to their own workspace, which is also
+      // the first thing they should see.
+      void navigate(
+        session.user.clientId
+          ? routes.workspaceIndex(session.user.clientId)
+          : routes.clients(),
+        { replace: true }
+      );
     } catch (cause) {
       // The server's message, verbatim. It is written for the person reading
       // it and deliberately says the same thing for a wrong password as for
@@ -50,7 +58,7 @@ export default function LoginPage() {
   const canSubmit = Boolean(email && password && token) && !submitting;
 
   return (
-    <div className="grid min-h-dvh place-items-center bg-[var(--color-surface)] p-6">
+    <div className="grid min-h-dvh place-content-center justify-items-center bg-[var(--color-surface)] p-6">
       <div className="glass-panel w-full max-w-sm p-8">
         <div className="mb-6 flex items-center gap-3">
           <img src="/icon-192.png" alt="" width={36} height={36} className="size-9" />
@@ -112,6 +120,13 @@ export default function LoginPage() {
           )}
         </form>
       </div>
+
+      {/* The one place the product is named to a client.
+          Sign-in is the agency's front door: it is reached before anyone knows
+          which workspace the visitor belongs to, so there is no brand to wear
+          yet and no client-facing surface to keep clean. Everything past this
+          page belongs to whoever signed in. */}
+      <p className="mt-6 text-xs text-[var(--color-ink-faint)]">Powered by Stopply</p>
     </div>
   );
 }

@@ -39,8 +39,11 @@ await page.goto(`${BASE}/field`, { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(1200);
 await page.screenshot({ path: `${SHOTS}/20-field-login.png` });
 
-check('a signed-out rep gets the field sign-in, not the dashboard one', 
-  (await page.getByText('Stopply Field').count()) > 0 &&
+// Not by the heading, which used to read "Stopply Field" and is now unbranded:
+// a rep's employer is unknown until they sign in, so this page has no mark to
+// wear. What tells the two sign-ins apart is what each is for.
+check('a signed-out rep gets the field sign-in, not the dashboard one',
+  (await page.getByText('Log your doors').count()) > 0 &&
   (await page.getByText('Operations platform').count()) === 0);
 
 const loginStatus = await page.evaluate(async (password) => {
