@@ -10,6 +10,10 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: "export",
   images: { unoptimized: true },
+  // The field app's screens are shared with the standalone store app, so
+  // they live in a workspace package that ships TypeScript source rather
+  // than a build. Next compiles it as if it were app code.
+  transpilePackages: ["@letlois/field-ui"],
   env: {
     NEXT_PUBLIC_BUILD_SHA: (process.env.CF_PAGES_COMMIT_SHA ?? 'dev').slice(0, 7),
     NEXT_PUBLIC_BUILD_BRANCH: process.env.CF_PAGES_BRANCH ?? 'local',

@@ -106,6 +106,34 @@ export function readFieldToken(cookieHeader: string | undefined): string | null 
   return readCookie(cookieHeader, FIELD_COOKIE_NAME);
 }
 
+// The standalone field app on the App Store and Play Store runs from its own
+// local origin inside a WebView, so its requests to this API are cross
+// origin and a cookie will not ride along: SameSite=Lax drops it, and iOS
+// blocks third party cookies in a WKWebView outright. The native build
+// carries its session in an Authorization header instead.
+//
+// Only ever consulted for the field population. The dashboard stays cookie
+// only, so nothing about this widens what a leaked dashboard token can do.
+export function readBearerToken(authHeader: string | undefined): string | null {
+  if (!authHeader) return null;
+  const match = /^Bearer\s+([0-9a-f]{16,128})$/i.exec(authHeader.trim());
+  return match?.[1] ?? null;
+}
+
+// Field sessions slide: every bootstrap from a signed in rep pushes the
+// expiry back out to a full window. A rep opens this app every working day,
+// and being signed out mid shift, at a door, possibly with no signal to sign
+// back in, is the worst failure this app has. Inactivity still ends it, and
+// deactivating a rep still cuts them off immediately because /me rechecks
+// `active` on every call.
+//
+// Deliberately not applied to the dashboard, which keeps its absolute expiry.
+export async function renewSession(env: Env, token: string, record: SessionRecord): Promise<void> {
+  await env.SESSIONS.put(`session:${token}`, JSON.stringify(record), {
+    expirationTtl: SESSION_TTL_SECONDS,
+  });
+}
+
 // Double submit CSRF: the csrf value lives in the session record and is
 // returned to the client at login; mutating requests echo it in a header.
 export function csrfHeaderName(): string {

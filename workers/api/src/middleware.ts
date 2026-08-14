@@ -1,7 +1,13 @@
 import type { Context, Next } from 'hono';
 import type { Role } from '@letlois/db';
 import { isDashboardSession, type AppContext } from './env';
-import { getSession, readSessionToken, readFieldToken, checkCsrf } from './session';
+import {
+  getSession,
+  readSessionToken,
+  readFieldToken,
+  readBearerToken,
+  checkCsrf,
+} from './session';
 import { isAgencyHost, resolveTenantByHost, getTenantById } from './tenantResolver';
 
 // Resolves host context and session on every request. Unknown hostnames
@@ -31,10 +37,22 @@ export async function contextMiddleware(c: Context<AppContext>, next: Next): Pro
   // check the user type, including any route added later.
   c.set('session', isDashboardSession(loaded) ? loaded : null);
 
-  const fieldToken = readFieldToken(c.req.header('cookie'));
+  // The web field app sends the cookie; the standalone store app cannot, so
+  // it sends a bearer token instead. The cookie wins when both are present,
+  // so a request that carries ambient credentials is always held to the CSRF
+  // check rather than escaping it by adding a header.
+  const cookieFieldToken = readFieldToken(c.req.header('cookie'));
+  const bearerFieldToken = cookieFieldToken
+    ? null
+    : readBearerToken(c.req.header('authorization'));
+  const fieldToken = cookieFieldToken ?? bearerFieldToken;
   const fieldLoaded = fieldToken ? await getSession(env, fieldToken) : null;
+  const fieldSession = fieldLoaded && fieldLoaded.userType === 'field' ? fieldLoaded : null;
   c.set('fieldToken', fieldToken);
-  c.set('fieldSession', fieldLoaded && fieldLoaded.userType === 'field' ? fieldLoaded : null);
+  c.set('fieldSession', fieldSession);
+  // Null unless the token actually resolved to a rep, so a stale bearer
+  // header can never mark a request as bearer authenticated.
+  c.set('fieldAuth', fieldSession ? (cookieFieldToken ? 'cookie' : 'bearer') : null);
 
   await next();
 }
@@ -64,8 +82,14 @@ export async function csrfMiddleware(c: Context<AppContext>, next: Next): Promis
     // Checked separately: a request from the field app carries the field
     // cookie and no dashboard session, so the check above would pass it
     // unexamined.
+    //
+    // A bearer token is exempt, and only a bearer token. CSRF defends
+    // against a credential the browser attaches on its own; the store app's
+    // token is attached by the app, from storage no other origin can read,
+    // so there is nothing for a hostile page to ride. The cookie path is
+    // untouched.
     const fieldSession = c.get('fieldSession');
-    if (fieldSession && !checkCsrf(fieldSession, c.req.raw)) {
+    if (fieldSession && c.get('fieldAuth') !== 'bearer' && !checkCsrf(fieldSession, c.req.raw)) {
       return c.json({ error: 'csrf token missing or invalid' }, 403);
     }
   }

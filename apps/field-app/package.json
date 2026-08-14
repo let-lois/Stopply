@@ -1,0 +1,45 @@
+{
+  "name": "@letlois/all-star-field-app",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "All Star Field: the door to door app reps install from the App Store and Play Store",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "preview": "vite build --config vite.preview.config.ts && node scripts/build-preview.mjs",
+    "icons": "node scripts/generate-icons.mjs",
+    "version:set": "node scripts/set-version.mjs",
+    "sync": "pnpm build && cap sync",
+    "open:ios": "cap open ios",
+    "open:android": "cap open android",
+    "run:ios": "pnpm sync && cap run ios",
+    "run:android": "pnpm sync && cap run android"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.0",
+    "@capacitor/app": "8.1.1",
+    "@capacitor/core": "8.5.0",
+    "@capacitor/geolocation": "8.2.2",
+    "@capacitor/ios": "8.5.0",
+    "@capacitor/network": "8.0.1",
+    "@capacitor/preferences": "8.0.1",
+    "@capacitor/splash-screen": "8.0.2",
+    "@capacitor/status-bar": "8.0.3",
+    "@letlois/field-ui": "workspace:*",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.0",
+    "@types/node": "^20.19.43",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "6.0.5",
+    "sharp": "^0.34.5",
+    "typescript": "^5.6.0",
+    "vite": "8.2.1",
+    "vitest": "^3.0.0"
+  }
+}

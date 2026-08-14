@@ -1,0 +1,242 @@
+/* The test site's own chrome.
+
+   Deliberately reads as a tool rather than as a page: a fixed bar, a neutral
+   stage, and the app itself as the only thing in colour. Everything here is
+   scoped under .fp so it cannot reach the app in the frame, which is a
+   separate document anyway.
+
+   Palette tokens come from globals.css, same as the rest of the dashboard,
+   so the toolbar follows light and dark with everything else. */
+
+.fp {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: var(--sidebar-bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+}
+
+/* Toolbar */
+
+.fp-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  padding: 10px 16px;
+  background: var(--card);
+  border-bottom: 1px solid var(--hairline);
+  /* So a wide child scrolls itself rather than stretching the toolbar. */
+  min-width: 0;
+}
+
+.fp-identity {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  margin-right: auto;
+}
+
+.fp-back {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+
+.fp-back:hover { color: var(--accent); }
+
+.fp-back::before { content: '\2190\00a0'; }
+
+.fp-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.fp-sub {
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+/* A segmented control, because the sizes are one choice with one answer
+   rather than five independent switches. */
+.fp-devices {
+  display: flex;
+  border: 1px solid var(--hairline);
+  border-radius: 9px;
+  /* Scrolls within itself on a narrow window. Left to its own devices this
+     row of five is wider than a phone, and it would push the whole page
+     sideways, which is a poor look on a page about layout. */
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.fp-devices::-webkit-scrollbar { display: none; }
+
+.fp-devices button { flex: 0 0 auto; }
+
+.fp-devices button {
+  border: 0;
+  border-right: 1px solid var(--hairline);
+  border-radius: 0;
+  background: transparent;
+}
+
+.fp-devices button:last-child { border-right: 0; }
+
+.fp-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fp button,
+.fp-actions a {
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 7px 13px;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.14s, color 0.14s, border-color 0.14s;
+}
+
+.fp button:hover,
+.fp-actions a:hover { background: var(--accent-soft); }
+
+.fp button:focus-visible,
+.fp-actions a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.fp button.active {
+  background: var(--accent);
+  color: var(--card);
+}
+
+/* Stage */
+
+.fp-stage {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Takes the scaled size as its layout size, so the stage has a box the size
+   of what is actually drawn to centre. See the note in page.tsx. */
+.fp-fit {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.fp-device {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+  flex-shrink: 0;
+  background: var(--paper);
+  box-shadow: 0 24px 60px -28px rgba(38, 52, 73, 0.55);
+  /* The bezel goes around the screen, not into it. Under the inherited
+     border-box, an 11px bezel on a 375px phone left the app believing it had
+     353px, which is a lie about the one thing this page exists to show. */
+  box-sizing: content-box;
+}
+
+.fp-device iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--paper);
+}
+
+.fp-device-phone {
+  border-radius: 34px;
+  border: 11px solid #1b2431;
+  overflow: hidden;
+}
+
+.fp-device-tablet {
+  border-radius: 20px;
+  border: 12px solid #1b2431;
+  overflow: hidden;
+}
+
+/* A laptop gets a plain window, not a phone shell: drawing a bezel around a
+   1280px viewport would misrepresent what is being shown. */
+.fp-device-flat {
+  border-radius: 10px;
+  border: 1px solid var(--hairline);
+  overflow: hidden;
+}
+
+/* Footer */
+
+.fp-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  padding: 9px 16px;
+  background: var(--card);
+  border-top: 1px solid var(--hairline);
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.fp-hint { margin-right: auto; }
+
+.fp-build {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+@media (max-width: 720px) {
+  /* On a phone there is no point emulating a phone: the frame is dropped and
+     the app gets the window, which is the most useful thing this page can do
+     when it is opened on an actual device. */
+  .fp-identity,
+  .fp-hint { display: none; }
+
+  .fp-stage {
+    padding: 0;
+    place-items: stretch;
+  }
+
+  /* Overriding the inline sizes the component sets, which is the one place a
+     declaration here has to outrank them. */
+  .fp-fit,
+  .fp-device {
+    width: 100% !important;
+    height: 100% !important;
+    transform: none !important;
+  }
+
+  .fp-device {
+    position: static;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fp button, .fp-actions a { transition: none; }
+}
