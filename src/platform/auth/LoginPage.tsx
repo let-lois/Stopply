@@ -62,15 +62,20 @@ export default function LoginPage() {
       <div className="glass-panel w-full max-w-sm p-8">
         {/* A credit line, not a lockup.
 
-            This was the Stopply mark over the product name, which made the
-            page look like it belonged to us rather than to whoever is about to
-            sign in. Sign-in is still the one place the product is named,
-            because it is reached before anyone knows which workspace the
-            visitor belongs to. It is just named quietly now.
+            This was the Stopply mark over the product name at heading size,
+            which made the page look like it belonged to us rather than to
+            whoever is about to sign in. Sign-in is still the one place the
+            product is named, because it is reached before anyone knows which
+            workspace the visitor belongs to. It is just named quietly now, and
+            the mark sits at the scale of the sentence rather than above it.
 
             Still an h1: it is the only heading on the page, and a form with no
-            heading is a page a screen reader announces as untitled. */}
-        <h1 className="mb-6 text-sm text-[var(--color-ink-soft)]">Powered by Stopply</h1>
+            heading is a page a screen reader announces as untitled. The mark
+            is decorative because the words beside it already say the name. */}
+        <h1 className="mb-6 flex items-center gap-2 text-sm text-[var(--color-ink-soft)]">
+          <img src="/icon-192.png" alt="" width={20} height={20} className="size-5 shrink-0" />
+          Powered by Stopply
+        </h1>
 
         <form onSubmit={(e) => void onSubmit(e)} className="flex flex-col gap-4">
           <label className="flex flex-col gap-1.5">
