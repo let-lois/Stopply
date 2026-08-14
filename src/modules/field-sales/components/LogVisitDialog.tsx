@@ -45,7 +45,9 @@ export function LogVisitDialog({
   onClose: () => void;
 }) {
   const { logVisit } = useFieldSalesActions();
-  const [disposition, setDisposition] = useState<PropertyDisposition | ''>('');
+  // Empty means nothing chosen yet. A disposition is just a string now, so
+  // the empty string is the sentinel rather than a separate arm of a union.
+  const [disposition, setDisposition] = useState<string>('');
   const [notes, setNotes] = useState('');
   const [repId, setRepId] = useState(reps[0]?.id ?? '');
 

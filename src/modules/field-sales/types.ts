@@ -1,7 +1,15 @@
 // Door to door. The reference module: it is the one the prototype wired
 // correctly, and the only one whose behaviour was honest.
 
-export type PropertyDisposition =
+/**
+ * The outcomes this app defines itself.
+ *
+ * A closed union, and deliberately still one: it is what keeps the compiler
+ * checking that a built-in outcome added here also gets a rank and a colour in
+ * catalog.ts. That check has already earned its keep once, on the two
+ * appointment outcomes below.
+ */
+export type BuiltinDisposition =
   | 'not_visited'
   | 'no_answer'
   | 'come_back'
@@ -15,6 +23,17 @@ export type PropertyDisposition =
   | 'appointment_missed'
   | 'closed_sale'
   | 'do_not_knock';
+
+/**
+ * The outcome recorded at a door, as a key into whichever catalog is in force.
+ *
+ * Open, not the union above. When the data comes from the BI platform the set
+ * of outcomes belongs to the client: they can rename "Sold" or add "Left a
+ * quote", and a closed union here would make a real disposition
+ * unrepresentable. What a key means is the catalog's answer rather than the
+ * type system's, which is the whole point of catalog.ts.
+ */
+export type PropertyDisposition = string;
 
 export interface Territory {
   id: string;

@@ -5,14 +5,13 @@ import { Badge, Button, Card } from '@/components/ui';
 import { LogVisitDialog } from '@/modules/field-sales/components/LogVisitDialog';
 
 import { DISPOSITION_LABELS } from '@/modules/field-sales/selectors';
-import type { PropertyDisposition } from '@/modules/field-sales/types';
 import { relativeTime } from '@/lib/format/datetime';
 import {
   lastRepByProperty,
   repColors,
   UNWORKED_COLOR,
 } from '@/modules/field-sales/repColors';
-import { dispositionHexFor } from '@/modules/field-sales/dispositionColors';
+import { dispositionHex } from '@/modules/field-sales/dispositionColors';
 import { useTheme } from '@/lib/theme/ThemeProvider';
 import type { Property } from '@/modules/field-sales/types';
 import { Skeleton } from '@/components/ui';
@@ -28,8 +27,18 @@ const DoorMap = lazy(() =>
 // the funnel stages plus the two that mean "leave it alone". No answer and
 // come back are the bulk of a day and filtering to them shows you almost
 // everything, which is not a filter.
-const FILTERS: Array<{ id: 'all' | PropertyDisposition; label: string }> = [
-  { id: 'all', label: 'All doors' },
+/**
+ * 'all' is a sentinel here, not an outcome.
+ *
+ * It used to be distinguishable by type, back when a disposition was a closed
+ * union of ten known keys. It is not any more: a client of the BI platform
+ * names their own outcomes, so both halves are strings and only this constant
+ * says which is which.
+ */
+const ALL_DOORS = 'all';
+
+const FILTERS: Array<{ id: string; label: string }> = [
+  { id: ALL_DOORS, label: 'All doors' },
   { id: 'not_visited', label: 'Not visited' },
   { id: 'interested', label: 'Interested' },
   { id: 'appointment_set', label: 'Appointment set' },
@@ -41,7 +50,7 @@ const FILTERS: Array<{ id: 'all' | PropertyDisposition; label: string }> = [
 
 export default function FieldSalesCanvass() {
   const { data, mode, isLoading, error } = useModuleData('field_sales');
-  const [filter, setFilter] = useState<'all' | PropertyDisposition>('all');
+  const [filter, setFilter] = useState<string>(ALL_DOORS);
   // A rep canvasses one territory, not the whole city, and plotting every
   // territory into one box squeezes each into a tenth of the plot: pins then
   // overlap and one intercepts another's click, which is a door nobody can
@@ -91,7 +100,6 @@ export default function FieldSalesCanvass() {
   // knock" is the one that forces this: it is the right answer on a dark
   // basemap and an invisible door on a light one.
   const { resolved: theme } = useTheme();
-  const dispositionHex = useMemo(() => dispositionHexFor(theme), [theme]);
 
   // Who last knocked each door. The latest visit wins, so a door shows
   // whoever worked it most recently rather than whoever got there first.
@@ -102,16 +110,16 @@ export default function FieldSalesCanvass() {
 
   const colorFor = useCallback(
     (property: Property) => {
-      if (colorBy === 'outcome') return dispositionHex[property.disposition];
+      if (colorBy === 'outcome') return dispositionHex(property.disposition, theme);
       const repId = repByProperty.get(property.id);
       // Grey for a door nobody has knocked. It has no rep to be coloured by,
       // and inventing one would be the map claiming knowledge it does not have.
       return repId ? (colorByRep.get(repId) ?? UNWORKED_COLOR) : UNWORKED_COLOR;
     },
-    // dispositionHex is a dependency on purpose: a new identity is what tells
-    // the map to recolour every door when the theme changes. Left out, the
-    // doors would keep the old theme's colours until something else moved.
-    [colorBy, repByProperty, colorByRep, dispositionHex]
+    // theme is a dependency on purpose: a new identity is what tells the map
+    // to recolour every door when the theme changes. Left out, the doors would
+    // keep the old theme's colours until something else moved.
+    [colorBy, repByProperty, colorByRep, theme]
   );
 
   const visible = useMemo(() => {
@@ -252,7 +260,7 @@ export default function FieldSalesCanvass() {
                     <span key={f.id} className="flex items-center gap-1.5">
                       <span
                         className="size-2.5 rounded-full"
-                        style={{ background: dispositionHex[f.id as PropertyDisposition] }}
+                        style={{ background: dispositionHex(f.id, theme) }}
                         aria-hidden="true"
                       />
                       <span className="text-[var(--color-ink-soft)]">{f.label}</span>

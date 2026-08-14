@@ -16,6 +16,7 @@
 
 import type { Property, PropertyDisposition, Rep, Territory, Visit } from '@/modules/field-sales/types';
 import { buildJourneys, stillAt } from '@/modules/field-sales/funnel';
+import { BUILTIN_CATALOG, type DispositionCatalog } from '@/modules/field-sales/catalog';
 
 /**
  * Dispositions that count as having reached a person.
@@ -50,18 +51,31 @@ const LEAD_DISPOSITIONS: ReadonlySet<PropertyDisposition> = new Set([
   'closed_sale',
 ]);
 
-export const DISPOSITION_LABELS: Record<PropertyDisposition, string> = {
-  not_visited: 'Not visited',
-  no_answer: 'No answer',
-  come_back: 'Come back later',
-  not_interested: 'Not interested',
-  interested: 'Interested',
-  appointment_set: 'Appointment set',
-  appointment_kept: 'Showed',
-  appointment_missed: 'No-show',
-  closed_sale: 'Closed sale',
-  do_not_knock: 'Do not knock',
-};
+/**
+ * The built-in outcomes' labels.
+ *
+ * Derived from the catalog rather than written out a second time. Two lists of
+ * the same ten strings is two lists to keep in step, and the one that is not
+ * used by the funnel is the one that silently goes stale.
+ */
+export const DISPOSITION_LABELS: Record<string, string> = Object.fromEntries(
+  BUILTIN_CATALOG.entries.map((e) => [e.key, e.label])
+);
+
+/**
+ * What to call an outcome.
+ *
+ * A function rather than an index, because the set is open now: a client of
+ * the BI platform can add an outcome this app has never heard of, and the
+ * catalog they configured is the only thing that knows its name. Falling back
+ * to the key itself shows something recognisable rather than "undefined".
+ */
+export function dispositionLabel(
+  disposition: PropertyDisposition,
+  catalog: DispositionCatalog = BUILTIN_CATALOG
+): string {
+  return catalog.labelOf(disposition);
+}
 
 export interface FieldKpis {
   /** Every visit logged. A house knocked three times is three. */
@@ -145,19 +159,26 @@ export interface DispositionSlice {
 }
 
 /** The breakdown the prototype froze at its seed values. */
-export function selectDispositionBreakdown(properties: Property[]): DispositionSlice[] {
+export function selectDispositionBreakdown(
+  properties: Property[],
+  catalog: DispositionCatalog = BUILTIN_CATALOG
+): DispositionSlice[] {
   const counts = new Map<PropertyDisposition, number>();
   for (const property of properties) {
     counts.set(property.disposition, (counts.get(property.disposition) ?? 0) + 1);
   }
 
   const total = properties.length;
-  return (Object.keys(DISPOSITION_LABELS) as PropertyDisposition[])
-    .map((disposition) => {
+  // Driven by the catalog, so a client's own outcome appears in the breakdown
+  // with its own name. Iterating the built-in ten instead would silently drop
+  // every door dispositioned as something this app did not ship with, and the
+  // shares would then not add to one.
+  return catalog.entries
+    .map(({ key: disposition, label }) => {
       const count = counts.get(disposition) ?? 0;
       return {
         disposition,
-        label: DISPOSITION_LABELS[disposition],
+        label,
         count,
         share: total > 0 ? count / total : 0,
       };

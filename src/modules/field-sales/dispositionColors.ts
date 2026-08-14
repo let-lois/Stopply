@@ -6,51 +6,52 @@
 // caught it because they were typed Record<PropertyDisposition, string>. The
 // Dashboard one was Record<string, string> and would have gone quietly grey.
 //
+// The colours themselves now live in catalog.ts beside each outcome's rank and
+// label, because those three facts about an outcome belong together, and
+// because a catalog that comes from the BI platform carries its own. This file
+// is the lookup, and the part that earns its place here is what it does when
+// the catalog has no answer.
+//
 // Hex rather than CSS variables is not a stylistic choice: a MapLibre paint
 // expression is evaluated on the GPU and cannot read a custom property. The
 // variables are derived from these, so the map and the chart cannot drift.
 
 import type { PropertyDisposition } from '@/modules/field-sales/types';
+import {
+  BUILTIN_CATALOG,
+  FALLBACK_HEX,
+  type DispositionCatalog,
+} from '@/modules/field-sales/catalog';
 
-export const DISPOSITION_HEX: Record<PropertyDisposition, string> = {
-  not_visited: '#6b7280',
-  no_answer: '#94a3b8',
-  come_back: '#f59e0b',
-  not_interested: '#ef4444',
-  interested: '#38bdf8',
-  appointment_set: '#a855f7',
-  // The two halves of the appointment. Indigo reads as a neighbour of the
-  // purple it came from, rose as a neighbour of the red that means no.
-  appointment_kept: '#6366f1',
-  appointment_missed: '#fb7185',
-  closed_sale: '#10b981',
-  // Near-white, so it is the one outcome that stands apart from every hue
-  // rather than joining the spectrum. That works on a dark ground and is
-  // literally invisible on a light one, which is why the light override below
-  // exists at all.
-  do_not_knock: '#f8fafc',
-};
+export const DISPOSITION_HEX: Record<string, string> = BUILTIN_CATALOG.hexFor('dark');
+
+export function dispositionHexFor(
+  theme: 'dark' | 'light',
+  catalog: DispositionCatalog = BUILTIN_CATALOG
+): Record<string, string> {
+  return catalog.hexFor(theme);
+}
 
 /**
- * The light-theme overrides, and only the ones that need it.
+ * The colour for one outcome, always an actual colour.
  *
- * A partial map rather than a second full palette. Nine of these ten colours
- * are mid-tone saturated hues that read on white as well as they do on slate,
- * and duplicating them would only create nine more chances for the two copies
- * to drift. What genuinely breaks on a light ground is stated here and
- * nowhere else.
+ * A function and not an index, because the set of outcomes is open now. A
+ * client of the BI platform can add one, and the platform lets them leave its
+ * colour null. An index would hand `undefined` to MapLibre, which then draws
+ * no tack at all, so the door would vanish from the map rather than appear in
+ * an unexpected colour. Vanishing is the worse failure by some way: a rep
+ * knocks that house twice.
+ *
+ * Unknown outcomes cycle FALLBACK_HEX by their position in the catalog, so
+ * they stay distinguishable from each other and stable across renders.
  */
-const LIGHT_OVERRIDES: Partial<Record<PropertyDisposition, string>> = {
-  // Near-white on white. Inverted to the same idea: the one outcome that is
-  // not a hue, read against the opposite ground.
-  do_not_knock: '#1f2937',
-  // Pale enough on white to read as "no data" rather than as a door somebody
-  // knocked and got no answer at.
-  no_answer: '#64748b',
-  interested: '#0ea5e9',
-};
-
-export function dispositionHexFor(theme: 'dark' | 'light'): Record<PropertyDisposition, string> {
-  if (theme !== 'light') return DISPOSITION_HEX;
-  return { ...DISPOSITION_HEX, ...LIGHT_OVERRIDES };
+export function dispositionHex(
+  disposition: PropertyDisposition,
+  theme: 'dark' | 'light',
+  catalog: DispositionCatalog = BUILTIN_CATALOG
+): string {
+  const declared = catalog.hexFor(theme)[disposition];
+  if (declared) return declared;
+  const index = catalog.entries.findIndex((e) => e.key === disposition);
+  return FALLBACK_HEX[(index < 0 ? 0 : index) % FALLBACK_HEX.length]!;
 }

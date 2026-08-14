@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Car, X } from 'lucide-react';
 import { useFieldActions, type Disposition, type Door } from '@/lib/field/FieldSessionProvider';
-import { DISPOSITION_LABELS } from '@/modules/field-sales/selectors';
+import { dispositionLabel } from '@/modules/field-sales/selectors';
 import { ApiRequestError } from '@/lib/api/client';
 
 // Ordered by how often a rep taps them, not by the order they appear in the
@@ -106,7 +106,7 @@ export function KnockSheet({ door, onClose }: { door: Door; onClose: () => void 
               {door.city}, {door.state} {door.postalCode}
             </p>
             <p className="mt-1 text-sm text-[var(--color-ink-faint)]">
-              Currently {DISPOSITION_LABELS[door.disposition].toLowerCase()}
+              Currently {dispositionLabel(door.disposition).toLowerCase()}
             </p>
           </div>
           <button
@@ -203,7 +203,7 @@ export function KnockSheet({ door, onClose }: { door: Door; onClose: () => void 
                   onClick={() => void save(outcome.id)}
                   className={`min-h-16 rounded-2xl px-3 text-base font-semibold text-[var(--color-on-accent-bright)] disabled:opacity-40 ${outcome.tone}`}
                 >
-                  {saving === outcome.id ? 'Saving…' : DISPOSITION_LABELS[outcome.id]}
+                  {saving === outcome.id ? 'Saving…' : dispositionLabel(outcome.id)}
                 </button>
               ))}
             </div>
@@ -219,7 +219,7 @@ export function KnockSheet({ door, onClose }: { door: Door; onClose: () => void 
               onClick={() => void save(outcome.id)}
               className={`min-h-16 rounded-2xl px-3 text-base font-semibold text-[var(--color-on-accent-bright)] disabled:opacity-40 ${outcome.tone}`}
             >
-              {saving === outcome.id ? 'Saving…' : DISPOSITION_LABELS[outcome.id]}
+              {saving === outcome.id ? 'Saving…' : dispositionLabel(outcome.id)}
             </button>
           ))}
         </div>

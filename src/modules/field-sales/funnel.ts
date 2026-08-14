@@ -18,7 +18,8 @@
 // funnel. This is stated rather than hidden: the ladder below is the whole
 // definition.
 
-import type { PropertyDisposition, Rep, Visit } from '@/modules/field-sales/types';
+import type { Rep, Visit } from '@/modules/field-sales/types';
+import { BUILTIN_CATALOG, type DispositionCatalog } from '@/modules/field-sales/catalog';
 import { zonedDayKey } from '@/lib/format/zonedDay';
 
 export const FUNNEL_STAGES = ['knocked', 'contacted', 'booked', 'showed', 'sold'] as const;
@@ -33,33 +34,19 @@ export const STAGE_LABELS: Record<FunnelStage, string> = {
 };
 
 /**
- * How far up the ladder each outcome reaches.
+ * How far up the ladder each outcome reaches, from the catalog in force.
  *
- * 0 means the visit does not exist. Everything else is "this knock got the
- * door at least this far".
+ * This was a hardcoded Record keyed by outcome name. It is a catalog lookup
+ * now because the BI platform lets a client rename an outcome or add one, and
+ * a rank keyed by name loses the stage the moment somebody does. See
+ * catalog.ts: the platform's ranks are derived from its is_contact /
+ * is_appointment / is_sale flags, so an outcome called anything at all still
+ * lands on the right rung.
  *
- * The two judgement calls, written down because they are not obvious:
- *
- * do_not_knock counts as contacted. Somebody answered and asked to be left
- * alone; that is a conversation, and treating it as a silent door would make
- * a crew's contact rate depend on how politely they were turned away.
- *
- * appointment_missed counts as booked but no further. The booking happened.
- * The appointment is what failed, and the whole point of the stage is to make
- * that failure visible rather than to erase the booking that preceded it.
+ * The two judgement calls that used to live here are still written down, in
+ * the catalog beside the outcomes they apply to: do_not_knock counts as
+ * contacted, and appointment_missed counts as booked but no further.
  */
-const STAGE_RANK: Record<PropertyDisposition, number> = {
-  not_visited: 0,
-  no_answer: 1,
-  come_back: 1,
-  not_interested: 2,
-  interested: 2,
-  do_not_knock: 2,
-  appointment_set: 3,
-  appointment_missed: 3,
-  appointment_kept: 4,
-  closed_sale: 5,
-};
 
 export interface StageReach {
   /** ISO 8601 of the first visit that got the door this far. */
@@ -88,12 +75,15 @@ export type PropertyJourney = Partial<Record<FunnelStage, StageReach>> & {
  * Earliest visit wins per stage, so a door knocked five times is credited to
  * the knock that actually moved it rather than the most recent one.
  */
-export function buildJourneys(visits: Visit[]): Map<string, PropertyJourney> {
+export function buildJourneys(
+  visits: Visit[],
+  catalog: DispositionCatalog = BUILTIN_CATALOG
+): Map<string, PropertyJourney> {
   const journeys = new Map<string, PropertyJourney>();
   const latest = new Map<string, string>();
 
   for (const visit of visits) {
-    const rank = STAGE_RANK[visit.disposition];
+    const rank = catalog.rankOf(visit.disposition);
     if (rank === 0) continue;
 
     let journey = journeys.get(visit.propertyId);
@@ -181,8 +171,11 @@ function median(values: number[]): number | null {
  * A door is counted in a stage if it reached it, whenever that was, from the
  * visits handed in. Narrow the visits to narrow the funnel.
  */
-export function selectFunnel(visits: Visit[]): FunnelReport {
-  const journeys = buildJourneys(visits);
+export function selectFunnel(
+  visits: Visit[],
+  catalog: DispositionCatalog = BUILTIN_CATALOG
+): FunnelReport {
+  const journeys = buildJourneys(visits, catalog);
   const all = [...journeys.values()];
 
   const steps: FunnelStep[] = [];
@@ -328,12 +321,15 @@ export function selectStageDays(visits: Visit[], timeZone: string, dayKeys: stri
  * "no car" would put most of the day in the no-car row and make the signal
  * look worthless.
  */
-export function selectVehicleSignal(visits: Visit[]): {
+export function selectVehicleSignal(
+  visits: Visit[],
+  catalog: DispositionCatalog = BUILTIN_CATALOG
+): {
   observed: number;
   withCar: { visits: number; contacts: number; contactRate: number };
   withoutCar: { visits: number; contacts: number; contactRate: number };
 } {
-  const contacted = (v: Visit) => STAGE_RANK[v.disposition] >= 2;
+  const contacted = (v: Visit) => catalog.rankOf(v.disposition) >= 2;
   const withCar = visits.filter((v) => v.vehiclePresent === true);
   const withoutCar = visits.filter((v) => v.vehiclePresent === false);
 

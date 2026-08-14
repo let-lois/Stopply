@@ -55,7 +55,7 @@ import type { Property, Territory } from '@/modules/field-sales/types';
 import { basemapFor, DEFAULT_CENTER, mapInkFor } from '@/modules/field-sales/mapConfig';
 import { useTheme } from '@/lib/theme/ThemeProvider';
 import { tackImage, UNWORKED_COLOR } from '@/modules/field-sales/repColors';
-import { dispositionHexFor } from '@/modules/field-sales/dispositionColors';
+import { dispositionHex } from '@/modules/field-sales/dispositionColors';
 
 setWorkerUrl(workerUrl);
 
@@ -325,8 +325,10 @@ export function DoorMap({
     if (!map) return;
 
     const apply = () => {
-      const hex = dispositionHexFor(themeRef.current);
-      const resolve = colorFor ?? ((p: Property) => hex[p.disposition]);
+      // dispositionHex rather than an index into a map, so an outcome the
+      // catalog has no colour for still gets a tack. An undefined colour means
+      // no image, and no image means the door is simply absent from the map.
+      const resolve = colorFor ?? ((p: Property) => dispositionHex(p.disposition, themeRef.current));
 
       // One image per colour, added the first time that colour appears. A
       // symbol layer refers to images by name, so a colour with no image
