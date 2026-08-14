@@ -10,7 +10,7 @@
 // never shipped.
 
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = join(import.meta.dirname, '..');
@@ -123,6 +123,31 @@ describe('what the app is allowed to reach', () => {
   it('never ships cleartext http', () => {
     expect(read('android/app/src/main/AndroidManifest.xml')).not.toContain('usesCleartextTraffic');
     expect(capacitor).toContain('allowMixedContent: false');
+  });
+});
+
+// The demo backend answers /api/field from fixtures. It exists so the app
+// can be looked at without a rep's password, and it lives in the shared
+// package because two preview shells use it. A build that shipped it would
+// be an app that quietly shows a rep somebody's invented day instead of
+// their own.
+describe('the shipped app', () => {
+  const sources = readdirSync(join(root, 'src'), { recursive: true, encoding: 'utf8' }).filter(
+    (f) => /\.(ts|tsx)$/.test(f)
+  );
+
+  it('has sources to check', () => {
+    expect(sources.length).toBeGreaterThan(0);
+  });
+
+  it('never reaches for the demo backend', () => {
+    for (const file of sources) {
+      const body = read(join('src', file));
+      expect(body, `${file} imports the demo backend`).not.toMatch(/field-ui\/demo/);
+    }
+    // The entry point is what vite build follows, so this is the edge the
+    // rule actually has to hold at.
+    expect(read('src/main.tsx')).not.toMatch(/demo/i);
   });
 });
 

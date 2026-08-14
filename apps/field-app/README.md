@@ -99,18 +99,28 @@ pnpm --filter @letlois/all-star-field-app version:set
 - **No API response caching.** A stale do not knock list is worse than no
   list. Same rule the web app's service worker follows.
 
-## Showing it to somebody without a phone
+## Seeing it without a phone
+
+Two ways, both running the real screens with the network replaced by
+`@letlois/field-ui/demo`. Neither can reach a client's data, and neither
+needs a rep's password.
+
+**The test site, `/field-preview`.** Deployed with the dashboard, so every
+push to a branch gets a Cloudflare Pages URL and merging puts it on
+`bi.letlois.com/field-preview`. It runs the app in a frame sized to a real
+phone, tablet or laptop, with a switch that takes it offline. This is the
+one to use while building: push, reload, look. The build stamp in the corner
+tells you whether you are looking at your change.
+
+**A single file, for sending to somebody.**
 
 ```bash
 pnpm --filter @letlois/all-star-field-app preview
 ```
 
 Builds `preview-dist/all-star-field-preview.html`: one self contained page,
-no network needed, with the app running in a phone frame and a switch that
-takes it offline. It mounts the real `<FieldApp />` and the real outbox and
-replaces only the network, answering from `preview/data.ts` instead of a
-client's database, so it can be opened without a rep's password.
+no network needed, that can be shared as a link or opened offline.
 
-Useful for showing a client what they are getting, and for store
-screenshots. It is never part of a build that reaches a store: `vite build`
-builds `index.html`, and nothing in `src/` imports `preview/`.
+Neither is ever part of a build that reaches a store. `vite build` builds
+`index.html`, nothing in `src/` imports the demo, and a test in
+`test/identity.test.ts` fails if anything ever does.

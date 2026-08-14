@@ -506,19 +506,12 @@
 
     function setOffline(next) {
       offline = next;
-      var api = frame.contentWindow.__fieldPreview;
-      if (api) api.offline = offline;
+      var demo = frame.contentWindow.__fieldDemo;
+      if (demo) demo.setOffline(offline);
       offlineButton.setAttribute('aria-pressed', String(offline));
       offlineButton.textContent = offline ? 'Back online' : 'Go offline';
       signal.setAttribute('data-offline', String(offline));
       signalText.textContent = offline ? 'No signal' : 'Has signal';
-
-      // The app listens for the browser's own connectivity events, which is
-      // what makes the queue start draining the moment signal returns rather
-      // than waiting for its next timer.
-      var event = frame.contentWindow.document.createEvent('Event');
-      event.initEvent(offline ? 'offline' : 'online', false, false);
-      frame.contentWindow.dispatchEvent(event);
     }
 
     offlineButton.addEventListener('click', function () {

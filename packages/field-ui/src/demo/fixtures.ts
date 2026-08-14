@@ -8,7 +8,7 @@
 // Every name, address and phone number here is made up. Nothing real from a
 // client's database belongs in something that gets shared around.
 
-import type { Disposition, FieldBootstrap, FieldStats, NearbyAddress, SavedVisit } from '@letlois/field-ui';
+import type { Disposition, FieldBootstrap, FieldStats, NearbyAddress, SavedVisit } from '../types';
 
 // The catalog migration 0006 seeds into every tenant, which is what All Star
 // is running.
