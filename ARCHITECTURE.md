@@ -134,6 +134,37 @@ Each was probed with a deliberate violation before being relied on.
   "disabled" and "missing" cannot drift apart.
 - `visits.device_visit_id` is UNIQUE, which is the whole offline story.
 
+### How many people can sign in at once
+
+Roughly fourteen, and it is a memory ceiling rather than a configured limit.
+
+`m` in Argon2id is the size of its working buffer in KiB, by definition.
+Measured rather than assumed: at the original `m=19456` @noble allocates
+**19.0 MB** for the duration of a single verification. A Cloudflare Workers
+isolate is capped at **128 MB**, so about six concurrent sign-ins exhausted it,
+the runtime killed the isolate, and every request in flight came back as a
+**503 that no code in this repository produces**.
+
+That is why it read as intermittent. Sign-ins spread over an afternoon never
+overlap and always worked; a burst, or somebody retrying a request that
+appeared to hang, does overlap. Per-request CPU cost was the wrong thing to
+look at, and looking at it is what made an earlier pass wrongly conclude the
+cost could not be the cause, because thirteen spaced-out logins had succeeded.
+
+The parameters are now OWASP's `m=9216, t=4, p=1`, which it treats as
+equivalent to `m=19456, t=2, p=1`. The buffer is 9.0 MB, the ceiling roughly
+doubles, and on this machine it is slightly cheaper in CPU as well. If it is
+ever hit again, `m=7168, t=5, p=1` is the next configuration on the same list
+and takes it to about eighteen.
+
+**Lowering the parameters does nothing on its own.** A stored hash carries the
+parameters it was made with, so an existing password keeps costing 19 MB to
+verify until the hash is rewritten. `needsRehash` extends the PBKDF2 upgrade
+path to cover cost drift, so every account migrates at its next successful
+sign-in, using the plaintext at the one moment it is available. Verified end to
+end: a login against an `m=19456` hash returns 200 and leaves an `m=9216` hash
+in the row.
+
 ### Argon2id, and one discarded attempt
 
 workerd refuses runtime WASM compilation: `hash-wasm` and every WASM-backed

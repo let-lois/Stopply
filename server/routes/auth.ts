@@ -3,7 +3,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { json, clientIp, unauthorized, ApiError, readJson } from '@server/http';
 import type { RouteContext } from '@server/router';
-import { hashPassword, isLegacyHash, verifyPassword } from '@server/crypto/password';
+import { hashPassword, needsRehash, verifyPassword } from '@server/crypto/password';
 import { hashSessionToken, mintSessionToken, newId } from '@server/crypto/tokens';
 import { requireSession, readCookie, SESSION_COOKIE, type Session } from '@server/db/scope';
 import { recordAudit } from '@server/db/audit';
@@ -120,17 +120,20 @@ export async function login(ctx: RouteContext): Promise<Response> {
     throw reject();
   }
 
-  // Upgrade a hash carried over from the BI platform, now that we have the
-  // plaintext in hand for the only moment we ever will. PBKDF2 at 100,000
-  // iterations is what the Workers runtime capped that platform at; Argon2id
-  // is meaningfully harder to attack with a GPU, and this is the one point in
-  // the lifetime of an account where the change can be made without asking
-  // anyone to do anything.
+  // Rewrite the hash if it is not at the current cost, now that we have the
+  // plaintext in hand for the only moment we ever will.
+  //
+  // Two cases. A hash carried over from the BI platform is PBKDF2 at 100,000
+  // iterations, which is what the Workers runtime capped that platform at, and
+  // Argon2id is meaningfully harder to attack with a GPU. And an Argon2id hash
+  // made at the old m=19456 still costs 19 MB to verify, because a hash
+  // carries its own parameters: lowering PARAMS does nothing for an existing
+  // password until it is rewritten here.
   //
   // Guarded on the compare above having passed, so a wrong password never
   // rewrites the column. Failure is swallowed: a login that worked must not
   // fail because a follow-up write did, and the old hash still verifies.
-  if (isLegacyHash(row.password_hash)) {
+  if (needsRehash(row.password_hash)) {
     try {
       await ctx.env.DB.prepare('UPDATE users SET password_hash = ?1 WHERE id = ?2')
         .bind(hashPassword(body.password), row.id)

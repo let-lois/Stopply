@@ -14,7 +14,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import { json, readJson, clientIp, notFound, ApiError } from '@server/http';
 import type { RouteContext } from '@server/router';
 import { hashSessionToken, mintSessionToken, newId } from '@server/crypto/tokens';
-import { hashPassword, isLegacyHash, verifyPassword } from '@server/crypto/password';
+import { hashPassword, needsRehash, verifyPassword } from '@server/crypto/password';
 import { readCookie } from '@server/db/scope';
 import {
   FIELD_COOKIE,
@@ -172,7 +172,7 @@ export async function fieldLogin(ctx: RouteContext): Promise<Response> {
 
   if (!(await verifyPassword(body.password, rep.password_hash))) throw reject();
 
-  if (isLegacyHash(rep.password_hash)) {
+  if (needsRehash(rep.password_hash)) {
     try {
       await ctx.env.DB.prepare('UPDATE reps SET password_hash = ?1 WHERE id = ?2')
         .bind(hashPassword(body.password), rep.id)

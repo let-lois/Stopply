@@ -6,7 +6,12 @@
 // that decides whose data you see, and the two places that must fail closed.
 
 import { matchPath } from '@server/router';
-import { hashPassword, isLegacyHash, verifyPassword } from '@server/crypto/password';
+import {
+  hashPassword,
+  isLegacyHash,
+  needsRehash,
+  verifyPassword,
+} from '@server/crypto/password';
 import { readCookie, scopeFilter, SESSION_COOKIE, type Session } from '@server/db/scope';
 import { sealSecret, last4 } from '@server/crypto/seal';
 import { requireBinding, MissingBindingError, type Env } from '@server/env';
@@ -129,7 +134,20 @@ describe('password hashing', () => {
   });
 
   it('records its parameters in the hash', () => {
-    expect(hashPassword('x')).toMatch(/^\$argon2id\$v=19\$m=19456,t=2,p=1\$/);
+    // The property, not the constants. Pinning the exact numbers made this
+    // fail when the memory cost was lowered, which is a test objecting to a
+    // deliberate change rather than catching a defect.
+    expect(hashPassword('x')).toMatch(/^\$argon2id\$v=19\$m=\d+,t=\d+,p=\d+\$/);
+  });
+
+  it('uses one of the configurations OWASP treats as equivalent', () => {
+    // This is the invariant worth guarding: the cost may be traded between
+    // memory and passes, but not lowered to something off the list. A Workers
+    // isolate caps at 128 MB and `m` is the working buffer in KiB, so this is
+    // also what bounds how many people can sign in at once.
+    const OWASP = ['m=47104,t=1,p=1', 'm=19456,t=2,p=1', 'm=12288,t=3,p=1', 'm=9216,t=4,p=1', 'm=7168,t=5,p=1'];
+    const params = /^\$argon2id\$v=19\$(m=\d+,t=\d+,p=\d+)\$/.exec(hashPassword('x'))?.[1];
+    expect(OWASP).toContain(params);
   });
 
   it('returns false rather than throwing on a hash it cannot parse', async () => {
@@ -341,5 +359,51 @@ describe('Turnstile', () => {
       new Response(JSON.stringify({ success: 'yes' }), { status: 200 })
     );
     await expect(verifyTurnstile(configured, request, 'good')).rejects.toThrow(/Challenge failed/);
+  });
+});
+
+describe('needsRehash', () => {
+  it('rewrites a hash carried over from the BI platform', () => {
+    expect(needsRehash('pbkdf2$100000$c2FsdA==$aGFzaA==')).toBe(true);
+  });
+
+  it('rewrites an Argon2id hash made at a cost we have moved off', () => {
+    // The case that matters. A stored hash carries its own parameters, so
+    // lowering PARAMS does nothing for an existing password until login
+    // rewrites it. Without this the 19 MB verifications outlive the change.
+    expect(needsRehash('$argon2id$v=19$m=19456,t=2,p=1$c2FsdA==$aGFzaA==')).toBe(true);
+  });
+
+  it('leaves a hash already at the current cost alone', () => {
+    const current = hashPassword('test1234');
+    expect(needsRehash(current)).toBe(false);
+  });
+
+  it('does not ask for a rewrite of something it cannot parse', () => {
+    // Only ever consulted after a successful compare, so an unparseable value
+    // has already failed verification. Returning true would rewrite a row on
+    // the strength of a hash nobody matched against.
+    expect(needsRehash('not-a-hash')).toBe(false);
+    expect(needsRehash('')).toBe(false);
+  });
+
+  it('produces a hash the same run can verify', async () => {
+    const stored = hashPassword('correct horse');
+    expect(await verifyPassword('correct horse', stored)).toBe(true);
+    expect(await verifyPassword('wrong horse', stored)).toBe(false);
+  });
+
+  it('still verifies a hash made at the old cost', async () => {
+    // Nobody is locked out by the parameter change: verification reads the
+    // parameters out of the stored string rather than assuming the current
+    // ones.
+    const { argon2id } = await import('@noble/hashes/argon2.js');
+    const salt = new Uint8Array(16).fill(3);
+    const old = argon2id('test1234', salt, { m: 19456, t: 2, p: 1, dkLen: 32 });
+    const b64 = (b: Uint8Array) => btoa(String.fromCharCode(...b));
+    const stored = `$argon2id$v=19$m=19456,t=2,p=1$${b64(salt)}$${b64(old)}`;
+
+    expect(await verifyPassword('test1234', stored)).toBe(true);
+    expect(needsRehash(stored)).toBe(true);
   });
 });

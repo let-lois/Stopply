@@ -18,10 +18,31 @@
 
 import { argon2id } from '@noble/hashes/argon2.js';
 
-// OWASP's first recommended Argon2id configuration: 19 MiB, two passes, one
-// lane. Encoded into every stored hash below, so raising them later does not
-// invalidate existing passwords.
-const PARAMS = { m: 19456, t: 2, p: 1, dkLen: 32 } as const;
+/**
+ * Argon2id, at OWASP's m=9216, t=4, p=1.
+ *
+ * Not the m=19456, t=2 configuration this started on, and the reason is
+ * memory rather than security. OWASP publishes several configurations it
+ * treats as equivalent, trading memory against passes:
+ *
+ *     m=47104 t=1  |  m=19456 t=2  |  m=12288 t=3  |  m=9216 t=4  |  m=7168 t=5
+ *
+ * `m` is the size of Argon2's working buffer in KiB, by definition, and
+ * measured here rather than assumed: at m=19456 @noble allocates 19.0 MB for
+ * the duration of a single verification. A Cloudflare Workers isolate is
+ * capped at 128 MB, so roughly six concurrent sign-ins exhausted it, the
+ * runtime killed the isolate, and every request in flight came back as a 503
+ * that no code in this repository produces. Spread-out sign-ins never
+ * overlapped and always worked, which is what made it look intermittent.
+ *
+ * At m=9216 the buffer is 9.0 MB and the ceiling roughly doubles, for the
+ * same strength and, measured on this machine, slightly less CPU.
+ *
+ * Encoded into every stored hash below, so changing these does not invalidate
+ * existing passwords. Old hashes keep verifying at whatever they were made
+ * with, which is also why login re-hashes on the way past: see needsRehash.
+ */
+const PARAMS = { m: 9216, t: 4, p: 1, dkLen: 32 } as const;
 const SALT_BYTES = 16;
 
 function toB64(bytes: Uint8Array): string {
@@ -115,6 +136,35 @@ async function verifyPbkdf2(password: string, stored: string): Promise<boolean> 
 /** True for a hash in the BI platform's format, which login upgrades on use. */
 export function isLegacyHash(stored: string): boolean {
   return stored.startsWith('pbkdf2$');
+}
+
+/**
+ * Whether this hash should be rewritten at the next successful sign-in.
+ *
+ * True for the old PBKDF2 format, and also for an Argon2id hash made with
+ * parameters we have since moved off. That second case is what actually
+ * migrates the memory cost: a stored hash carries its own parameters, so
+ * lowering PARAMS does nothing for anybody who already has a password until
+ * their hash is rewritten. Without this, the 19 MB verifications would have
+ * outlived the change indefinitely.
+ *
+ * Deliberately not "different in any way": only a hash whose cost differs
+ * from the current one is rewritten, so a future change that only moves the
+ * salt length does not churn every row.
+ */
+export function needsRehash(stored: string): boolean {
+  if (isLegacyHash(stored)) return true;
+
+  const match = /^\$argon2id\$v=19\$m=(\d+),t=(\d+),p=(\d+)\$/.exec(stored);
+  // Unparseable is not "needs a rehash": verification will already have
+  // failed, and this is only ever consulted after a successful compare.
+  if (!match) return false;
+
+  return (
+    Number(match[1]) !== PARAMS.m ||
+    Number(match[2]) !== PARAMS.t ||
+    Number(match[3]) !== PARAMS.p
+  );
 }
 
 /**
