@@ -58,15 +58,19 @@ export default function LoginPage() {
   const canSubmit = Boolean(email && password && token) && !submitting;
 
   return (
-    <div className="grid min-h-dvh place-content-center justify-items-center bg-[var(--color-surface)] p-6">
+    <div className="grid min-h-dvh place-items-center bg-[var(--color-surface)] p-6">
       <div className="glass-panel w-full max-w-sm p-8">
-        <div className="mb-6 flex items-center gap-3">
-          <img src="/icon-192.png" alt="" width={36} height={36} className="size-9" />
-          <div>
-            <h1 className="text-lg font-semibold tracking-tight">Stopply</h1>
-            <p className="micro-label">Operations platform</p>
-          </div>
-        </div>
+        {/* A credit line, not a lockup.
+
+            This was the Stopply mark over the product name, which made the
+            page look like it belonged to us rather than to whoever is about to
+            sign in. Sign-in is still the one place the product is named,
+            because it is reached before anyone knows which workspace the
+            visitor belongs to. It is just named quietly now.
+
+            Still an h1: it is the only heading on the page, and a form with no
+            heading is a page a screen reader announces as untitled. */}
+        <h1 className="mb-6 text-sm text-[var(--color-ink-soft)]">Powered by Stopply</h1>
 
         <form onSubmit={(e) => void onSubmit(e)} className="flex flex-col gap-4">
           <label className="flex flex-col gap-1.5">
@@ -121,12 +125,6 @@ export default function LoginPage() {
         </form>
       </div>
 
-      {/* The one place the product is named to a client.
-          Sign-in is the agency's front door: it is reached before anyone knows
-          which workspace the visitor belongs to, so there is no brand to wear
-          yet and no client-facing surface to keep clean. Everything past this
-          page belongs to whoever signed in. */}
-      <p className="mt-6 text-xs text-[var(--color-ink-faint)]">Powered by Stopply</p>
     </div>
   );
 }
