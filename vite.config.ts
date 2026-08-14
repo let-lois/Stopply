@@ -18,6 +18,14 @@ export default defineConfig({
       '@server': fileURLToPath(new URL('./server', import.meta.url)),
     },
   },
+  build: {
+    // `out`, not Vite's default `dist`. The Cloudflare Pages project that
+    // serves this repository's production branch is configured in the
+    // dashboard, not here, and its output directory is `out`. A build that
+    // writes somewhere else succeeds and then publishes nothing, which reads
+    // as a deploy that worked.
+    outDir: 'out',
+  },
   test: {
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
@@ -28,7 +36,15 @@ export default defineConfig({
     projects: [
       {
         extends: true,
-        test: {
+        build: {
+    // `out`, not Vite's default `dist`. The Cloudflare Pages project that
+    // serves this repository's production branch is configured in the
+    // dashboard, not here, and its output directory is `out`. A build that
+    // writes somewhere else succeeds and then publishes nothing, which reads
+    // as a deploy that worked.
+    outDir: 'out',
+  },
+  test: {
           name: 'app',
           environment: 'jsdom',
           include: ['src/**/*.test.{ts,tsx}'],
@@ -40,7 +56,15 @@ export default defineConfig({
       },
       {
         extends: true,
-        test: { name: 'server', environment: 'node', include: ['server/**/*.test.ts'] },
+        build: {
+    // `out`, not Vite's default `dist`. The Cloudflare Pages project that
+    // serves this repository's production branch is configured in the
+    // dashboard, not here, and its output directory is `out`. A build that
+    // writes somewhere else succeeds and then publishes nothing, which reads
+    // as a deploy that worked.
+    outDir: 'out',
+  },
+  test: { name: 'server', environment: 'node', include: ['server/**/*.test.ts'] },
       },
     ],
   },

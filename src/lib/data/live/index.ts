@@ -2,6 +2,8 @@ import type { ModuleId } from '@/types';
 import type { ModuleDataMap } from '@/lib/data/moduleDataMap';
 import { LiveModeNotAvailableError } from '@/lib/data/errors';
 import { fetchFieldSalesLive } from '@/lib/data/live/fieldSales';
+import { fetchFieldSalesFromPlatform } from '@/lib/data/live/platformFieldSales';
+import { BACKEND } from '@/lib/api/backend';
 
 /**
  * Live adapters, dispatched by module.
@@ -29,7 +31,11 @@ export function fetchLiveData<M extends ModuleId>(
     // Narrowing a generic to one member is past what the compiler tracks
     // through this signature, so the assertion is contained here rather than
     // pushed onto the seam or onto every view.
-    return fetchFieldSalesLive(clientId, signal) as Promise<ModuleDataMap[M]>;
+    const read =
+      BACKEND === 'platform'
+        ? fetchFieldSalesFromPlatform(clientId, signal)
+        : fetchFieldSalesLive(clientId, signal);
+    return read as Promise<ModuleDataMap[M]>;
   }
   return Promise.reject(new LiveModeNotAvailableError(moduleId));
 }

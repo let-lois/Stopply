@@ -26,15 +26,11 @@ import type {
 } from '@/types';
 import { api } from '@/lib/api/client';
 import { apiPaths } from '@/lib/api/paths';
-import {
-  auditResponseSchema,
-  clientsResponseSchema,
-  credentialsResponseSchema,
-  teamResponseSchema,
-} from '@/lib/api/contracts';
+import { clientsResponseSchema } from '@/lib/api/contracts';
 import type { createClientRequestSchema } from '@/lib/api/contracts';
 import { useSession } from '@/lib/auth/SessionProvider';
 import type { z } from 'zod';
+import { backend } from '@/lib/api/backends';
 
 /** What creating a workspace needs. The server's own request shape. */
 export type CreateClientInput = z.infer<typeof createClientRequestSchema>;
@@ -81,25 +77,7 @@ export function PlatformProvider({ children }: { children: React.ReactNode }) {
   const [loaded, setLoaded] = useState<{ key: string; values: typeof EMPTY } | null>(null);
   const [error, setError] = useState<Error | null>(null);
 
-  const load = useCallback(async (signal?: AbortSignal) => {
-    // Four independent reads, each already scoped by the server to the
-    // session. Fetched together rather than in sequence: they are
-    // independent, and four round trips in series is the difference between
-    // a page that appears and a page that assembles.
-    const [clients, team, audit, credentials] = await Promise.all([
-      api.get(apiPaths.clients(), clientsResponseSchema, signal),
-      api.get(apiPaths.team(), teamResponseSchema, signal),
-      api.get(apiPaths.audit(), auditResponseSchema, signal),
-      api.get(apiPaths.credentials(), credentialsResponseSchema, signal),
-    ]);
-
-    return {
-      clients: clients.clients,
-      users: team.users,
-      auditLog: audit.entries,
-      credentialRefs: credentials.credentials,
-    };
-  }, []);
+  const load = useCallback((signal?: AbortSignal) => backend.fetchConsole(signal), []);
 
   useEffect(() => {
     if (!requestKey) return;
@@ -138,8 +116,7 @@ export function PlatformProvider({ children }: { children: React.ReactNode }) {
   );
 
   const refreshAudit = useCallback(async () => {
-    const audit = await api.get(apiPaths.audit(), auditResponseSchema);
-    patch({ auditLog: audit.entries });
+    patch({ auditLog: await backend.fetchAudit() });
   }, [patch]);
 
   const setModuleEnabled = useCallback<PlatformActions['setModuleEnabled']>(

@@ -9,12 +9,8 @@
 // only way to learn who you are is to ask the server, which is what boot does.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { api, ApiRequestError } from '@/lib/api/client';
-import { apiPaths } from '@/lib/api/paths';
-import { sessionResponseSchema, type SessionResponse, type SessionUser } from '@/lib/api/contracts';
-import { z } from 'zod';
-
-const okSchema = z.object({ ok: z.boolean() });
+import { backend } from '@/lib/api/backends';
+import type { SessionResponse, SessionUser } from '@/lib/api/contracts';
 
 export type SessionStatus = 'checking' | 'signed-in' | 'signed-out';
 
@@ -61,8 +57,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const controller = new AbortController();
 
-    api
-      .get(apiPaths.session(), sessionResponseSchema, controller.signal)
+    backend
+      .fetchSession(controller.signal)
       .then((response) => {
         if (!controller.signal.aborted) apply(response);
       })
@@ -77,11 +73,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = useCallback<SessionActions['signIn']>(
     async (email, password, turnstileToken) => {
-      const response = await api.post(
-        apiPaths.login(),
-        { email, password, turnstileToken },
-        sessionResponseSchema
-      );
+      const response = await backend.signIn(email, password, turnstileToken);
       apply(response);
       return response;
     },
@@ -89,14 +81,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
-    try {
-      await api.post(apiPaths.logout(), {}, okSchema);
-    } catch (error) {
-      // Signing out must not be blockable. The server deletes the session row,
-      // so a failure here is a network problem; forgetting the user locally is
-      // still the right response, and the next request will 401 anyway.
-      if (!(error instanceof ApiRequestError)) throw error;
-    }
+    // The backend swallows a network failure here on purpose: signing out must
+    // not be blockable, and forgetting the user locally is right either way.
+    await backend.signOut();
     setState({ status: 'signed-out', user: null, clientIds: null });
   }, []);
 

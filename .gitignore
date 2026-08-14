@@ -11,3 +11,7 @@ qa/screenshots
 # sealed credential blobs, so they belong on the machine doing a migration and
 # nowhere else. The runbook in migrate/README.md regenerates one in a command.
 migrate/*.sql
+
+# Vite's build output. Named `out` to match the Cloudflare Pages project's
+# configured output directory, not Vite's default `dist`.
+out/
