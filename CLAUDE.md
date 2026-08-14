@@ -74,6 +74,21 @@ Built for the All Star engagement: a field app reps use at the door, plus the re
 - **Agency admins can apply tenant migrations from the console** (`POST /api/agency/tenants/:id/migrate`). Schema ships with a deploy but only reaches a tenant database when migrations run, and that gap is what left a client staring at "internal error" for a live feature. The CLI (`pnpm migrate:tenants`) still works and does the same thing.
 - The field app is a separate static route (`apps/web/src/app/field/`) with its own service worker (`apps/web/public/field-sw.js`). The worker caches the app shell only and **never** `/api` responses: a stale do-not-knock list is worse than none.
 
+## The standalone field app (App Store / Play Store)
+
+All Star's reps also get the field app as a real installable app, built with Capacitor in `apps/field-app`. See `apps/field-app/README.md` and `docs/field-app-release.md`.
+
+- **One copy of the screens, two shells.** Everything a rep sees lives in `packages/field-ui`; `apps/web`'s `/field` route and `apps/field-app` both mount `<FieldApp />`. Do **not** fix a bug in one shell: there is only one place to fix it. What legitimately differs between them is declared through `configureFieldPlatform` (`packages/field-ui/src/platform.ts`) and nowhere else.
+- **`packages/field-ui/src/field.css` does not define its own palette.** It reads tokens the host supplies: `globals.css` on the web, `apps/field-app/src/app.css` in the app. A new token means adding it in both, or the app renders it as nothing.
+- **The web `/field` route stays.** It is how a rep works before the app is approved and on a phone that cannot install it. Do not remove it in favour of the store build.
+- **The app still gets its tenant from the hostname.** It talks to `all-star.bi.letlois.com` and sends no client id, so `fieldScope` and "tenant comes from the host, never from the client" are untouched. Never add a tenant/slug parameter to `/api/field/*` to make a native client work.
+- **Bearer tokens are field only, and app origins only.** `/api/field/*` accepts `Authorization: Bearer` because a WebView origin cannot be sent a cookie. The login token is returned only to an app origin (`isAppOrigin` in `workers/api/src/cors.ts`), the cookie wins when both are present, and CSRF is skipped only for bearer requests, because that token is not a credential the browser attaches on its own. Do not extend bearer auth to `/api/tenant/*` or `/api/agency/*`, and do not set `Access-Control-Allow-Credentials` anywhere.
+- **Field sessions slide, dashboard sessions do not.** `renewSession` pushes a bearer field session's expiry out on every `/api/field/me`, because being signed out mid shift at a door with no signal is this app's worst failure. `/me` rechecks `active` on every call, which is the kill switch. Do not give the dashboard the same treatment.
+- **The offline queue is mirrored to native storage.** Clearing an Android app's cache takes `localStorage` with it, and the queue is a rep's unsent day. `restoreOutboxBackup` only ever restores into an empty queue, so it can never overwrite newer knocks; the server's `client_uuid` dedupe makes a re-sent knock harmless. Do not make the restore merge or overwrite.
+- **`resources/mark.svg` is the only artwork source.** `pnpm --filter @letlois/all-star-field-app icons` regenerates every icon and splash in both native projects. Never hand-edit a PNG under `ios/` or `android/`.
+- **`cap sync` after every web change**, or the phone runs the previous build inside the new version number. `version:set` writes the version into `package.json`, `build.gradle` and the Xcode project together; never edit those two by hand.
+- **An API change reaches every phone immediately; an app change does not.** Reps update on their own schedule, so do not remove or reshape a `/api/field/*` response without checking what an older installed build does with it.
+
 ## Code conventions
 
 - **Never use em dashes** in any copy, content, comments, or UI text. Use periods, commas, or rewrite the sentence.

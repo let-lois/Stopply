@@ -198,9 +198,33 @@ their own dashboard. Both halves are in this repo.
 
 ### The field app
 
-Served at `/field` on the client's own dashboard hostname (for example
-`all-star.bi.letlois.com/field`). Installable to a phone home screen via
-`/field.webmanifest`.
+Two shells, one app. The screens, the outbox and the API client live in
+`packages/field-ui`; what differs between the shells is declared through
+`configureFieldPlatform` and nothing else.
+
+| | Web | Installed |
+| --- | --- | --- |
+| Where | `/field` on the client's own hostname | App Store and Play Store |
+| Built from | `apps/web` | `apps/field-app` (Capacitor) |
+| Session | `lbi_field` cookie | bearer token in native storage |
+| Origin | same as the API | `capacitor://localhost`, CORS to the client's host |
+| Location | the browser's | the OS geolocation API |
+| Queue | `localStorage` | `localStorage`, mirrored to native storage |
+
+The web one is installable to a home screen via `/field.webmanifest` and is
+not going away: it is how a rep works before the app is approved, and on a
+phone that cannot install it. See `apps/field-app/README.md` for the
+standalone build and `docs/field-app-release.md` for shipping it.
+
+The API takes the client from the request hostname and never from anything
+the phone sends, which is the rule the whole platform is built on. The
+installed app changes nothing about that: it talks to the client's own
+hostname, and the server resolves the client exactly as it does for a
+browser. What it cannot do is carry a cookie across its WebView origin, so
+sign in hands it a session token instead. That token is only ever returned
+to an app origin, is exempt from CSRF only because it is not a credential
+the browser attaches on its own, and reaches nothing a rep's cookie session
+could not.
 
 The thing that makes it work in the field is the outbox. Nothing is ever
 sent directly: a knock is written to `localStorage` first, the rep gets

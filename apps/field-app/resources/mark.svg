@@ -1,0 +1,29 @@
+<!-- The app's mark: a door with a star cut out of it.
+
+     A placeholder in the sense that it is not artwork All Star commissioned,
+     and it is meant to be replaced with whatever they want on their listing.
+     Not a placeholder in the sense of being unfinished: it reads at 48px on
+     a home screen, which is the only size that matters, and it says door and
+     All Star without a word of text, which would be illegible at that size
+     anyway.
+
+     Drawn on transparency, with no background of its own. Android composites
+     an adaptive icon's foreground over its background layer and shifts the
+     two independently when the launcher animates, so a foreground carrying
+     its own coloured square would show its edges sliding around. The script
+     lays this over the navy where a solid background is what is wanted.
+
+     Every icon and splash asset in both native projects comes from this one
+     file. See scripts/generate-icons.mjs. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Door, star and knob as one path with the even-odd rule, so the star
+       and the knob are holes punched through the door rather than shapes
+       painted on top of it. -->
+  <path
+    fill="#faf8f3"
+    fill-rule="evenodd"
+    d="M312 402 A200 200 0 0 1 712 402 L712 822 L312 822 Z
+       M512 330 L543.45 426.72 L645.15 426.74 L562.88 486.53 L594.29 583.26 L512 523.5 L429.71 583.26 L461.12 486.53 L378.85 426.74 L480.55 426.72 Z
+       M652 690 m-24 0 a24 24 0 1 0 48 0 a24 24 0 1 0 -48 0 Z"
+  />
+</svg>

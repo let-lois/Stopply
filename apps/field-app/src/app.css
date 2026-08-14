@@ -1,0 +1,86 @@
+/* The native shell's own stylesheet: the palette the shared field styles
+   read, and the handful of behaviours a WebView needs told about that a
+   browser tab handles on its own.
+
+   The palette values match the dashboard's (globals.css), so the app and the
+   web field app look like the same product. The fonts deliberately do not:
+   the dashboard loads Fraunces and Spline Sans from Google, and this app has
+   to open in a basement with no signal, so it uses what the phone already
+   has. On an iPhone that is San Francisco, on Android it is Roboto, and both
+   are what a rep's other apps look like anyway. */
+
+:root {
+  --paper: #faf8f3;
+  --card: #ffffff;
+  --ink: #211d16;
+  --ink-soft: #7a7566;
+  --hairline: #e9e4d6;
+  --accent: #263449;
+  --positive: #1f9d6b;
+  --negative: #c7502f;
+  --amber: #c7902f;
+  --shadow-card: 0 1px 2px rgba(60, 48, 20, 0.06), 0 8px 20px -10px rgba(60, 48, 20, 0.16);
+  --font-display: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Follows the phone's own setting. A rep working a street at dusk has their
+   phone in dark mode already, and a screen that ignores that is the one
+   thing on it blazing white. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #17140f;
+    --card: #322d25;
+    --ink: #ede8df;
+    --ink-soft: #a19b8d;
+    --hairline: #3d372c;
+    --accent: #93aac7;
+    --positive: #3fc08a;
+    --negative: #e07357;
+    --amber: #d9a441;
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.24), 0 8px 20px -10px rgba(0, 0, 0, 0.4);
+  }
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  /* iOS enlarges text in landscape on its own, which reflows a form mid
+     typing. The app is portrait only, so this only ever surprises. */
+  -webkit-text-size-adjust: 100%;
+}
+
+/* The rubber band scroll past the top of the page reveals the WebView's
+   background and reads as the app coming apart. The knock form scrolls on
+   its own inside this. */
+body {
+  overscroll-behavior-y: none;
+}
+
+/* A tap on an outcome button should look like a press, not like selecting
+   text, and should not flash a grey box on Android. */
+button,
+.knock-disposition,
+.field-tabs button {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+/* Typed content is still selectable: a rep copying a phone number out of a
+   note is a real thing they do. */
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+#root {
+  min-height: 100dvh;
+}

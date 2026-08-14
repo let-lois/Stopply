@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { AppContext, Env } from './env';
 import { contextMiddleware, csrfMiddleware } from './middleware';
+import { fieldCors } from './cors';
 import { authRoutes } from './routes/auth';
 import { agencyRoutes } from './routes/agency';
 import { tenantRoutes } from './routes/tenant';
@@ -29,6 +30,9 @@ app.use('*', async (c, next) => {
   c.header('referrer-policy', 'strict-origin-when-cross-origin');
 });
 
+// Before host resolution, so a preflight from the standalone field app is
+// answered without depending on a session the browser has not sent yet.
+app.use('*', fieldCors);
 app.use('*', contextMiddleware);
 app.use('*', csrfMiddleware);
 

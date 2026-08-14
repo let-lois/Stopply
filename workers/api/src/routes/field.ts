@@ -18,7 +18,9 @@ import {
   clearFieldCookie,
   createSession,
   destroySession,
+  renewSession,
 } from '../session';
+import { isAppOrigin } from '../cors';
 import { LIMITS, rateLimit } from '../ratelimit';
 import {
   isMissingFieldTables,
@@ -103,6 +105,11 @@ fieldRoutes.post('/login', async (c) => {
   return c.json({
     ok: true,
     csrf,
+    // The store builds cannot receive a cookie across their WebView origin,
+    // so they get the token in the body and hold it themselves. Handed back
+    // only to those origins: a browser on the dashboard host keeps its
+    // HttpOnly cookie, where script cannot read it.
+    ...(isAppOrigin(c.req.header('origin')) ? { token } : {}),
     rep: { id: rep.id, name: rep.name, email: rep.email, role: rep.role, team: rep.team },
   });
 });
@@ -141,6 +148,15 @@ fieldRoutes.get('/me', async (c) => {
   ]);
   const rep = repRes.results[0];
   if (!rep || rep.active !== 1) return c.json({ error: 'unauthorized' }, 401);
+
+  // Push the expiry back out for the standalone app, which has no cookie to
+  // renew and whose rep opens it every working day. See renewSession: an
+  // idle session still lapses, and a rep deactivated above is refused here
+  // before this line is reached.
+  if (c.get('fieldAuth') === 'bearer') {
+    await renewSession(c.env, c.get('fieldToken')!, session);
+  }
+
   return c.json({
     rep: { id: rep.id, name: rep.name, email: rep.email, role: rep.role, team: rep.team },
     tenant: { name: tenant.name, slug: tenant.slug, timezone: tenant.timezone },

@@ -33,6 +33,10 @@ export interface RequestVars {
   // Never populated from the dashboard cookie and never readable as one.
   fieldSession: SessionRecord | null;
   fieldToken: string | null;
+  // How that field session arrived. The standalone store app sends a bearer
+  // token because a cookie cannot cross into its WebView origin; the web
+  // field app still sends the cookie. CSRF applies to one and not the other.
+  fieldAuth: 'cookie' | 'bearer' | null;
   // Tenant resolved from the hostname, or from the agency switcher.
   tenant: TenantRow | null;
   hostContext: 'agency' | 'tenant';

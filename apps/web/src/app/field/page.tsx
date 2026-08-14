@@ -7,10 +7,15 @@
 // loads the reporting shell, and a client opening the dashboard never loads
 // this. They share a hostname and nothing else, including the session
 // cookie.
+//
+// The screens themselves live in @letlois/field-ui, shared with the
+// standalone app on the App Store and Play Store. This file is only the web
+// shell: same origin, cookie session, the browser's own geolocation, which
+// is exactly the platform default.
 
 import { useEffect } from 'react';
-import { FieldApp } from '@/components/field/FieldApp';
-import './field.css';
+import { FieldApp } from '@letlois/field-ui';
+import '@letlois/field-ui/field.css';
 
 export default function FieldPage() {
   // Registered here rather than in the shared layout so the dashboard never

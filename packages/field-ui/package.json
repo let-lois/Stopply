@@ -1,0 +1,24 @@
+{
+  "name": "@letlois/field-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./field.css": "./src/field.css"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "react": ">=19"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "happy-dom": "^20.11.2",
+    "react": "19.2.4",
+    "vitest": "^3.0.0"
+  }
+}
