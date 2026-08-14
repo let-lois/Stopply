@@ -315,7 +315,7 @@ export default function FieldSalesTerritories() {
                     disabled={busy}
                     aria-label={`Territory for ${rep.name}`}
                     onChange={(e) => void assign(rep.id, e.target.value || null)}
-                    className="min-h-10 rounded-xl border border-[var(--color-hairline)] bg-fill-subtle px-3 text-sm"
+                    className="min-h-10 rounded-xl border border-[var(--color-hairline)] px-3 text-sm"
                   >
                     {/* A rep with no territory sees their whole client's doors
                         rather than none, so this is a real choice and not an

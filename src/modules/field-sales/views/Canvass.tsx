@@ -180,7 +180,7 @@ export default function FieldSalesCanvass() {
             value={colorBy}
             onChange={(e) => setColorBy(e.target.value === 'rep' ? 'rep' : 'outcome')}
             aria-label="Colour doors by"
-            className="ml-auto min-h-10 rounded-xl border border-[var(--color-hairline)] bg-fill-subtle px-3 text-sm"
+            className="ml-auto min-h-10 rounded-xl border border-[var(--color-hairline)] px-3 text-sm"
           >
             <option value="outcome">Colour by outcome</option>
             <option value="rep">Colour by rep</option>
@@ -190,7 +190,7 @@ export default function FieldSalesCanvass() {
             value={repFilter}
             onChange={(e) => setRepFilter(e.target.value)}
             aria-label="Rep"
-            className="min-h-10 rounded-xl border border-[var(--color-hairline)] bg-fill-subtle px-3 text-sm"
+            className="min-h-10 rounded-xl border border-[var(--color-hairline)] px-3 text-sm"
           >
             <option value="all">All reps</option>
             {reps.map((rep) => (
@@ -204,7 +204,7 @@ export default function FieldSalesCanvass() {
             value={activeTerritoryId}
             onChange={(e) => setTerritoryId(e.target.value)}
             aria-label="Territory"
-            className="min-h-10 rounded-xl border border-[var(--color-hairline)] bg-fill-subtle px-3 text-sm"
+            className="min-h-10 rounded-xl border border-[var(--color-hairline)] px-3 text-sm"
           >
             <option value="all">All territories</option>
             {data?.territories.map((t) => (

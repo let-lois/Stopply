@@ -99,7 +99,7 @@ export function LogVisitDialog({
           <select
             value={repId}
             onChange={(e) => setRepId(e.target.value)}
-            className="min-h-10 rounded-xl border border-[var(--color-hairline)] bg-fill-subtle px-3"
+            className="min-h-10 rounded-xl border border-[var(--color-hairline)] px-3"
           >
             {reps.map((rep) => (
               <option key={rep.id} value={rep.id}>

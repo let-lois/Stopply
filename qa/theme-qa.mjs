@@ -174,6 +174,45 @@ async function worstContrast() {
 }
 
 /**
+ * Every <option>, against the ground its own dropdown will paint.
+ *
+ * The contrast sweep above walks rendered text and cannot see these: an option
+ * inside a closed select has no box, so it is filtered out before it is
+ * measured. The dropdown is drawn by the browser and there is no way to open
+ * it from a script, which is exactly why this went out broken. What can be
+ * measured is the pair of colours the browser will use, which is the select's
+ * own background and the option's inherited ink.
+ */
+async function optionContrast() {
+  return page.evaluate(`(() => {
+    ${CONTRAST_HELPERS}
+    const bad = [];
+    for (const option of document.querySelectorAll('option')) {
+      const style = getComputedStyle(option);
+      const select = option.closest('select');
+      if (!select) continue;
+
+      // The popup's ground is the option's own background where one is set,
+      // and the select's otherwise. A translucent value composites over the
+      // browser's white popup base, which is the failure being checked.
+      const own = style.backgroundColor;
+      const fromSelect = getComputedStyle(select).backgroundColor;
+      const layers = [];
+      for (const layer of [fromSelect, own]) {
+        if (layer && layer !== 'rgba(0, 0, 0, 0)' && layer !== 'transparent') layers.push(layer);
+      }
+      const bg = solid(layers);
+      const fg = solid([...layers, style.color]);
+      const r = ratio(fg, bg);
+      if (r < 4.5) {
+        bad.push(JSON.stringify(option.textContent.trim().slice(0, 24)) + ' ' + r.toFixed(2) + ':1');
+      }
+    }
+    return [...new Set(bad)];
+  })()`);
+}
+
+/**
  * Marks painted the same colour as what is behind them.
  *
  * Restricted to small or thin elements: swatches, dots, knobs, progress bars.
@@ -248,6 +287,7 @@ for (const theme of ['Light', 'Dark']) {
 
   const failures = [];
   const invisible = [];
+  const options = [];
   for (const [name, path] of VIEWS) {
     await page.goto(`${BASE}${path}`, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1400);
@@ -259,6 +299,7 @@ for (const theme of ['Light', 'Dark']) {
     for (const row of await invisibleMarks()) {
       invisible.push(`${name}: ${row.tag}.${row.cls} ${row.size}`);
     }
+    for (const row of await optionContrast()) options.push(`${name}: ${row}`);
   }
 
   check(
@@ -270,6 +311,11 @@ for (const theme of ['Light', 'Dark']) {
     `nothing in ${theme} is painted the same colour as its background`,
     invisible.length === 0,
     invisible.slice(0, 3).join(' | ')
+  );
+  check(
+    `every dropdown option in ${theme} reads against its own popup`,
+    options.length === 0,
+    options.slice(0, 3).join(' | ')
   );
 }
 

@@ -356,6 +356,33 @@ body {
   }
 }
 
+/* Native controls, which the theme cannot reach through a class.
+
+   A <select>'s dropdown is painted by the browser, not by us, and it takes its
+   background from the select's own background-color. Ours was a translucent
+   white fill, which looks right on the closed control sitting on a dark panel
+   and composites over the browser's white popup base when the list opens. The
+   result was a near-white list carrying near-white text: readable when shut,
+   invisible when open, which is the half nobody screenshots.
+
+   So the ground here is opaque, and the options carry their colours
+   explicitly rather than inheriting. `color-scheme` on the root already tells
+   the browser which way round its own chrome should be, and it is not enough
+   on its own: it does not override a background-color we set ourselves.
+
+   In @layer base so a utility class can still override it deliberately. */
+@layer base {
+  select {
+    background-color: var(--color-surface-raised);
+    color: var(--color-ink);
+  }
+
+  option {
+    background-color: var(--color-surface-raised);
+    color: var(--color-ink);
+  }
+}
+
 /* Keyboard focus is always visible. Every interactive element inherits this
    unless it opts out deliberately. */
 :focus-visible {
