@@ -98,3 +98,19 @@ pnpm --filter @letlois/all-star-field-app version:set
   knock form never does.
 - **No API response caching.** A stale do not knock list is worse than no
   list. Same rule the web app's service worker follows.
+
+## Showing it to somebody without a phone
+
+```bash
+pnpm --filter @letlois/all-star-field-app preview
+```
+
+Builds `preview-dist/all-star-field-preview.html`: one self contained page,
+no network needed, with the app running in a phone frame and a switch that
+takes it offline. It mounts the real `<FieldApp />` and the real outbox and
+replaces only the network, answering from `preview/data.ts` instead of a
+client's database, so it can be opened without a rep's password.
+
+Useful for showing a client what they are getting, and for store
+screenshots. It is never part of a build that reaches a store: `vite build`
+builds `index.html`, and nothing in `src/` imports `preview/`.

@@ -1,6 +1,7 @@
 node_modules/
 .next/
 dist/
+preview-dist/
 .wrangler/
 .dev.vars
 *.local

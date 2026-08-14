@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
+    "preview": "vite build --config vite.preview.config.ts && node scripts/build-preview.mjs",
     "icons": "node scripts/generate-icons.mjs",
     "version:set": "node scripts/set-version.mjs",
     "sync": "pnpm build && cap sync",

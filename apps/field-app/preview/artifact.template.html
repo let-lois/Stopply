@@ -1,0 +1,542 @@
+<title>All Star Field</title>
+
+<style>
+  /* Palette lifted from the dashboard's own tokens (apps/web/src/app/globals.css),
+     because this page is showing that product and should not invent a second
+     identity for it. The neutral is the warm paper the whole platform sits on;
+     navy is the accent the app's own header and splash use. */
+  :root {
+    --paper: #faf8f3;
+    --card: #ffffff;
+    --ink: #211d16;
+    --ink-soft: #7a7566;
+    --hairline: #e9e4d6;
+    --accent: #263449;
+    --accent-quiet: #5c6f8c;
+    --positive: #1f9d6b;
+    --amber: #c7902f;
+    --bezel: #1b2431;
+    --bezel-edge: #313e50;
+    --shadow: 0 1px 2px rgba(60, 48, 20, 0.06), 0 24px 48px -24px rgba(38, 52, 73, 0.4);
+
+    --display: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #17140f;
+      --card: #262119;
+      --ink: #ede8df;
+      --ink-soft: #a19b8d;
+      --hairline: #3d372c;
+      --accent: #93aac7;
+      --accent-quiet: #7d90aa;
+      --positive: #3fc08a;
+      --amber: #d9a441;
+      --bezel: #0d1219;
+      --bezel-edge: #2a3543;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 24px 48px -24px rgba(0, 0, 0, 0.7);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper: #17140f;
+    --card: #262119;
+    --ink: #ede8df;
+    --ink-soft: #a19b8d;
+    --hairline: #3d372c;
+    --accent: #93aac7;
+    --accent-quiet: #7d90aa;
+    --positive: #3fc08a;
+    --amber: #d9a441;
+    --bezel: #0d1219;
+    --bezel-edge: #2a3543;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 24px 48px -24px rgba(0, 0, 0, 0.7);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 56px 28px 96px;
+  }
+
+  /* Masthead. A rule under it rather than a card around it: this is a note
+     about a piece of software, not a product launch. */
+  .masthead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px 32px;
+    padding-bottom: 20px;
+    border-bottom: 1.5px solid var(--ink);
+  }
+
+  .eyebrow {
+    margin: 0 0 10px;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent-quiet);
+  }
+
+  h1 {
+    margin: 0;
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: clamp(34px, 5.2vw, 52px);
+    line-height: 1.04;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+
+  .masthead-note {
+    margin: 0;
+    max-width: 34ch;
+    font-size: 14.5px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+  }
+
+  /* The phone is the argument, so it gets the left column and stays put
+     while the notes beside it scroll. */
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 420px) minmax(0, 1fr);
+    gap: 64px;
+    align-items: start;
+    margin-top: 48px;
+  }
+
+  .stage { position: sticky; top: 32px; }
+
+  .phone {
+    width: 100%;
+    max-width: 392px;
+    margin: 0 auto;
+    padding: 12px;
+    border-radius: 42px;
+    background: var(--bezel);
+    border: 1px solid var(--bezel-edge);
+    box-shadow: var(--shadow);
+  }
+
+  .phone-inner {
+    position: relative;
+    border-radius: 31px;
+    overflow: hidden;
+    background: #faf8f3;
+  }
+
+  /* The speaker slot. One small skeuomorphic cue is enough to read as a
+     phone; a drawn notch and a status bar would be pastiche. */
+  .phone-inner::before {
+    content: "";
+    position: absolute;
+    top: 9px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 58px;
+    height: 5px;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.28);
+    z-index: 5;
+    pointer-events: none;
+  }
+
+  iframe {
+    display: block;
+    width: 100%;
+    height: 748px;
+    border: 0;
+    background: #faf8f3;
+  }
+
+  /* Controls sit under the phone as a labelled rail, not as buttons floating
+     on the page. */
+  .rail {
+    max-width: 392px;
+    margin: 0 auto 18px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .rail-label {
+    flex: 1 1 100%;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent-quiet);
+  }
+
+  button {
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink);
+    background: var(--card);
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    padding: 9px 15px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+  }
+
+  button:hover { border-color: var(--accent-quiet); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  button[aria-pressed="true"] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--paper);
+  }
+
+  .signal {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    color: var(--ink-soft);
+    margin-left: auto;
+  }
+
+  .signal-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--positive);
+    transition: background 0.2s;
+  }
+
+  .signal[data-offline="true"] .signal-dot { background: var(--amber); }
+
+  /* Notes column */
+  .notes { display: flex; flex-direction: column; gap: 40px; padding-top: 4px; }
+
+  h2 {
+    margin: 0 0 14px;
+    font-family: var(--display);
+    font-size: 23px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+  }
+
+  .notes p { margin: 0 0 14px; max-width: 62ch; }
+  .notes p:last-child { margin-bottom: 0; }
+
+  /* A definition list, because these genuinely are term-and-explanation
+     pairs rather than a list that wanted numbering. */
+  dl { margin: 0; display: flex; flex-direction: column; gap: 0; }
+
+  .row {
+    display: grid;
+    grid-template-columns: 152px minmax(0, 1fr);
+    gap: 8px 24px;
+    padding: 14px 0;
+    border-top: 1px solid var(--hairline);
+  }
+
+  .row:last-child { border-bottom: 1px solid var(--hairline); }
+
+  dt { font-weight: 600; font-size: 14.5px; }
+  dd { margin: 0; font-size: 14.5px; color: var(--ink-soft); line-height: 1.55; }
+
+  .tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    color: var(--accent-quiet);
+  }
+
+  .callout {
+    padding: 18px 20px;
+    border-left: 2.5px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
+    font-size: 14.5px;
+    line-height: 1.55;
+  }
+
+  .callout strong { font-weight: 600; }
+  .callout p { margin: 0 0 10px; }
+  .callout p:last-child { margin-bottom: 0; }
+
+  footer {
+    margin-top: 72px;
+    padding-top: 20px;
+    border-top: 1px solid var(--hairline);
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    color: var(--accent-quiet);
+  }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: minmax(0, 1fr); gap: 44px; }
+    .stage { position: static; }
+    .page { padding: 40px 20px 72px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+
+<div class="page">
+  <header class="masthead">
+    <div>
+      <p class="eyebrow">Preview build &middot; not the live app</p>
+      <h1>All Star Field</h1>
+    </div>
+    <p class="masthead-note">
+      The app All Star's reps will install from the App Store and Play Store.
+      Running below with stand-in data, so it can be used without a login.
+    </p>
+  </header>
+
+  <div class="layout">
+    <div class="stage">
+      <!-- Above the phone, not below it: on a laptop the frame fills the
+           viewport, and a control the reader has to scroll past the app to
+           find is a control they never press. -->
+      <div class="rail">
+        <span class="rail-label">Try it</span>
+        <button id="offline" type="button" aria-pressed="false">Go offline</button>
+        <button id="restart" type="button">Restart</button>
+        <span class="signal" id="signal" data-offline="false">
+          <span class="signal-dot"></span><span id="signal-text">Has signal</span>
+        </span>
+      </div>
+
+      <div class="phone">
+        <div class="phone-inner">
+          <iframe id="app" title="All Star Field, running with stand-in data"></iframe>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <section>
+        <h2>What you are looking at</h2>
+        <p>
+          These are the real screens, the real stylesheet and the real offline
+          queue, from <code>packages/field-ui</code>. The only thing replaced is
+          the network: every call is answered from a fixture instead of All
+          Star's database, which is what lets it run here without a rep's
+          password.
+        </p>
+        <p>
+          The same code renders at
+          <code>all-star.bi.letlois.com/field</code> in a browser. There is one
+          copy of these screens, not two.
+        </p>
+      </section>
+
+      <section>
+        <h2>Worth trying</h2>
+        <div class="callout">
+          <p>
+            <strong>Tap "Go offline", then log a knock.</strong> Pick an
+            address and an outcome and hit the log button. It saves instantly,
+            the counter on Today ticks up, and the pill at the top says the
+            knock is on the phone.
+          </p>
+          <p>
+            Tap "Go offline" again and the queue drains on its own. That is the
+            whole design: a rep at a door never waits for signal, and a knock
+            is never lost because there was none.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2>The three screens</h2>
+        <dl>
+          <div class="row">
+            <dt>Knock</dt>
+            <dd>
+              Where a rep spends the shift. Outcome buttons big enough for one
+              thumb in the sun, the street remembered between doors, and
+              contact fields that only appear when the outcome implies somebody
+              to follow up with. Tap <em>Use my location</em> to see the doors
+              the team already worked, including one household that asked not
+              to be knocked again.
+            </dd>
+          </div>
+          <div class="row">
+            <dt>Today</dt>
+            <dd>
+              Everything logged, queued knocks first, with a small mark for
+              whether it has reached the office yet. Notes stay editable for a
+              day after the door.
+            </dd>
+          </div>
+          <div class="row">
+            <dt>Me</dt>
+            <dd>
+              The rep's own numbers, today and over the week. Managers also see
+              the team's. The figures here are invented but weighted the way
+              the work actually goes: most doors reach nobody.
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      <section>
+        <h2>What differs on a real phone</h2>
+        <dl>
+          <div class="row">
+            <dt>Location</dt>
+            <dd>
+              Comes from the OS rather than the browser, and prompts once.
+              Only while the app is open, and optional: decline it and every
+              knock can still be typed.
+            </dd>
+          </div>
+          <div class="row">
+            <dt>Sign in</dt>
+            <dd>
+              A rep signs in once with the account their manager made. The
+              session is held in the phone's own storage, not a cookie, and it
+              stays signed in day to day.
+            </dd>
+          </div>
+          <div class="row">
+            <dt>The queue</dt>
+            <dd>
+              Also mirrored into native storage, so clearing the app's cache
+              cannot take a rep's unsent day with it.
+            </dd>
+          </div>
+          <div class="row">
+            <dt>Icon and name</dt>
+            <dd>
+              <span class="tag">All Star Field</span> with the door mark, on
+              the home screen. The mark is generated and ready to be swapped
+              for whatever All Star want on their listing.
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      <section>
+        <h2>Before it can be downloaded</h2>
+        <p>
+          The build is done and the code is on the branch. What is left needs a
+          person rather than a commit: Apple and Google developer accounts,
+          which take days to verify; a signing key; screenshots from a real
+          device; the privacy policy hosted at a public URL; and a demo rep
+          account, without which Apple will not review an app they cannot sign
+          into.
+        </p>
+        <p>
+          The full runbook is in <code>docs/field-app-release.md</code>.
+        </p>
+      </section>
+    </div>
+  </div>
+
+  <footer>
+    Preview generated from the branch
+    <code>claude/allstar-standalone-app-prkwmn</code>. Names, addresses and
+    numbers shown in the app are invented.
+  </footer>
+</div>
+
+<!--APP_ASSETS-->
+
+<script>
+  (function () {
+    var css = document.getElementById('app-css').textContent;
+    var js = document.getElementById('app-js').textContent;
+
+    var frame = document.getElementById('app');
+    var offlineButton = document.getElementById('offline');
+    var signal = document.getElementById('signal');
+    var signalText = document.getElementById('signal-text');
+    var offline = false;
+
+    // The app runs in an iframe so it gets a document of its own. That is not
+    // a presentation trick: the field stylesheet sizes itself in viewport
+    // units and pins its tab bar to the bottom of the screen, and both only
+    // resolve correctly against a viewport of their own. In the frame the app
+    // lays itself out exactly as it does on a phone.
+    function mount() {
+      var doc = frame.contentDocument;
+      doc.open();
+      doc.write(
+        '<!doctype html><html><head><meta charset="utf-8">' +
+          '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+          '<style>html,body{margin:0;height:100%}</style>' +
+          '<style>' + css + '</style></head>' +
+          '<body><div id="root"></div></body></html>'
+      );
+      doc.close();
+      // Appended after close, so the root element exists before the app looks
+      // for it. Writing the script inline would race that.
+      var script = doc.createElement('script');
+      script.textContent = js;
+      doc.body.appendChild(script);
+    }
+
+    function setOffline(next) {
+      offline = next;
+      var api = frame.contentWindow.__fieldPreview;
+      if (api) api.offline = offline;
+      offlineButton.setAttribute('aria-pressed', String(offline));
+      offlineButton.textContent = offline ? 'Back online' : 'Go offline';
+      signal.setAttribute('data-offline', String(offline));
+      signalText.textContent = offline ? 'No signal' : 'Has signal';
+
+      // The app listens for the browser's own connectivity events, which is
+      // what makes the queue start draining the moment signal returns rather
+      // than waiting for its next timer.
+      var event = frame.contentWindow.document.createEvent('Event');
+      event.initEvent(offline ? 'offline' : 'online', false, false);
+      frame.contentWindow.dispatchEvent(event);
+    }
+
+    offlineButton.addEventListener('click', function () {
+      setOffline(!offline);
+    });
+
+    document.getElementById('restart').addEventListener('click', function () {
+      try {
+        frame.contentWindow.localStorage.clear();
+      } catch (err) {
+        // Nothing stored yet. A fresh mount is still a clean start.
+      }
+      // Remounted rather than reloaded: the frame's document was written
+      // rather than fetched, so there is no URL to reload back to.
+      mount();
+      if (offline) setOffline(false);
+    });
+
+    mount();
+  })();
+</script>
