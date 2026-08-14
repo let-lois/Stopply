@@ -19,6 +19,16 @@ const template = readFileSync(join(root, 'preview/artifact.template.html'), 'utf
 const css = readFileSync(join(dist, 'preview.css'), 'utf8');
 const js = readFileSync(join(dist, 'preview.js'), 'utf8');
 
+// The screen sizes, read from the same file the deployed test site imports
+// rather than restated here, so the two previews cannot drift apart on what
+// the app looks like.
+const devicesPath = join(root, '../../packages/field-ui/src/demo/devices.json');
+const { devices } = JSON.parse(readFileSync(devicesPath, 'utf8'));
+if (!Array.isArray(devices) || devices.length === 0) {
+  console.error(`No devices found in ${devicesPath}.`);
+  process.exit(1);
+}
+
 // Carried in text/plain blocks and read back with textContent, so the app's
 // code is data to this page rather than script the browser parses twice. The
 // only sequence that could end a block early is a literal closing script tag
@@ -34,9 +44,15 @@ const assets = [
 // and `$&`, which String.replace reads as "insert the text after the match"
 // and "insert the match", quietly splicing the page into itself. The bundle
 // is data here and must be inserted verbatim.
-const html = template.replace('<!--APP_ASSETS-->', () => assets);
-if (html === template) {
+const withAssets = template.replace('<!--APP_ASSETS-->', () => assets);
+if (withAssets === template) {
   console.error('artifact.template.html has no <!--APP_ASSETS--> placeholder to fill.');
+  process.exit(1);
+}
+
+const html = withAssets.replace('/*__DEVICES__*/[]', () => JSON.stringify(devices));
+if (html === withAssets) {
+  console.error('artifact.template.html has no /*__DEVICES__*/[] placeholder to fill.');
   process.exit(1);
 }
 

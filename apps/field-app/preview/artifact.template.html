@@ -164,33 +164,65 @@
     box-sizing: content-box;
   }
 
+  /* The corner radius is what reads as "which phone is this" at a glance.
+     An iPhone is much rounder than a Galaxy or a Pixel. */
+  .phone.shell-android { border-radius: 28px; padding: 10px; }
+  .phone.shell-android .phone-inner { border-radius: 19px; }
+
+  .phone.shell-tablet { border-radius: 26px; }
+  .phone.shell-tablet .phone-inner { border-radius: 16px; }
+
   /* A laptop gets a plain window rather than a phone shell: drawing a bezel
      around a 1280px viewport would misrepresent what is being shown. */
-  .phone.flat {
+  .phone.shell-flat {
     padding: 0;
     border-radius: 10px;
     border: 1px solid var(--hairline);
     background: var(--card);
   }
 
-  .phone.flat .phone-inner { border-radius: 9px; }
-  .phone.flat .phone-inner::before { display: none; }
+  .phone.shell-flat .phone-inner { border-radius: 9px; }
+  .phone.shell-flat .phone-inner::before { display: none; }
 
   .rail-sizes { margin-bottom: 12px; }
 
   .sizes {
     display: flex;
+    flex-direction: column;
     flex: 1 1 100%;
+    gap: 8px;
     max-width: 100%;
+  }
+
+  .size-group {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+  }
+
+  /* Not uppercased: it would render iOS as IOS, which Apple spells that way
+     nowhere and which reads as a typo. */
+  .size-group-label {
+    flex: 0 0 54px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: var(--accent-quiet);
+  }
+
+  .size-row {
+    display: flex;
+    min-width: 0;
     overflow-x: auto;
     border: 1px solid var(--hairline);
     border-radius: 9px;
     scrollbar-width: none;
   }
 
-  .sizes::-webkit-scrollbar { display: none; }
+  .size-row::-webkit-scrollbar { display: none; }
 
-  .sizes button {
+  .size-row button {
     flex: 0 0 auto;
     border: 0;
     border-right: 1px solid var(--hairline);
@@ -199,7 +231,7 @@
     padding: 8px 12px;
   }
 
-  .sizes button:last-child { border-right: 0; }
+  .size-row button:last-child { border-right: 0; }
 
   .phone-inner {
     position: relative;
@@ -558,29 +590,23 @@
     var sizeLabel = document.getElementById('stage-size');
     var offline = false;
 
-    // Real device sizes, not round numbers: the point of checking a layout
-    // at 375px is that a rep somewhere is holding a phone that is exactly
-    // 375px. The same list as the deployed test site.
-    var DEVICES = [
-      { name: 'iPhone SE', w: 375, h: 667, flat: false },
-      { name: 'iPhone 15', w: 393, h: 852, flat: false },
-      { name: 'Pixel 8', w: 412, h: 915, flat: false },
-      { name: 'iPad mini', w: 744, h: 1133, flat: false },
-      { name: 'Desktop', w: 1280, h: 800, flat: true }
-    ];
-    var current = DEVICES[1];
+    // Injected at build time from packages/field-ui/src/demo/devices.json,
+    // the same list the deployed test site reads, so the two cannot end up
+    // disagreeing about what the app looks like.
+    var DEVICES = /*__DEVICES__*/[];
+    var current = DEVICES[1] || DEVICES[0];
 
     // Scaled to whatever width the column has, never above life size: a
     // phone blown up would flatter a layout that is actually tight.
     var column = document.querySelector('.layout');
 
     function layout() {
-      phone.style.width = current.w + 'px';
-      phone.style.height = current.h + 'px';
-      phone.className = current.flat ? 'phone flat' : 'phone';
+      phone.style.width = current.width + 'px';
+      phone.style.height = current.height + 'px';
+      phone.className = 'phone shell-' + current.shell;
       // Set before measuring, since it is what decides how much room there
       // is to measure.
-      column.classList.toggle('wide', current.w > 500);
+      column.classList.toggle('wide', current.width > 500);
 
       var room = fit.parentElement.clientWidth;
       // offsetWidth includes the bezel and ignores the transform, so reading
@@ -591,26 +617,45 @@
       fit.style.height = phone.offsetHeight * scale + 'px';
 
       sizeLabel.textContent =
-        current.name + ' · ' + current.w + '×' + current.h +
+        current.platform + ' · ' + current.name + ' · ' + current.width + '×' + current.height +
         (scale < 1 ? ' · shown at ' + Math.round(scale * 100) + '%' : '');
     }
 
+    // Grouped and labelled by platform. A bare row of device names reads as
+    // an Apple only list to anyone who does not already know who makes a
+    // Pixel, which is most people looking at this.
+    var sizes = document.getElementById('sizes');
+    var groups = {};
     DEVICES.forEach(function (device) {
+      if (!groups[device.platform]) {
+        var group = document.createElement('div');
+        group.className = 'size-group';
+        var label = document.createElement('span');
+        label.className = 'size-group-label';
+        label.textContent = device.platform;
+        var row = document.createElement('div');
+        row.className = 'size-row';
+        group.appendChild(label);
+        group.appendChild(row);
+        sizes.appendChild(group);
+        groups[device.platform] = row;
+      }
       var button = document.createElement('button');
       button.type = 'button';
       button.textContent = device.name;
+      button.title = device.detail + ', ' + device.width + ' by ' + device.height;
       button.setAttribute('aria-pressed', String(device === current));
       button.addEventListener('click', function () {
         current = device;
         // The frame is only resized, never reloaded, so a queue built up
         // while offline survives a change of screen size and two layouts can
         // be compared rather than re-created.
-        [].forEach.call(document.querySelectorAll('.sizes button'), function (b) {
+        [].forEach.call(sizes.querySelectorAll('button'), function (b) {
           b.setAttribute('aria-pressed', String(b === button));
         });
         layout();
       });
-      document.getElementById('sizes').appendChild(button);
+      groups[device.platform].appendChild(button);
     });
 
     window.addEventListener('resize', layout);

@@ -64,8 +64,36 @@
   color: var(--ink-soft);
 }
 
-/* A segmented control, because the sizes are one choice with one answer
-   rather than five independent switches. */
+/* Grouped by platform, and labelled. A bare row of device names reads as an
+   Apple only list to anyone who does not already know who makes a Pixel,
+   which is most people looking at this. */
+.fp-platforms {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  min-width: 0;
+}
+
+.fp-platform {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Not uppercased: it would render iOS as IOS, which Apple spells that way
+   nowhere and which reads as a typo. */
+.fp-platform-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+  flex-shrink: 0;
+}
+
+/* A segmented control, because the sizes within a platform are one choice
+   with one answer rather than independent switches. */
 .fp-devices {
   display: flex;
   border: 1px solid var(--hairline);
@@ -166,14 +194,23 @@
   background: var(--paper);
 }
 
-.fp-device-phone {
+/* The corner radius is the one thing that reads as "which phone is this" at
+   a glance. An iPhone is much rounder than a Galaxy or a Pixel, so the
+   frames differ rather than every device wearing the same shell. */
+.fp-device-ios {
   border-radius: 34px;
   border: 11px solid #1b2431;
   overflow: hidden;
 }
 
-.fp-device-tablet {
+.fp-device-android {
   border-radius: 20px;
+  border: 9px solid #1b2431;
+  overflow: hidden;
+}
+
+.fp-device-tablet {
+  border-radius: 18px;
   border: 12px solid #1b2431;
   overflow: hidden;
 }
