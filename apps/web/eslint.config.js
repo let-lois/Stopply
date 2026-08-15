@@ -62,7 +62,7 @@ export default tseslint.config(
         // vite.config.ts lives outside src and is owned by tsconfig.node.json;
         // allowDefaultProject lets the service lint it without a third config.
         projectService: {
-          allowDefaultProject: ['vite.config.ts'],
+          allowDefaultProject: ['vite.config.ts', 'vite.artifact.config.ts'],
         },
         tsconfigRootDir: import.meta.dirname,
       },
