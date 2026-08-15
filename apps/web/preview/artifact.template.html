@@ -1,0 +1,63 @@
+<title>Prototypes</title>
+
+<style>
+  html, body { margin: 0; padding: 0; min-height: 100%; }
+  body { background: var(--color-surface-base, #0f1115); }
+  #root { min-height: 100dvh; }
+</style>
+
+<div id="root"></div>
+
+<!--APP_ASSETS-->
+
+<script>
+  (function () {
+    var css = document.getElementById('app-css').textContent;
+    var js = document.getElementById('app-js').textContent;
+
+    // The app reads its palette off data-theme, set before first paint in the
+    // real build. Here it follows the reader's own setting.
+    var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+
+    var style = document.createElement('style');
+    style.textContent = css;
+    document.head.appendChild(style);
+
+    var script = document.createElement('script');
+    script.textContent = js;
+    document.body.appendChild(script);
+    window.__mountGallery();
+
+    // The rep app needs a document of its own: it sizes itself in viewport
+    // units and its layout responds to the frame's width, and neither means
+    // anything unless it owns a viewport. The preview page renders an iframe
+    // pointing at a blank page; this writes the app into it.
+    function fill(frame) {
+      if (frame.dataset.filled) return;
+      frame.dataset.filled = '1';
+      var doc = frame.contentDocument;
+      doc.open();
+      doc.write(
+        '<!doctype html><html><head><meta charset="utf-8">' +
+          '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+          '<style>html,body{margin:0;height:100%}</style>' +
+          '<style>' + css + '</style></head><body><div id="root"></div></body></html>'
+      );
+      doc.close();
+      doc.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+      var inner = doc.createElement('script');
+      inner.textContent = js;
+      doc.body.appendChild(inner);
+      frame.contentWindow.__mountRep();
+    }
+
+    // The frame appears when the preview route is opened, not at load.
+    new MutationObserver(function () {
+      var frame = document.querySelector('#root iframe');
+      // A tick, so the frame has finished loading about:blank before it is
+      // written into. Writing during that load loses the content.
+      if (frame && !frame.dataset.filled) window.setTimeout(function () { fill(frame); }, 60);
+    }).observe(document.getElementById('root'), { childList: true, subtree: true });
+  })();
+</script>

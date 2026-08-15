@@ -30,5 +30,5 @@
   // The contracts in src/lib/api are shared by both sides, so one tsconfig
   // means a change to a wire shape breaks the server and the client in the
   // same run.
-  "include": ["src", "server", "functions"]
+  "include": ["src", "server", "functions", "preview"]
 }

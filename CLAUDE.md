@@ -80,7 +80,7 @@ Built for the All Star engagement: a field app reps use at the door, plus the re
 
 All Star's reps also get the field app as a real installable app, built with Capacitor in `apps/field-app`. See `apps/field-app/README.md` and `docs/field-app-release.md`.
 
-- **One copy of the screens, two shells.** Everything a rep sees lives in `packages/field-ui`; `apps/web`'s `/field` route and `apps/field-app` both mount `<FieldApp />`. Do **not** fix a bug in one shell: there is only one place to fix it. What legitimately differs between them is declared through `configureFieldPlatform` (`packages/field-ui/src/platform.ts`) and nowhere else.
+- **There are currently two rep apps, and they have diverged.** `packages/field-ui` is the older complete one (knock form, offline outbox, nearby doors, Me screen) and is what `apps/field-app` still wraps for the stores. `apps/web/src/field/` is the newer Tailwind rewrite that arrived with the frontend replacement, and it is the one intended to ship; it has sign in and Today so far. `/prototypes` previews the rewrite. **`apps/field-app` still points at `packages/field-ui`, so the Capacitor project does not currently wrap the app that is meant to ship.** Repointing it is outstanding work, not a decision still to be made.
 - **`packages/field-ui/src/field.css` does not define its own palette.** It reads tokens the host supplies: `globals.css` on the web, `apps/field-app/src/app.css` in the app. A new token means adding it in both, or the app renders it as nothing.
 - **The web `/field` route stays.** It is how a rep works before the app is approved and on a phone that cannot install it. Do not remove it in favour of the store build.
 - **The app still gets its tenant from the hostname.** It talks to `all-star.bi.letlois.com` and sends no client id, so `fieldScope` and "tenant comes from the host, never from the client" are untouched. Never add a tenant/slug parameter to `/api/field/*` to make a native client work.
@@ -90,10 +90,15 @@ All Star's reps also get the field app as a real installable app, built with Cap
 - **`resources/mark.svg` is the only artwork source.** `pnpm --filter @letlois/all-star-field-app icons` regenerates every icon and splash in both native projects. Never hand-edit a PNG under `ios/` or `android/`.
 - **`cap sync` after every web change**, or the phone runs the previous build inside the new version number. `version:set` writes the version into `package.json`, `build.gradle` and the Xcode project together; never edit those two by hand.
 - **An API change reaches every phone immediately; an app change does not.** Reps update on their own schedule, so do not remove or reshape a `/api/field/*` response without checking what an older installed build does with it.
-- **`/prototypes` lists the apps in build**, driven by `apps/web/src/lib/prototypes.ts`. Adding an app is one entry there. Keep its `blockers` honest: the page is only worth having if you can look at it and know what is actually left.
-- **The test site is `/field-preview` on the dashboard**, with `/field-demo` as the app it frames. All three are static routes in `apps/web`, so every branch push gets a Cloudflare Pages preview URL (project `stopply-platform`). They run the real screens against `@letlois/field-ui/demo`, which replaces the network only. Never let the demo module into `apps/field-app/src`: `test/identity.test.ts` fails if it does.
-- **`/field-preview` never navigates its frame twice.** A Next static export page mounts once per browsing context, so a reload or a keyed remount leaves an empty document. Changing device resizes the frame and the app reflows; Restart is `__fieldDemo.restart()`, which remounts in place. Do not "fix" it by reloading the iframe.
-- **Links into `/field-preview` must open a new tab.** Reaching it by a same tab link from another dashboard page leaves the framed app unhydrated and blank, which is the same Next constraint as above seen from the other side. The `/prototypes` cards carry `target="_blank"` for that reason, not as a preference.
+## Watching the apps in build (`/prototypes`)
+
+Where you look at a mobile app before it ships. Rebuilt for the React and Vite frontend; the earlier Next.js routes (`/field-preview`, `/field-demo`, `apps/web/src/lib/prototypes.ts`) went with the frontend replacement and no longer exist.
+
+- **`/prototypes` is the gallery**, inside the app shell and in the sidebar, driven by `apps/web/src/platform/prototypes/registry.ts`. Adding an app is one entry there. Keep its `blockers` honest: the page is only worth having if you can look at it and know what is actually left.
+- **`/prototypes/:appId` frames one app at a real device size**, signed in but outside the shell, because a phone frame needs the whole viewport. The frame is loaded once and only ever resized, so a queue built up while offline survives a change of screen size.
+- **The frame's layout box is the scaled size, not the device size.** A grid item taller than its area is start aligned rather than centred, so scaling about the middle drops a tall phone off the bottom of the stage. The wrapper takes `shell * scale` as its own size and the device scales from `top left` inside it.
+- **The bezel is `box-content`.** Under the inherited border-box an 11px bezel on a 375px phone showed the app 353px, which is a lie about the one thing the page exists to show.
+- **`?fixtures=1` replaces the network for `/api/field` only**, installed in `main.tsx` before React mounts because the rep app asks who the rep is on its first paint. It starts signed in on purpose: the real sign-in will not submit without a Turnstile token, and there is none in a preview. Inert without the parameter, and it answers with invented data only.
 
 ## Code conventions
 

@@ -2,7 +2,7 @@
 // entitlements. No module's name, icon, colour or route is written here.
 
 import { NavLink, useParams } from 'react-router-dom';
-import { FileClock, KeyRound, Settings, Users2, Building2 } from 'lucide-react';
+import { FileClock, KeyRound, Settings, Users2, Building2, Smartphone } from 'lucide-react';
 import { usePlatform } from '@/lib/state/PlatformProvider';
 import { useCan, type Permission } from '@/lib/auth/useCan';
 import { MODULE_ORDER, MODULE_REGISTRY } from '@/modules/registry';
@@ -22,6 +22,10 @@ const PLATFORM_LINKS = [
   { to: routes.team(), label: 'Team', Icon: Users2, needs: 'team.invite' },
   { to: routes.audit(), label: 'Activity', Icon: FileClock, needs: 'audit.view' },
   { to: routes.credentials(), label: 'Credentials', Icon: KeyRound, needs: 'credentials.view' },
+  // The apps being built for clients, gated the same way Clients is: a
+  // client-scoped user has no business seeing what is being built for
+  // somebody else, or what is unfinished about it.
+  { to: routes.prototypes(), label: 'Prototypes', Icon: Smartphone, needs: 'client.viewAll' },
   // Platform-wide configuration, which is the agency's own and not a
   // workspace's. A client has Workspace settings instead, further down.
   { to: routes.settings(), label: 'Settings', Icon: Settings, needs: 'client.viewAll' },

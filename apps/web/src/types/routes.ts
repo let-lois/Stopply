@@ -8,7 +8,14 @@
 
 import type { ModuleId } from '@/types';
 
-export const PLATFORM_ROUTES = ['clients', 'team', 'audit', 'credentials', 'settings'] as const;
+export const PLATFORM_ROUTES = [
+  'clients',
+  'team',
+  'audit',
+  'credentials',
+  'settings',
+  'prototypes',
+] as const;
 export type PlatformRoute = (typeof PLATFORM_ROUTES)[number];
 
 // Path *patterns*, for the router's route definitions. Distinct from the
@@ -24,6 +31,15 @@ export const ROUTE_PATTERNS = {
   workspaceSettings: '/c/:clientId/settings',
   login: '/login',
   field: '/field',
+  prototypes: '/prototypes',
+  /**
+   * One app, framed at a device size.
+   *
+   * Outside the app shell rather than inside it: a phone frame needs the
+   * whole viewport, and the dashboard's nav and header around a drawing of a
+   * phone is chrome around chrome.
+   */
+  prototype: '/prototypes/:appId',
   workspaceModule: '/c/:clientId/:moduleId',
   workspaceView: '/c/:clientId/:moduleId/:viewId',
 } as const;
@@ -79,6 +95,8 @@ export const routes = {
   audit: () => '/audit',
   credentials: () => '/credentials',
   settings: () => '/settings',
+  prototypes: () => '/prototypes',
+  prototype: (appId: string) => `/prototypes/${encodeURIComponent(appId)}`,
   workspaceSettings: (clientId: string) => `/c/${clientId}/settings`,
   /**
    * A workspace's front door, which redirects to its first enabled module.

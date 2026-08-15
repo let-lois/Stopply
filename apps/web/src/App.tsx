@@ -26,6 +26,10 @@ const AuditLogPage = lazy(() => import('@/platform/audit/AuditLogPage'));
 const CredentialsPage = lazy(() => import('@/platform/secrets/CredentialsPage'));
 const PlatformSettingsPage = lazy(() => import('@/platform/settings/PlatformSettingsPage'));
 const WorkspaceSettingsPage = lazy(() => import('@/platform/clients/WorkspaceSettingsPage'));
+const PrototypesPage = lazy(() => import('@/platform/prototypes/PrototypesPage'));
+// Full bleed rather than inside the shell: a phone frame needs the whole
+// viewport, and the nav around a drawing of a phone is chrome around chrome.
+const PrototypePreviewPage = lazy(() => import('@/platform/prototypes/PrototypePreviewPage'));
 
 // One route per module view, built from the registry. Adding a view to a
 // module gives it a URL with no router change.
@@ -70,6 +74,17 @@ const router = createBrowserRouter([
   {
     element: <RequireSession />,
     children: [
+      // Signed in, but outside the shell, so the device frame gets the
+      // window. Still behind RequireSession: it names clients and says what
+      // is unfinished, which is not for anyone with the URL.
+      {
+        path: ROUTE_PATTERNS.prototype,
+        element: (
+          <Suspense fallback={null}>
+            <PrototypePreviewPage />
+          </Suspense>
+        ),
+      },
       {
         path: ROUTE_PATTERNS.root,
         element: <AppShell />,
@@ -80,6 +95,7 @@ const router = createBrowserRouter([
           { path: 'audit', element: <AuditLogPage /> },
           { path: 'credentials', element: <CredentialsPage /> },
           { path: 'settings', element: <PlatformSettingsPage /> },
+          { path: 'prototypes', element: <PrototypesPage /> },
           { path: 'c/:clientId', element: <WorkspaceIndexRedirect /> },
           { path: 'c/:clientId/settings', element: <WorkspaceSettingsPage /> },
           ...moduleRoutes,

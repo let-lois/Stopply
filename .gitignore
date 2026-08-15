@@ -2,6 +2,7 @@ node_modules/
 .next/
 dist/
 preview-dist/
+artifact-dist/
 .wrangler/
 .dev.vars
 *.local
