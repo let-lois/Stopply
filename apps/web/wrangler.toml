@@ -7,7 +7,11 @@
 # subdomain.
 
 name = "stopply-platform"
-pages_build_output_dir = "dist"
+# `out`, not Vite's default `dist`, and this is what the build actually
+# produces: vite.config.ts sets outDir to `out` on purpose, and says why. This
+# file said `dist`, so every Pages build after the frontend replacement failed
+# looking for a directory nothing creates.
+pages_build_output_dir = "out"
 compatibility_date = "2026-08-01"
 # nodejs_compat is not enabled: nothing in functions/ imports a node builtin,
 # and the crypto it needs is WebCrypto, which workerd has natively.
