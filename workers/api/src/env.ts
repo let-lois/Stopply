@@ -14,6 +14,9 @@ export interface Env {
   CRED_MASTER_KEY: string;
   ANTHROPIC_API_KEY: string;
   INGEST_PEPPER: string;
+  // Shared with LetLois Operations Center for the read only /api/service
+  // routes. Unset means those routes answer 404.
+  OPERATIONS_API_TOKEN?: string;
 }
 
 // A session that belongs to the dashboard population. contextMiddleware
