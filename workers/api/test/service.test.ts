@@ -84,6 +84,12 @@ describe('Operations Center service API', () => {
           ? [{ period_month: '2026-08', leads: 40, scheduled: 12, completed: 9, purchases: 5, revenue: 8000, spend: 2000, pulled_at: '2026-10-30T09:11:27Z' }]
           : [{ period_month: '2026-08', leads: 999, scheduled: 0, completed: 0, purchases: 0, revenue: 0, spend: 1, pulled_at: 'rival' }],
     }));
+    control.on(/FROM agency_rollup\s+WHERE period_month >=/, () => ({
+      results: [
+        { tenant_id: ACME.id, period_month: '2026-08', leads: 40, scheduled: 12, completed: 9, purchases: 5, revenue: 8000, spend: 2000, pulled_at: '2026-10-30T09:11:27Z' },
+        { tenant_id: RIVAL.id, period_month: '2026-08', leads: 7, scheduled: 1, completed: 1, purchases: 0, revenue: 0, spend: 300, pulled_at: '2026-10-30T09:11:27Z' },
+      ],
+    }));
     control.on(/INSERT INTO audit_log/, (params) => {
       auditRows.push(params);
       return {};
@@ -199,6 +205,20 @@ describe('Operations Center service API', () => {
       expect([403, 404, 405]).toContain(res.status);
     }
     expect(tenants.opened).toEqual([]);
+  });
+
+  it('returns every tenant\'s monthly rollup from the control plane alone, opening no tenant database', async () => {
+    const res = await call('/rollup', { headers: bearer() });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { rows: Array<Record<string, unknown>> };
+    expect(body.rows).toEqual([
+      { tenantId: ACME.id, month: '2026-08', leads: 40, scheduled: 12, completed: 9, purchases: 5, revenue: 8000, spend: 2000, pulledAt: '2026-10-30T09:11:27Z' },
+      { tenantId: RIVAL.id, month: '2026-08', leads: 7, scheduled: 1, completed: 1, purchases: 0, revenue: 0, spend: 300, pulledAt: '2026-10-30T09:11:27Z' },
+    ]);
+    expect(tenants.opened).toEqual([]);
+    expect(auditRows).toEqual([]);
+    expect((await call('/rollup')).status).toBe(401);
+    expect((await call('/rollup', { headers: bearer() }, 'acme.bi.letlois.com')).status).toBe(404);
   });
 
   it('still answers with the rollup when the tenant database cannot be read, and says so', async () => {
