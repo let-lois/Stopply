@@ -458,3 +458,182 @@ describe('Operations Center service API, writes', () => {
     expect(cloudflare).toEqual([]);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/* data in                                                             */
+/* ------------------------------------------------------------------ */
+
+describe('Operations Center service API, data in', () => {
+  let env: ReturnType<typeof makeEnv>;
+  let tenants: PerTenantD1;
+  let auditRows: unknown[][];
+  let stored: string[];
+  let outbound: string[];
+
+  const META_CSV = 'Campaign name,Amount spent (USD),Results\nSpring,1000.00,10\nBrand,500.00,5\n';
+  const TOKEN_VALUE = 'EAAB-super-secret-token-value';
+
+  beforeEach(async () => {
+    clearResolverCache();
+    tenants = new PerTenantD1();
+    auditRows = [];
+    stored = [];
+    outbound = [];
+    env = makeEnv({
+      __tenantD1: tenants,
+      OPERATIONS_API_TOKEN: TOKEN,
+      CSV_BUCKET: { put: async (key: string) => void stored.push(key) },
+    });
+    const control = env.CONTROL_DB as FakeD1;
+    control.on(/FROM tenants WHERE id = \?/, (params) => ({
+      first: params[0] === ACME.id ? ACME : params[0] === RIVAL.id ? RIVAL : null,
+    }));
+    control.on(/INSERT INTO audit_log/, (params) => {
+      auditRows.push(params);
+      return {};
+    });
+    for (const db of ['db-acme', 'db-rival']) {
+      await tenants.of(db).query(db, `INSERT INTO sources (key, name, kind, connector_type) VALUES ('meta-csv', 'Meta Ads CSV', 'csv', 'meta-campaign')`);
+    }
+    // The connectors reach Meta through the global fetch; nothing here may
+    // leave the test, and a refusal is enough to exercise the path.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        outbound.push(String(input));
+        return Response.json({ error: { message: 'Invalid OAuth access token', code: 190 } }, { status: 400 });
+      })
+    );
+    tenants.opened = [];
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  const actor = { id: 'usr_sa', name: 'Curtis' };
+  const upload = (path: string, csv: string, headers: Record<string, string> = { 'x-ops-actor-id': 'usr_sa', 'x-ops-actor-name': 'Curtis' }) =>
+    app.request(
+      `https://bi.letlois.com/api/service${path}`,
+      { method: 'POST', headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'text/csv', ...headers }, body: csv },
+      env as unknown as Env
+    );
+  const postJson = (path: string, body: unknown) =>
+    app.request(
+      `https://bi.letlois.com/api/service${path}`,
+      { method: 'POST', headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' }, body: JSON.stringify(body) },
+      env as unknown as Env
+    );
+  const get = (path: string) =>
+    app.request(`https://bi.letlois.com/api/service${path}`, { headers: { authorization: `Bearer ${TOKEN}` } }, env as unknown as Env);
+  const rows = async (db: string, sql: string) => (await tenants.of(db).query(db, sql)).results as Array<Record<string, unknown>>;
+
+  it('lists sources, the file types BI can read, and recent uploads, for that client only', async () => {
+    const body = (await (await get(`/tenants/${ACME.id}/sources`)).json()) as {
+      sources: Array<{ key: string }>;
+      parsers: Array<{ key: string; description: string }>;
+      imports: unknown[];
+    };
+    expect(body.sources.map((s) => s.key)).toEqual(['meta-csv']);
+    expect(body.parsers.map((p) => p.key)).toContain('meta-campaign');
+    expect(body.imports).toEqual([]);
+    expect(new Set(tenants.opened)).toEqual(new Set(['db-acme']));
+  });
+
+  it("imports a CSV into that client's data only, recalculates the month, and audits it under the person who asked", async () => {
+    const res = await upload(`/tenants/${ACME.id}/imports?source=meta-csv&month=2026-08`, META_CSV);
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ ok: true, rowCount: 2 });
+    expect(await rows('db-acme', `SELECT campaign, spend FROM raw_ad_spend ORDER BY campaign`)).toEqual([
+      { campaign: 'Brand', spend: 500 },
+      { campaign: 'Spring', spend: 1000 },
+    ]);
+    expect(await rows('db-acme', `SELECT uploaded_by FROM csv_imports`)).toEqual([{ uploaded_by: 'ops:usr_sa' }]);
+    expect(await rows('db-acme', `SELECT spend FROM monthly_metrics WHERE period_month = '2026-08' AND attribution_basis = 'first'`)).not.toEqual([]);
+    expect(await rows('db-rival', `SELECT * FROM raw_ad_spend`)).toEqual([]);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatch(/^raw\/acme\/meta-csv\/2026-08\//);
+    const audit = auditRows.find((r) => r[5] === 'import.csv')!;
+    expect(audit.slice(2, 5)).toEqual(['ops:usr_sa', 'operations-center: Curtis', ACME.id]);
+  });
+
+  it('refuses a bad source, month, parser, missing actor, empty or oversized file, writing nothing', async () => {
+    expect((await upload(`/tenants/${ACME.id}/imports?source=nope&month=2026-08`, META_CSV)).status).toBe(404);
+    for (const path of [
+      `/tenants/${ACME.id}/imports?source=meta-csv&month=2026-8`,
+      `/tenants/${ACME.id}/imports?source=Meta CSV&month=2026-08`,
+      `/tenants/${ACME.id}/imports?source=meta-csv&month=2026-08&parser=../x`,
+    ]) {
+      expect((await upload(path, META_CSV)).status).toBe(400);
+    }
+    expect((await upload(`/tenants/${ACME.id}/imports?source=meta-csv&month=2026-08`, META_CSV, {})).status).toBe(400);
+    expect((await upload(`/tenants/${ACME.id}/imports?source=meta-csv&month=2026-08`, '')).status).toBe(400);
+    const big = upload(`/tenants/${ACME.id}/imports?source=meta-csv&month=2026-08`, 'x'.repeat(10 * 1024 * 1024 + 1));
+    expect((await big).status).toBe(413);
+    expect(await rows('db-acme', `SELECT * FROM csv_imports`)).toEqual([]);
+    expect(stored).toEqual([]);
+  });
+
+  it('describes each connector and never returns a saved credential', async () => {
+    const before = (await (await get(`/tenants/${ACME.id}/integrations`)).json()) as { integrations: unknown[]; requirements: Record<string, { credentialFields: Array<{ key: string; secret: boolean }> }> };
+    expect(before.integrations).toEqual([]);
+    expect(before.requirements['meta-ads']!.credentialFields).toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: 'accessToken', secret: true })])
+    );
+
+    const saved = await postJson(`/tenants/${ACME.id}/integrations/meta-ads/credentials`, {
+      provider: 'meta-ads',
+      credentials: { accessToken: TOKEN_VALUE, adAccountId: '1234567890' },
+      actor,
+    });
+    expect(saved.status).toBe(200);
+    expect(await saved.text()).not.toContain(TOKEN_VALUE);
+    const [row] = await rows('db-acme', `SELECT provider, status, credentials_ciphertext FROM integrations`);
+    expect(row).toMatchObject({ provider: 'meta-ads', status: 'disconnected' });
+    expect(String(row!.credentials_ciphertext)).not.toContain(TOKEN_VALUE);
+    expect(await rows('db-rival', `SELECT * FROM integrations`)).toEqual([]);
+
+    const listed = await (await get(`/tenants/${ACME.id}/integrations`)).text();
+    expect(listed).not.toContain(TOKEN_VALUE);
+    expect(listed).not.toContain('ciphertext');
+    expect(JSON.stringify(auditRows)).not.toContain(TOKEN_VALUE);
+  });
+
+  it('tests a connection with the saved credentials, reports a refusal plainly, and never echoes the token', async () => {
+    await postJson(`/tenants/${ACME.id}/integrations/meta-ads/credentials`, {
+      provider: 'meta-ads',
+      credentials: { accessToken: TOKEN_VALUE, adAccountId: '1234567890' },
+      actor,
+    });
+    const tested = await postJson(`/tenants/${ACME.id}/integrations/meta-ads/test`, { actor });
+    expect(tested.status).toBe(200);
+    const text = await tested.text();
+    expect(JSON.parse(text)).toMatchObject({ ok: false });
+    expect(text).not.toContain(TOKEN_VALUE);
+    expect(outbound.every((u) => u.startsWith('https://graph.facebook.com/'))).toBe(true);
+    expect((await rows('db-acme', `SELECT status FROM integrations`))[0]!.status).toBe('error');
+    expect(auditRows.map((r) => r[5])).toEqual(['integration.credentials.set', 'integration.test']);
+  });
+
+  it('refuses an unknown provider, action, key, or a sync with nothing saved', async () => {
+    expect((await postJson(`/tenants/${ACME.id}/integrations/x/credentials`, { provider: 'stripe', credentials: {}, actor })).status).toBe(400);
+    expect((await postJson(`/tenants/${ACME.id}/integrations/meta-ads/delete`, { actor })).status).toBe(404);
+    expect((await postJson(`/tenants/${ACME.id}/integrations/Meta Ads/test`, { actor })).status).toBe(404);
+    expect((await postJson(`/tenants/${ACME.id}/integrations/meta-ads/sync`, { month: '2026-08', actor })).status).toBe(404);
+    expect((await postJson(`/tenants/${ACME.id}/integrations/meta-ads/sync`, { month: '2026-8', actor })).status).toBe(400);
+    expect(outbound).toEqual([]);
+  });
+
+  it('is closed without the token and on a tenant host', async () => {
+    const res = await app.request(
+      `https://bi.letlois.com/api/service/tenants/${ACME.id}/imports?source=meta-csv&month=2026-08`,
+      { method: 'POST', headers: { 'content-type': 'text/csv', 'x-ops-actor-id': 'x', 'x-ops-actor-name': 'x' }, body: META_CSV },
+      env as unknown as Env
+    );
+    expect(res.status).toBe(401);
+    const tenantHost = await app.request(
+      `https://acme.bi.letlois.com/api/service/tenants/${ACME.id}/integrations`,
+      { headers: { authorization: `Bearer ${TOKEN}` } },
+      env as unknown as Env
+    );
+    expect(tenantHost.status).toBe(404);
+    expect(await rows('db-acme', `SELECT * FROM csv_imports`)).toEqual([]);
+  });
+});

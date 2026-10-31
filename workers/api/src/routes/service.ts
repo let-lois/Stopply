@@ -13,10 +13,11 @@
 // computes for the agency view. Never a credential, never a database id, never
 // an event or contact row.
 //
-// The writes are the agency's own account administration for a client:
-// creating the client's BI workspace and managing who can sign in to it.
-// Each names the Operations Center person who acted, and is audited under
-// that name. Nothing here can touch a client's figures.
+// The writes are the agency's own administration for a client: creating the
+// client's BI workspace, managing who can sign in to it, and bringing its data
+// in (CSV uploads and integration connections, through the same code the
+// client's own screens use). Each names the Operations Center person who
+// acted, and is audited under that name.
 
 import { Hono } from 'hono';
 import type { Context } from 'hono';
@@ -31,6 +32,8 @@ import { z } from 'zod';
 import { provisionTenant } from '../provisioning';
 import { timezoneField } from './agency';
 import { createTenantUser, resetTenantUserPassword, setTenantUserActive } from '../tenantUsers';
+import { PARSER_CATALOG, runCsvImport } from './imports';
+import { listIntegrations, saveIntegrationCredentials, syncIntegration, testIntegration } from './integrations';
 
 export const serviceRoutes = new Hono<AppContext>();
 
@@ -417,4 +420,131 @@ serviceRoutes.post('/tenants/:id/users/:userId/:action', async (c) => {
     target: changed.email,
   });
   return c.json({ id: userId, email: changed.email, active });
+});
+
+/* ------------------------------------------------------------------ */
+/* data in: CSV uploads and integration connections                    */
+/* ------------------------------------------------------------------ */
+//
+// The same operations the client's own Data and Team and Integrations
+// screens run (runCsvImport, saveIntegrationCredentials, testIntegration,
+// syncIntegration), so an upload or a connection behaves the same whichever
+// app it came through. Credentials are write only here too: nothing below
+// ever returns one, or anything derived from one.
+
+const SOURCE_KEY = /^[a-z0-9-]{1,60}$/;
+const MAX_CSV_BYTES = 10 * 1024 * 1024;
+
+// Where the client's data comes from, what can be uploaded, and recent uploads.
+serviceRoutes.get('/tenants/:id/sources', async (c) => {
+  const found = await tenantDatabase(c);
+  if (!found) return c.json({ error: 'not found' }, 404);
+  const d1 = tenantD1Client(c.env);
+  const [sources, imports] = await Promise.all([
+    d1.query<{ key: string; name: string; kind: string; connector_type: string | null; last_import_at: string | null; records_through: string | null; verified_at: string | null }>(
+      found.database,
+      `SELECT key, name, kind, connector_type, last_import_at, records_through, verified_at FROM sources ORDER BY name`
+    ),
+    d1.query<{ id: string; source_key: string; period_month: string; row_count: number; records_from: string | null; records_through: string | null; uploaded_at: string }>(
+      found.database,
+      `SELECT id, source_key, period_month, row_count, records_from, records_through, uploaded_at FROM csv_imports ORDER BY uploaded_at DESC LIMIT 50`
+    ),
+  ]);
+  return c.json({
+    sources: sources.results.map((s) => ({
+      key: s.key,
+      name: s.name,
+      kind: s.kind,
+      connectorType: s.connector_type,
+      lastImportAt: s.last_import_at,
+      recordsThrough: s.records_through,
+      verified: s.verified_at !== null,
+    })),
+    parsers: Object.entries(PARSER_CATALOG).map(([key, description]) => ({ key, description })),
+    imports: imports.results.map((i) => ({
+      id: i.id,
+      sourceKey: i.source_key,
+      month: i.period_month,
+      rowCount: i.row_count,
+      recordsFrom: i.records_from,
+      recordsThrough: i.records_through,
+      uploadedAt: i.uploaded_at,
+    })),
+  });
+});
+
+// A CSV upload. The file is the raw request body rather than a JSON field, so
+// Operations Center can pass it on without re-encoding megabytes of text; who
+// asked travels in two headers instead.
+serviceRoutes.post('/tenants/:id/imports', async (c) => {
+  const found = await tenantDatabase(c);
+  if (!found) return c.json({ error: 'not found' }, 404);
+  const sourceKey = c.req.query('source') ?? '';
+  const month = c.req.query('month') ?? '';
+  const parser = c.req.query('parser') || undefined;
+  const actor = actorSchema.safeParse({ id: c.req.header('x-ops-actor-id') ?? '', name: c.req.header('x-ops-actor-name') ?? '' });
+  if (!SOURCE_KEY.test(sourceKey) || !MONTH.test(month) || (parser !== undefined && !/^[a-z0-9-]{1,40}$/.test(parser)) || !actor.success) {
+    return c.json({ error: 'invalid request' }, 400);
+  }
+  if (Number(c.req.header('content-length') ?? 0) > MAX_CSV_BYTES) return c.json({ error: 'file too large' }, 413);
+  const csv = await c.req.text();
+  if (!csv || csv.length > MAX_CSV_BYTES) return c.json({ error: csv ? 'file too large' : 'invalid request' }, csv ? 413 : 400);
+
+  const result = await runCsvImport(
+    c.env,
+    { id: found.tenant.id, slug: found.tenant.slug, d1_database_id: found.database },
+    { sourceKey, month, csv, parser },
+    asActor(actor.data)
+  );
+  if (!result.ok) return c.json({ error: result.error }, result.status);
+  const { ok: _ok, ...summary } = result;
+  return c.json({ ok: true, ...summary }, 201);
+});
+
+// What is connected, and what each connector asks for (field labels, which
+// fields are secret, the setup guide). Never the credentials.
+serviceRoutes.get('/tenants/:id/integrations', async (c) => {
+  const found = await tenantDatabase(c);
+  if (!found) return c.json({ error: 'not found' }, 404);
+  return c.json(await listIntegrations(c.env, found.database));
+});
+
+const credentialsSchema = z
+  .object({
+    provider: z.enum(['boulevard', 'housecallpro', 'jobber', 'meta-ads']),
+    credentials: z.record(z.string().max(60), z.string().max(2048)).refine((r) => Object.keys(r).length <= 10),
+    actor: actorSchema,
+  })
+  .strict();
+
+serviceRoutes.post('/tenants/:id/integrations/:key/:action', async (c) => {
+  const key = c.req.param('key');
+  const action = c.req.param('action');
+  if (!SOURCE_KEY.test(key) || !['credentials', 'test', 'sync'].includes(action)) return c.json({ error: 'not found' }, 404);
+  const found = await tenantDatabase(c);
+  if (!found) return c.json({ error: 'not found' }, 404);
+  const tenant = { id: found.tenant.id, d1_database_id: found.database };
+  const raw = await c.req.json().catch(() => null);
+
+  if (action === 'credentials') {
+    const body = credentialsSchema.safeParse(raw);
+    if (!body.success) return c.json({ error: 'invalid request' }, 400);
+    const saved = await saveIntegrationCredentials(c.env, tenant, key, body.data, asActor(body.data.actor));
+    if (!saved.ok) return c.json({ error: saved.error }, 400);
+    return c.json({ ok: true, status: 'disconnected' });
+  }
+
+  if (action === 'test') {
+    const body = actorOnly.safeParse(raw);
+    if (!body.success) return c.json({ error: 'invalid request' }, 400);
+    const result = await testIntegration(c.env, tenant, key, asActor(body.data.actor));
+    if ('error' in result) return c.json({ error: result.error }, result.status);
+    return c.json(result);
+  }
+
+  const body = z.object({ month: z.string().regex(MONTH), actor: actorSchema }).strict().safeParse(raw);
+  if (!body.success) return c.json({ error: 'invalid request' }, 400);
+  const result = await syncIntegration(c.env, tenant, key, body.data.month, asActor(body.data.actor));
+  if (!result.ok) return c.json({ ok: false, error: result.error }, result.status);
+  return c.json(result);
 });

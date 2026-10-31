@@ -5,7 +5,7 @@ import { PARSER_REGISTRY, parseCsv } from '@letlois/connectors';
 import { bulkInsertStatements } from '@letlois/attribution';
 import type { ParseResult } from '@letlois/connectors';
 import type { TenantD1 } from '@letlois/tenant-d1';
-import type { AppContext } from '../env';
+import type { AppContext, Env } from '../env';
 import { tenantScope, tenantWrite } from '../middleware';
 import { tenantD1Client } from '../provisioning';
 import { randomToken, sha256Hex } from '../crypto';
@@ -17,7 +17,7 @@ import { getAgencySetting } from '../agencySettings';
 // Friendly description of each parser so the AI detector can match a CSV to
 // the right one. Adding a vendor export of an existing role is config, not
 // code: extend this map and the registry.
-const PARSER_CATALOG: Record<string, string> = {
+export const PARSER_CATALOG: Record<string, string> = {
   'meta-campaign': 'Meta / Facebook Ads campaign export. Ad spend and reported leads per campaign.',
   'google-campaign': 'Google Ads campaign export. Ad spend and reported leads per campaign.',
   'meta-ad-lineitem': 'Meta / Facebook Ads ad level export. Spend and reported leads per individual ad.',
@@ -55,9 +55,42 @@ importRoutes.post('/', async (c) => {
   if (!tenant.d1_database_id) return c.json({ error: 'not found' }, 404);
   const body = importSchema.safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: 'invalid request', details: body.error.flatten() }, 400);
-  const { sourceKey, month, csv } = body.data;
+  const result = await runCsvImport(
+    c.env,
+    { id: tenant.id, slug: tenant.slug, d1_database_id: tenant.d1_database_id },
+    body.data,
+    { actorType: session.userType, actorId: session.userId }
+  );
+  if (!result.ok) return c.json({ error: result.error }, result.status);
+  const { ok: _ok, ...summary } = result;
+  return c.json({ ok: true, ...summary }, 201);
+});
 
-  const d1 = tenantD1Client(c.env);
+export interface CsvImportResult {
+  ok: true;
+  importId: string;
+  kind: ParseResult['kind'];
+  rowCount: number;
+  recordsFrom: string | null;
+  recordsThrough: string | null;
+}
+
+// CSV upload, the universal fallback for every source. Stores the raw
+// file in R2 and replays it through the parser registry into the same
+// events and stage_events tables the live paths feed. Re uploading a
+// month replaces that period's rows and resets the source to unverified.
+//
+// Shared by the tenant route above and Operations Center's service route,
+// so an upload behaves the same whichever app it arrives through. The
+// caller names who acted, for the audit entry.
+export async function runCsvImport(
+  env: Env,
+  tenant: { id: string; slug: string; d1_database_id: string },
+  input: { sourceKey: string; month: string; csv: string; parser?: string },
+  actor: { actorType: 'agency' | 'tenant' | 'system'; actorId: string; actorName?: string }
+): Promise<CsvImportResult | { ok: false; status: 400 | 404 | 422 | 500; error: string }> {
+  const { sourceKey, month, csv } = input;
+  const d1 = tenantD1Client(env);
   const databaseId = tenant.d1_database_id;
   const { results } = await d1.query<{ key: string; connector_type: string | null }>(
     databaseId,
@@ -65,21 +98,21 @@ importRoutes.post('/', async (c) => {
     [sourceKey]
   );
   const source = results[0];
-  if (!source) return c.json({ error: 'unknown source' }, 404);
+  if (!source) return { ok: false, status: 404, error: 'unknown source' };
 
-  const parserKey = body.data.parser ?? source.connector_type ?? '';
+  const parserKey = input.parser ?? source.connector_type ?? '';
   const parser = PARSER_REGISTRY[parserKey];
-  if (!parser) return c.json({ error: `no parser for source (tried ${parserKey || 'none'})` }, 400);
+  if (!parser) return { ok: false, status: 400, error: `no parser for source (tried ${parserKey || 'none'})` };
 
   const uploadId = randomToken(8);
   const r2Key = `raw/${tenant.slug}/${sourceKey}/${month}/${uploadId}.csv`;
-  await c.env.CSV_BUCKET.put(r2Key, csv);
+  await env.CSV_BUCKET.put(r2Key, csv);
 
   let parsed: ParseResult;
   try {
     parsed = parser(csv, month);
   } catch (err) {
-    return c.json({ error: `parse failed: ${err instanceof Error ? err.message : 'unknown'}` }, 422);
+    return { ok: false, status: 422, error: `parse failed: ${err instanceof Error ? err.message : 'unknown'}` };
   }
 
   // Import failures name their failing step. A bare "internal error" made
@@ -91,35 +124,25 @@ importRoutes.post('/', async (c) => {
     await applyParseResult(d1, databaseId, sourceKey, month, parsed);
     step = 'record';
 
-  // Record the import and reset verification: a fresh import goes gray.
-  await d1.query(
-    databaseId,
-    `INSERT INTO csv_imports (id, source_key, period_month, r2_key, row_count, records_from, records_through, uploaded_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      `imp_${uploadId}`,
-      sourceKey,
-      month,
-      r2Key,
-      parsed.rowCount,
-      parsed.recordsFrom,
-      parsed.recordsThrough,
-      session.userId,
-    ]
-  );
-  await d1.query(
-    databaseId,
-    `UPDATE sources SET verified_by = NULL, verified_at = NULL,
-       last_import_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-       records_through = COALESCE(?, records_through)
-     WHERE key = ?`,
-    [parsed.recordsThrough, sourceKey]
-  );
+    // Record the import and reset verification: a fresh import goes gray.
+    await d1.query(
+      databaseId,
+      `INSERT INTO csv_imports (id, source_key, period_month, r2_key, row_count, records_from, records_through, uploaded_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [`imp_${uploadId}`, sourceKey, month, r2Key, parsed.rowCount, parsed.recordsFrom, parsed.recordsThrough, actor.actorId]
+    );
+    await d1.query(
+      databaseId,
+      `UPDATE sources SET verified_by = NULL, verified_at = NULL,
+         last_import_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+         records_through = COALESCE(?, records_through)
+       WHERE key = ?`,
+      [parsed.recordsThrough, sourceKey]
+    );
 
     step = 'audit';
-    await writeAudit(c.env, {
-      actorType: session.userType,
-      actorId: session.userId,
+    await writeAudit(env, {
+      ...actor,
       tenantId: tenant.id,
       action: 'import.csv',
       target: `${sourceKey}/${month}`,
@@ -129,24 +152,21 @@ importRoutes.post('/', async (c) => {
     // Imports recompute the month inline so the dashboard is current the
     // moment the upload returns.
     step = 'rollup';
-    await runTenantRollup(c.env, databaseId, month);
+    await runTenantRollup(env, databaseId, month);
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     console.error('import failed', step, detail);
-    return c.json({ error: `import failed at ${step}: ${detail.slice(0, 300)}` }, 500);
+    return { ok: false, status: 500, error: `import failed at ${step}: ${detail.slice(0, 300)}` };
   }
-  return c.json(
-    {
-      ok: true,
-      importId: `imp_${uploadId}`,
-      kind: parsed.kind,
-      rowCount: parsed.rowCount,
-      recordsFrom: parsed.recordsFrom,
-      recordsThrough: parsed.recordsThrough,
-    },
-    201
-  );
-});
+  return {
+    ok: true,
+    importId: `imp_${uploadId}`,
+    kind: parsed.kind,
+    rowCount: parsed.rowCount,
+    recordsFrom: parsed.recordsFrom,
+    recordsThrough: parsed.recordsThrough,
+  };
+}
 
 importRoutes.get('/', async (c) => {
   const tenant = c.get('tenant')!;

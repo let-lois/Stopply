@@ -70,12 +70,7 @@ export async function loadCredentials(
 }
 
 integrationRoutes.get('/', async (c) => {
-  const d1 = tenantD1Client(c.env);
-  const { results } = await d1.query<IntegrationRow>(dbIdOf(c), `SELECT * FROM integrations`);
-  const requirements = Object.fromEntries(
-    Object.entries(CONNECTORS).map(([key, conn]) => [key, conn.getRequirements()])
-  );
-  return c.json({ integrations: results.map(publicShape), requirements });
+  return c.json(await listIntegrations(c.env, dbIdOf(c)));
 });
 
 const credsSchema = z
@@ -88,44 +83,13 @@ const credsSchema = z
 integrationRoutes.put('/:key/credentials', tenantWrite, async (c) => {
   const tenant = c.get('tenant')!;
   const session = c.get('session')!;
-  const key = c.req.param('key');
   const body = credsSchema.safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: 'invalid request' }, 400);
-  const connector = CONNECTORS[body.data.provider];
-  if (!connector) return c.json({ error: 'unknown provider' }, 400);
-
-  const { ciphertext, iv } = await encryptCredentials(
-    c.env.CRED_MASTER_KEY,
-    JSON.stringify(body.data.credentials)
-  );
-  const d1 = tenantD1Client(c.env);
-  await d1.query(
-    dbIdOf(c),
-    `INSERT INTO integrations (key, provider, status, credentials_ciphertext, credentials_iv, connected_by, connected_at)
-     VALUES (?, ?, 'disconnected', ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-     ON CONFLICT (key) DO UPDATE SET provider = excluded.provider,
-       credentials_ciphertext = excluded.credentials_ciphertext,
-       credentials_iv = excluded.credentials_iv,
-       connected_by = excluded.connected_by, connected_at = excluded.connected_at`,
-    [key, body.data.provider, ciphertext, iv, session.userId]
-  );
-
-  // Seed default stage mappings when none exist for this integration.
-  for (const mapping of connector.getRequirements().defaultStageMap) {
-    await d1.query(
-      dbIdOf(c),
-      `INSERT OR IGNORE INTO funnel_stage_map (integration_key, external_event, stage) VALUES (?, ?, ?)`,
-      [key, mapping.externalEvent, mapping.stage]
-    );
-  }
-
-  await writeAudit(c.env, {
+  const result = await saveIntegrationCredentials(c.env, { id: tenant.id, d1_database_id: dbIdOf(c) }, c.req.param('key') ?? '', body.data, {
     actorType: session.userType,
     actorId: session.userId,
-    tenantId: tenant.id,
-    action: 'integration.credentials.set',
-    target: key,
   });
+  if (!result.ok) return c.json({ error: result.error }, 400);
   // Only status comes back. Never the credentials.
   return c.json({ ok: true, status: 'disconnected' });
 });
@@ -133,38 +97,12 @@ integrationRoutes.put('/:key/credentials', tenantWrite, async (c) => {
 integrationRoutes.post('/:key/test', tenantWrite, async (c) => {
   const tenant = c.get('tenant')!;
   const session = c.get('session')!;
-  const key = c.req.param('key');
-  const d1 = tenantD1Client(c.env);
-  const { results } = await d1.query<IntegrationRow>(dbIdOf(c), `SELECT * FROM integrations WHERE key = ?`, [key]);
-  const row = results[0];
-  if (!row) return c.json({ error: 'not found' }, 404);
-  const connector = CONNECTORS[row.provider];
-  if (!connector) return c.json({ error: 'unknown provider' }, 400);
-  const creds = await loadCredentials(c.env, row);
-  if (!creds) return c.json({ error: 'no credentials saved' }, 400);
-
-  const result = await connector.testConnection(creds);
-  const status = result.ok ? 'connected' : 'error';
-  await d1.query(
-    dbIdOf(c),
-    `UPDATE integrations SET status = ?, connected_as = ?, plan_check_json = ? WHERE key = ?`,
-    [status, result.connectedAs ?? null, result.planCheck ? JSON.stringify(result.planCheck) : null, key]
-  );
-  await writeAudit(c.env, {
+  const result = await testIntegration(c.env, { id: tenant.id, d1_database_id: dbIdOf(c) }, c.req.param('key') ?? '', {
     actorType: session.userType,
     actorId: session.userId,
-    tenantId: tenant.id,
-    action: 'integration.test',
-    target: key,
-    after: { ok: result.ok, failure: result.failure ?? null },
   });
-  return c.json({
-    ok: result.ok,
-    failure: result.failure ?? null,
-    message: result.message ?? null,
-    connectedAs: result.connectedAs ?? null,
-    planCheck: result.planCheck ?? null,
-  });
+  if ('error' in result) return c.json({ error: result.error }, result.status);
+  return c.json(result);
 });
 
 const syncSchema = z.object({ month: z.string().regex(/^\d{4}-\d{2}$/) }).strict();
@@ -172,18 +110,120 @@ const syncSchema = z.object({ month: z.string().regex(/^\d{4}-\d{2}$/) }).strict
 integrationRoutes.post('/:key/sync', tenantWrite, async (c) => {
   const tenant = c.get('tenant')!;
   const session = c.get('session')!;
-  const key = c.req.param('key') ?? '';
   const body = syncSchema.safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: 'invalid request' }, 400);
-  const d1 = tenantD1Client(c.env);
-  const databaseId = dbIdOf(c);
+  const result = await syncIntegration(c.env, { id: tenant.id, d1_database_id: dbIdOf(c) }, c.req.param('key') ?? '', body.data.month, {
+    actorType: session.userType,
+    actorId: session.userId,
+  });
+  if (result.ok) return c.json(result);
+  return c.json(result.status === 502 ? { ok: false, error: result.error } : { error: result.error }, result.status);
+});
+
+/* ------------------------------------------------------------------ */
+/* shared with Operations Center's service routes                     */
+/* ------------------------------------------------------------------ */
+//
+// The same operations whichever app asks: the client's own Integrations hub
+// above, or Operations Center (routes/service.ts). The caller names who acted.
+
+type Actor = { actorType: 'agency' | 'tenant' | 'system'; actorId: string; actorName?: string };
+type TenantDb = { id: string; d1_database_id: string };
+
+export async function listIntegrations(env: Env, databaseId: string) {
+  const d1 = tenantD1Client(env);
+  const { results } = await d1.query<IntegrationRow>(databaseId, `SELECT * FROM integrations`);
+  const requirements = Object.fromEntries(
+    Object.entries(CONNECTORS).map(([key, conn]) => [key, conn.getRequirements()])
+  );
+  return { integrations: results.map(publicShape), requirements };
+}
+
+export async function saveIntegrationCredentials(
+  env: Env,
+  tenant: TenantDb,
+  key: string,
+  input: { provider: string; credentials: Record<string, string> },
+  actor: Actor
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const connector = CONNECTORS[input.provider];
+  if (!connector) return { ok: false, error: 'unknown provider' };
+
+  const { ciphertext, iv } = await encryptCredentials(env.CRED_MASTER_KEY, JSON.stringify(input.credentials));
+  const d1 = tenantD1Client(env);
+  await d1.query(
+    tenant.d1_database_id,
+    `INSERT INTO integrations (key, provider, status, credentials_ciphertext, credentials_iv, connected_by, connected_at)
+     VALUES (?, ?, 'disconnected', ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+     ON CONFLICT (key) DO UPDATE SET provider = excluded.provider,
+       credentials_ciphertext = excluded.credentials_ciphertext,
+       credentials_iv = excluded.credentials_iv,
+       connected_by = excluded.connected_by, connected_at = excluded.connected_at`,
+    [key, input.provider, ciphertext, iv, actor.actorId]
+  );
+
+  // Seed default stage mappings when none exist for this integration.
+  for (const mapping of connector.getRequirements().defaultStageMap) {
+    await d1.query(
+      tenant.d1_database_id,
+      `INSERT OR IGNORE INTO funnel_stage_map (integration_key, external_event, stage) VALUES (?, ?, ?)`,
+      [key, mapping.externalEvent, mapping.stage]
+    );
+  }
+
+  await writeAudit(env, { ...actor, tenantId: tenant.id, action: 'integration.credentials.set', target: key });
+  return { ok: true };
+}
+
+export async function testIntegration(env: Env, tenant: TenantDb, key: string, actor: Actor) {
+  const d1 = tenantD1Client(env);
+  const { results } = await d1.query<IntegrationRow>(tenant.d1_database_id, `SELECT * FROM integrations WHERE key = ?`, [key]);
+  const row = results[0];
+  if (!row) return { error: 'not found', status: 404 as const };
+  const connector = CONNECTORS[row.provider];
+  if (!connector) return { error: 'unknown provider', status: 400 as const };
+  const creds = await loadCredentials(env, row);
+  if (!creds) return { error: 'no credentials saved', status: 400 as const };
+
+  const result = await connector.testConnection(creds);
+  const status = result.ok ? 'connected' : 'error';
+  await d1.query(
+    tenant.d1_database_id,
+    `UPDATE integrations SET status = ?, connected_as = ?, plan_check_json = ? WHERE key = ?`,
+    [status, result.connectedAs ?? null, result.planCheck ? JSON.stringify(result.planCheck) : null, key]
+  );
+  await writeAudit(env, {
+    ...actor,
+    tenantId: tenant.id,
+    action: 'integration.test',
+    target: key,
+    after: { ok: result.ok, failure: result.failure ?? null },
+  });
+  return {
+    ok: result.ok,
+    failure: result.failure ?? null,
+    message: result.message ?? null,
+    connectedAs: result.connectedAs ?? null,
+    planCheck: result.planCheck ?? null,
+  };
+}
+
+export async function syncIntegration(
+  env: Env,
+  tenant: TenantDb,
+  key: string,
+  month: string,
+  actor: Actor
+): Promise<{ ok: true; stats: unknown } | { ok: false; status: 400 | 404 | 502; error: string }> {
+  const d1 = tenantD1Client(env);
+  const databaseId = tenant.d1_database_id;
   const { results } = await d1.query<IntegrationRow>(databaseId, `SELECT * FROM integrations WHERE key = ?`, [key]);
   const row = results[0];
-  if (!row) return c.json({ error: 'not found' }, 404);
+  if (!row) return { ok: false, status: 404, error: 'not found' };
   const connector = CONNECTORS[row.provider];
-  if (!connector) return c.json({ error: 'unknown provider' }, 400);
-  const creds = await loadCredentials(c.env, row);
-  if (!creds) return c.json({ error: 'no credentials saved' }, 400);
+  if (!connector) return { ok: false, status: 400, error: 'unknown provider' };
+  const creds = await loadCredentials(env, row);
+  if (!creds) return { ok: false, status: 400, error: 'no credentials saved' };
 
   const stageMapRows = await d1.query<{ external_event: string; stage: string }>(
     databaseId,
@@ -197,40 +237,26 @@ integrationRoutes.post('/:key/sync', tenantWrite, async (c) => {
   );
 
   try {
-    const stats = await connector.syncMonth(creds, body.data.month, connectorDbFor(c.env, databaseId), key, {
-      stageMap,
-    });
+    const stats = await connector.syncMonth(creds, month, connectorDbFor(env, databaseId), key, { stageMap });
     await d1.query(
       databaseId,
       `UPDATE integrations SET status = 'connected', last_sync_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), last_sync_result = ? WHERE key = ?`,
       [JSON.stringify({ ok: true, stats }), key]
     );
-    await d1.query(
-      databaseId,
-      `UPDATE sources SET last_import_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE key = ?`,
-      [key]
-    );
-    await runTenantRollup(c.env, databaseId, body.data.month);
-    await writeAudit(c.env, {
-      actorType: session.userType,
-      actorId: session.userId,
-      tenantId: tenant.id,
-      action: 'integration.sync',
-      target: `${key}/${body.data.month}`,
-      after: stats,
-    });
-    return c.json({ ok: true, stats });
+    await d1.query(databaseId, `UPDATE sources SET last_import_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE key = ?`, [key]);
+    await runTenantRollup(env, databaseId, month);
+    await writeAudit(env, { ...actor, tenantId: tenant.id, action: 'integration.sync', target: `${key}/${month}`, after: stats });
+    return { ok: true, stats };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'sync failed';
     // A failed sync flips the integration to error and the source red.
-    await d1.query(
-      databaseId,
-      `UPDATE integrations SET status = 'error', last_sync_result = ? WHERE key = ?`,
-      [JSON.stringify({ ok: false, error: message }), key]
-    );
-    return c.json({ ok: false, error: message }, 502);
+    await d1.query(databaseId, `UPDATE integrations SET status = 'error', last_sync_result = ? WHERE key = ?`, [
+      JSON.stringify({ ok: false, error: message }),
+      key,
+    ]);
+    return { ok: false, status: 502, error: message };
   }
-});
+}
 
 const stageMapSchema = z
   .object({
