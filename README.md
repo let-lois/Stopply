@@ -78,6 +78,7 @@ code or wrangler.toml.
 | `CRED_MASTER_KEY` | 32 bytes base64, integration credential vault (AES-GCM) |
 | `ANTHROPIC_API_KEY` | the chat assistant (API Worker only) |
 | `INGEST_PEPPER` | IP hashing and webhook signing secret derivation |
+| `OPERATIONS_API_TOKEN` | shared with LetLois Operations Center for the read only `/api/service` routes (API Worker only, 32+ characters; unset means those routes answer 404) |
 
 Generate a master key: `openssl rand -base64 32`.
 

@@ -12,6 +12,7 @@ import { settingsRoutes } from './routes/settings';
 import { chatRoutes, helpRoutes } from './routes/chat';
 import { fieldRoutes } from './routes/field';
 import { fieldAdminRoutes } from './routes/fieldAdmin';
+import { serviceRoutes } from './routes/service';
 import { buildTrackingScript } from './tjs';
 import { getTenantBySlug } from './tenantResolver';
 import { tenantD1Client } from './provisioning';
@@ -49,6 +50,8 @@ app.route('/api/field', fieldRoutes);
 app.route('/api/help', helpRoutes);
 app.route('/api/chat', chatRoutes);
 app.route('/ingest', ingestRoutes);
+// Server to server, for LetLois Operations Center. Read only; see routes/service.ts.
+app.route('/api/service', serviceRoutes);
 
 // Per tenant first party tracking script. On a tenant hostname /t.js
 // serves that tenant's script; /t/{slug}.js works on the agency host for
