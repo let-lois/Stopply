@@ -637,3 +637,109 @@ describe('Operations Center service API, data in', () => {
     expect(await rows('db-acme', `SELECT * FROM csv_imports`)).toEqual([]);
   });
 });
+
+describe('Operations Center service API, door to door', () => {
+  let env: ReturnType<typeof makeEnv>;
+  let tenants: PerTenantD1;
+  let auditRows: unknown[][];
+  const NEWCO = tenantRow('t_newco01', 'newco', 'db-newco');
+
+  beforeEach(async () => {
+    clearResolverCache();
+    tenants = new PerTenantD1();
+    auditRows = [];
+    env = makeEnv({ __tenantD1: tenants, OPERATIONS_API_TOKEN: TOKEN });
+    const control = env.CONTROL_DB as FakeD1;
+    control.on(/FROM tenants WHERE id = \?/, (params) => ({
+      first: [ACME, RIVAL, NEWCO].find((t) => t.id === params[0]) ?? null,
+    }));
+    control.on(/INSERT INTO audit_log/, (params) => {
+      auditRows.push(params);
+      return {};
+    });
+    const acme = tenants.of('db-acme');
+    await acme.query('db-acme', `INSERT INTO field_reps (id, email, name, phone, role, team, password_hash, active) VALUES ('fr_ana', 'ana@acme.test', 'Ana', '555-0100', 'rep', 'East', 'x', 1)`);
+    await acme.query('db-acme', `INSERT INTO field_reps (id, email, name, role, password_hash, active, is_sample) VALUES ('fr_demo', 'demo@acme.test', 'Demo Rep', 'rep', 'x', 1, 1)`);
+    await acme.query('db-acme', `INSERT INTO field_addresses (id, address_key, street) VALUES ('fa_1', '1 main', '1 Main St')`);
+    // 8 pm on 1 August in Phoenix is 3 am on 2 August in UTC: it belongs to the 1st.
+    for (const [id, rep, disposition, at, sample] of [
+      ['fv_1', 'fr_ana', 'no_answer', '2026-08-02T03:00:00.000Z', 0],
+      ['fv_2', 'fr_ana', 'appointment', '2026-08-02T17:00:00.000Z', 0],
+      ['fv_3', 'fr_ana', 'sale', '2026-08-03T17:00:00.000Z', 0],
+      ['fv_4', 'fr_demo', 'sale', '2026-08-03T18:00:00.000Z', 1],
+      ['fv_5', 'fr_ana', 'sale', '2026-09-03T18:00:00.000Z', 0],
+    ] as const) {
+      await acme.query(
+        'db-acme',
+        `INSERT INTO field_visits (id, client_uuid, address_id, rep_id, disposition, occurred_at, is_sample) VALUES (?, ?, 'fa_1', ?, ?, ?, ?)`,
+        [id, `uuid-${id}`, rep, disposition, at, sample]
+      );
+    }
+    tenants.opened = [];
+  });
+
+  const get = (path: string) =>
+    app.request(`https://bi.letlois.com/api/service${path}`, { headers: { authorization: `Bearer ${TOKEN}` } }, env as unknown as Env);
+
+  type Field = {
+    ready: boolean;
+    range: { from: string; to: string };
+    timezone: string;
+    totals: { visits: number; contacts: number; appointments: number; sales: number };
+    reps: Array<{ repName: string; visits: number; sales: number }>;
+    dispositions: Array<{ key: string; count: number }>;
+    daily: Array<{ day: string; visits: number }>;
+    sampleVisits: number;
+    roster: Array<Record<string, unknown>>;
+  };
+
+  it("reports a window in the client's own days, counts the sample visits in it, and opens that client's database only", async () => {
+    const res = await get(`/tenants/${ACME.id}/field?from=2026-08-01&to=2026-08-31`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Field;
+    expect(body.ready).toBe(true);
+    expect(body.range).toEqual({ from: '2026-08-01', to: '2026-08-31' });
+    expect(body.timezone).toBe('America/Phoenix');
+    expect(body.totals).toMatchObject({ visits: 4, contacts: 3, appointments: 3, sales: 2 });
+    expect(body.sampleVisits).toBe(1);
+    expect(body.daily.find((d) => d.day === '2026-08-01')?.visits).toBe(1);
+    expect(body.daily).toHaveLength(31);
+    expect(body.reps.map((r) => [r.repName, r.visits, r.sales])).toEqual([
+      ['Ana', 3, 1],
+      ['Demo Rep', 1, 1],
+    ]);
+    expect(new Set(tenants.opened)).toEqual(new Set(['db-acme']));
+    expect(auditRows.some((r) => r.includes('service.field_read'))).toBe(true);
+  });
+
+  it('names the roster without emails, phones or password hashes, and marks sample reps', async () => {
+    const body = (await (await get(`/tenants/${ACME.id}/field?from=2026-08-01&to=2026-08-31`)).json()) as Field;
+    expect(body.roster).toEqual([
+      { id: 'fr_ana', name: 'Ana', role: 'rep', team: 'East', active: true, lastLoginAt: null, sample: false },
+      { id: 'fr_demo', name: 'Demo Rep', role: 'rep', team: null, active: true, lastLoginAt: null, sample: true },
+    ]);
+    const raw = JSON.stringify(body);
+    for (const secret of ['ana@acme.test', '555-0100', 'password', 'db-acme']) expect(raw).not.toContain(secret);
+  });
+
+  it("answers ready:false for a database that cannot record a door yet, and an empty window for a client that knocked none", async () => {
+    const fresh = (await (await get(`/tenants/${NEWCO.id}/field`)).json()) as Field;
+    expect(fresh).toMatchObject({ ready: false, sampleVisits: 0, roster: [], reps: [] });
+    const rival = (await (await get(`/tenants/${RIVAL.id}/field?from=2026-08-01&to=2026-08-31`)).json()) as Field;
+    expect(rival).toMatchObject({ ready: true, sampleVisits: 0, roster: [] });
+    expect(rival.totals.visits).toBe(0);
+  });
+
+  it('refuses a backwards window and an unknown client, and keeps the token and host guards', async () => {
+    expect((await get(`/tenants/${ACME.id}/field?from=2026-08-31&to=2026-08-01`)).status).toBe(400);
+    expect((await get(`/tenants/t_nobody01/field`)).status).toBe(404);
+    const noToken = await app.request(`https://bi.letlois.com/api/service/tenants/${ACME.id}/field`, {}, env as unknown as Env);
+    expect(noToken.status).toBe(401);
+    const tenantHost = await app.request(
+      `https://acme.bi.letlois.com/api/service/tenants/${ACME.id}/field`,
+      { headers: { authorization: `Bearer ${TOKEN}` } },
+      env as unknown as Env
+    );
+    expect(tenantHost.status).not.toBe(200);
+  });
+});

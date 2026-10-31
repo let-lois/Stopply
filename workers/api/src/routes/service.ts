@@ -34,6 +34,8 @@ import { timezoneField } from './agency';
 import { createTenantUser, resetTenantUserPassword, setTenantUserActive } from '../tenantUsers';
 import { PARSER_CATALOG, runCsvImport } from './imports';
 import { listIntegrations, saveIntegrationCredentials, syncIntegration, testIntegration } from './integrations';
+import { fieldOverview, fieldWindow } from './fieldAdmin';
+import { isMissingFieldTables } from '../field/repo';
 
 export const serviceRoutes = new Hono<AppContext>();
 
@@ -547,4 +549,59 @@ serviceRoutes.post('/tenants/:id/integrations/:key/:action', async (c) => {
   const result = await syncIntegration(c.env, tenant, key, body.data.month, asActor(body.data.actor));
   if (!result.ok) return c.json({ ok: false, error: result.error }, result.status);
   return c.json(result);
+});
+
+// Door to door reporting for a window of days, as the client's own Door to
+// Door section computes it (fieldOverview), plus two things the agency needs
+// beside it: how many of the window's visits are sample data, and the
+// roster. Sample rows are counted, never guessed: a client reading
+// fabricated knocks as their own is the one harm this feature can do. The
+// roster carries no email or phone, and names reps, so the read is audited.
+serviceRoutes.get('/tenants/:id/field', async (c) => {
+  const found = await tenantDatabase(c);
+  if (!found) return c.json({ error: 'not found' }, 404);
+  const timezone = found.tenant.timezone || 'UTC';
+  const window = fieldWindow(c.req.query('from'), c.req.query('to'), timezone);
+  if (window.fromDay > window.toDay) return c.json({ error: 'invalid range' }, 400);
+  const d1 = tenantD1Client(c.env);
+  const missing = (err: unknown) => {
+    if (isMissingFieldTables(err)) return null;
+    throw err;
+  };
+  const [overview, sample, reps] = await Promise.all([
+    fieldOverview(c.env, found.database, timezone, window),
+    d1
+      .query<{ sample: number | null }>(
+        found.database,
+        `SELECT SUM(CASE WHEN is_sample = 1 THEN 1 ELSE 0 END) AS sample FROM field_visits WHERE occurred_at >= ? AND occurred_at <= ?`,
+        [window.from, window.to]
+      )
+      .catch(missing),
+    d1
+      .query<{ id: string; name: string; role: string; team: string | null; active: number; last_login_at: string | null; is_sample: number }>(
+        found.database,
+        `SELECT id, name, role, team, active, last_login_at, is_sample FROM field_reps ORDER BY active DESC, name`
+      )
+      .catch(missing),
+  ]);
+  await writeAudit(c.env, {
+    actorType: 'system',
+    actorName: 'operations-center',
+    tenantId: found.tenant.id,
+    action: 'service.field_read',
+    target: `${window.fromDay}/${window.toDay}`,
+  });
+  return c.json({
+    ...overview,
+    sampleVisits: Number(sample?.results[0]?.sample ?? 0),
+    roster: (reps?.results ?? []).map((r) => ({
+      id: r.id,
+      name: r.name,
+      role: r.role,
+      team: r.team,
+      active: r.active === 1,
+      lastLoginAt: r.last_login_at,
+      sample: r.is_sample === 1,
+    })),
+  });
 });
