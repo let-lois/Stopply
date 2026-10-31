@@ -6,10 +6,11 @@ import { isDefaultTheme, parseSections, sourceFreshness } from '@letlois/db';
 import type { AppContext } from '../env';
 import { tenantScope, tenantWrite } from '../middleware';
 import { tenantD1Client, rotateSourceSecret } from '../provisioning';
-import { hashPassword, randomToken } from '../crypto';
+import { randomToken } from '../crypto';
 import { writeAudit } from '../audit';
 import { monthAllowed, parseViewConfig, sanitizeViewConfig } from '../viewConfig';
 import { monthPayload } from '../monthPayload';
+import { createTenantUser, resetTenantUserPassword } from '../tenantUsers';
 
 export const tenantRoutes = new Hono<AppContext>();
 tenantRoutes.use('*', tenantScope);
@@ -370,23 +371,9 @@ tenantRoutes.post('/users', tenantWrite, async (c) => {
   const session = c.get('session')!;
   const body = inviteSchema.safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: 'invalid request' }, 400);
-  const email = body.data.email.toLowerCase().trim();
-  const d1 = tenantD1Client(c.env);
-  const existing = await d1.query(dbId(c), `SELECT id FROM users WHERE email = ?`, [email]);
-  if (existing.results.length > 0) return c.json({ error: 'email already exists' }, 409);
-
-  const tempPassword = randomToken(9);
-  const id = `u_${randomToken(8)}`;
-  const viewConfigJson =
-    body.data.role === 'viewer' ? JSON.stringify(sanitizeViewConfig(body.data.viewConfig)) : null;
-  await d1.query(
-    dbId(c),
-    `INSERT INTO users (id, email, name, role, password_hash, view_config_json, active) VALUES (?, ?, ?, ?, ?, ?, 1)`,
-    [id, email, body.data.name, body.data.role, await hashPassword(tempPassword), viewConfigJson]
-  );
-  await c.env.CONTROL_DB.prepare(`INSERT OR IGNORE INTO tenant_directory (email, tenant_id) VALUES (?, ?)`)
-    .bind(email, tenant.id)
-    .run();
+  const created = await createTenantUser(c.env, { id: tenant.id, d1_database_id: dbId(c) }, body.data);
+  if (!created.ok) return c.json({ error: 'email already exists' }, 409);
+  const { id, email, tempPassword } = created;
   await writeAudit(c.env, {
     actorType: session.userType,
     actorId: session.userId,
@@ -412,21 +399,11 @@ const viewConfigSchema = z.object({ viewConfig: z.unknown() }).strict();
 tenantRoutes.post('/users/:id/reset-password', tenantWrite, async (c) => {
   const tenant = c.get('tenant')!;
   const session = c.get('session')!;
-  const id = c.req.param('id');
-  const d1 = tenantD1Client(c.env);
-  const { results } = await d1.query<{ id: string; email: string }>(
-    dbId(c),
-    `SELECT id, email FROM users WHERE id = ? AND active = 1`,
-    [id]
-  );
-  const user = results[0];
-  if (!user) return c.json({ error: 'not found' }, 404);
-
-  const tempPassword = randomToken(9);
-  await d1.query(dbId(c), `UPDATE users SET password_hash = ? WHERE id = ?`, [
-    await hashPassword(tempPassword),
-    id,
-  ]);
+  const id = c.req.param('id') ?? '';
+  const reset = await resetTenantUserPassword(c.env, dbId(c), id);
+  if (!reset.ok) return c.json({ error: 'not found' }, 404);
+  const user = { email: reset.email };
+  const tempPassword = reset.tempPassword;
   await writeAudit(c.env, {
     actorType: session.userType,
     actorId: session.userId,

@@ -6,9 +6,10 @@
 // database and no other; no credential, ciphertext, or database id ever leaves;
 // there is no write path; and the read that names a client's users is audited.
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { app } from '../src/index';
 import { FakeD1, makeEnv } from './helpers';
+import Database from 'better-sqlite3';
 import { SqliteTenantD1 } from './sqliteTenant';
 import { clearResolverCache } from '../src/tenantResolver';
 import { createSession } from '../src/session';
@@ -42,12 +43,28 @@ const RIVAL = tenantRow('t_rival01', 'rival', 'db-rival');
 
 // One real SQLite database per tenant id, so reading the wrong one shows up
 // as the wrong rows rather than passing by accident.
+// A database Cloudflare has just created: no tables until migrations run.
+class EmptyTenantD1 {
+  db = new Database(':memory:');
+  async query(_id: string, sql: string, params: unknown[] = []) {
+    const stmt = this.db.prepare(sql);
+    if (stmt.reader) return { results: stmt.all(...params), success: true };
+    stmt.run(...params);
+    return { results: [], success: true };
+  }
+  async batch(id: string, statements: Array<{ sql: string; params?: unknown[] }>) {
+    const out = [];
+    for (const st of statements) out.push(await this.query(id, st.sql, st.params ?? []));
+    return out;
+  }
+}
+
 class PerTenantD1 {
-  dbs = new Map<string, SqliteTenantD1>();
+  dbs = new Map<string, SqliteTenantD1 | EmptyTenantD1>();
   opened: string[] = [];
   fail = false;
   of(id: string) {
-    if (!this.dbs.has(id)) this.dbs.set(id, new SqliteTenantD1());
+    if (!this.dbs.has(id)) this.dbs.set(id, id === 'db-newco' ? new EmptyTenantD1() : new SqliteTenantD1());
     return this.dbs.get(id)!;
   }
   async query(id: string, sql: string, params: unknown[] = []) {
@@ -172,7 +189,7 @@ describe('Operations Center service API', () => {
     expect(body.integrations).toEqual([
       { provider: 'meta-ads', status: 'connected', connectedAt: '2026-09-01T00:00:00Z', lastSyncAt: '2026-10-30T09:00:00Z', lastSyncResult: 'ok' },
     ]);
-    expect(body.users).toEqual([{ name: 'Ann Owner', email: 'owner@acme.test', role: 'account_admin', active: true, createdAt: expect.any(String) }]);
+    expect(body.users).toEqual([{ id: 'u1', name: 'Ann Owner', email: 'owner@acme.test', role: 'account_admin', active: true, createdAt: expect.any(String) }]);
     expect(body.rollup[0]).toMatchObject({ month: '2026-08', leads: 40, spend: 2000, revenue: 8000 });
   });
 
@@ -287,5 +304,157 @@ describe('Operations Center service API', () => {
     expect(body.integrations).toBeNull();
     expect(body.users).toBeNull();
     expect(body.rollup).toHaveLength(1);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* writes                                                              */
+/* ------------------------------------------------------------------ */
+
+describe('Operations Center service API, writes', () => {
+  let env: ReturnType<typeof makeEnv>;
+  let tenants: PerTenantD1;
+  let auditRows: unknown[][];
+  let inserted: unknown[][];
+  let cloudflare: { url: string; method: string }[];
+  let leftoverDatabase: boolean;
+
+  beforeEach(async () => {
+    clearResolverCache();
+    tenants = new PerTenantD1();
+    auditRows = [];
+    inserted = [];
+    cloudflare = [];
+    leftoverDatabase = false;
+    env = makeEnv({ __tenantD1: tenants, OPERATIONS_API_TOKEN: TOKEN });
+    const control = env.CONTROL_DB as FakeD1;
+    control.on(/FROM tenants WHERE id = \?/, (params) => ({
+      first: params[0] === ACME.id ? ACME : params[0] === RIVAL.id ? RIVAL : null,
+    }));
+    control.on(/FROM tenants WHERE slug = \?/, (params) => ({
+      first: params[0] === 'acme' ? ACME : params[0] === 'rival' ? RIVAL : null,
+    }));
+    control.on(/INSERT INTO tenants/, (params) => {
+      inserted.push(params);
+      return {};
+    });
+    control.on(/INSERT OR IGNORE INTO tenant_directory/, () => ({}));
+    control.on(/INSERT INTO audit_log/, (params) => {
+      auditRows.push(params);
+      return {};
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
+        const url = String(input);
+        cloudflare.push({ url, method: init.method ?? 'GET' });
+        if (url.includes('/d1/database?name=')) {
+          const name = decodeURIComponent(url.split('name=')[1]!);
+          return Response.json({ success: true, result: leftoverDatabase ? [{ uuid: 'db-old', name }] : [] });
+        }
+        if (url.endsWith('/d1/database') && init.method === 'POST') {
+          return Response.json({ success: true, result: { uuid: 'db-newco', name: JSON.parse(String(init.body)).name } });
+        }
+        return new Response('unexpected', { status: 500 });
+      })
+    );
+    await tenants.of('db-acme').query('db-acme', `INSERT INTO users (id, email, name, role, password_hash, active) VALUES ('u_ann', 'ann@acme.test', 'Ann', 'account_admin', 'old-hash', 1)`);
+    await tenants.of('db-rival').query('db-rival', `INSERT INTO users (id, email, name, role, password_hash, active) VALUES ('u_boss', 'boss@rival.test', 'Boss', 'account_admin', 'rival-hash', 1)`);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  const actor = { id: 'usr_sa', name: 'Curtis' };
+  const post = (path: string, body: unknown, host = 'bi.letlois.com', token = TOKEN) =>
+    app.request(
+      `https://${host}/api/service${path}`,
+      { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body) },
+      env as unknown as Env
+    );
+  type UserRow = { id: string; email: string; role: string; active: number; password_hash: string };
+  const usersOf = async (db: string) =>
+    (await tenants.of(db).query(db, `SELECT id, email, role, active, password_hash FROM users ORDER BY email`)).results as UserRow[];
+
+  it("creates a client's workspace with its own database and a first admin, and audits it under the person who asked", async () => {
+    const res = await post('/tenants', { slug: 'newco', name: 'NewCo Roofing', adminEmail: 'Owner@NewCo.test', adminName: 'Owner', timezone: 'America/Denver', actor });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as Record<string, string>;
+    expect(body).toMatchObject({ slug: 'newco', adminEmail: 'owner@newco.test', dashboardUrl: 'https://newco.bi.letlois.com' });
+    expect(body.tempPassword).toMatch(/.{8,}/);
+    expect(JSON.stringify(body)).not.toContain('db-newco');
+    expect(cloudflare.map((r) => r.method)).toEqual(['GET', 'POST']);
+    expect(inserted).toHaveLength(1);
+    expect((await usersOf('db-newco')).map((u) => [u.email, u.role])).toEqual([['owner@newco.test', 'account_admin']]);
+    const audit = auditRows.find((r) => r[5] === 'tenant.provision')!;
+    expect(audit[2]).toBe('ops:usr_sa');
+    expect(audit[3]).toBe('operations-center: Curtis');
+  });
+
+  it("refuses an address another client has, or a database left behind under it, instead of resuming", async () => {
+    expect((await post('/tenants', { slug: 'acme', name: 'Not Acme', adminEmail: 'x@y.test', adminName: 'X', actor })).status).toBe(409);
+    expect(cloudflare).toEqual([]);
+    leftoverDatabase = true;
+    const res = await post('/tenants', { slug: 'oldco', name: 'OldCo', adminEmail: 'x@y.test', adminName: 'X', actor });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'database exists' });
+    expect(cloudflare.map((r) => r.method)).toEqual(['GET']);
+    expect(inserted).toEqual([]);
+  });
+
+  it('refuses a malformed address, a time zone Intl cannot resolve, or a missing actor', async () => {
+    for (const body of [
+      { slug: 'Bad Slug', name: 'X', adminEmail: 'x@y.test', adminName: 'X', actor },
+      { slug: 'ok', name: 'X', adminEmail: 'x@y.test', adminName: 'X', timezone: 'California', actor },
+      { slug: 'ok', name: 'X', adminEmail: 'x@y.test', adminName: 'X' },
+      { slug: 'ok', name: 'X', adminEmail: 'x@y.test', adminName: 'X', actor, plan: 'whitelabel' },
+    ]) {
+      expect((await post('/tenants', body)).status).toBe(400);
+    }
+    expect(cloudflare).toEqual([]);
+  });
+
+  it("invites a user into that client's database only", async () => {
+    const res = await post(`/tenants/${ACME.id}/users`, { email: 'Viewer@Acme.test', name: 'Vi', role: 'viewer', actor });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { id: string; email: string; tempPassword: string };
+    expect(body.email).toBe('viewer@acme.test');
+    expect(body.tempPassword).toBeTruthy();
+    expect((await usersOf('db-acme')).map((u) => u.email)).toEqual(['ann@acme.test', 'viewer@acme.test']);
+    expect((await usersOf('db-rival')).map((u) => u.email)).toEqual(['boss@rival.test']);
+    expect(auditRows.at(-1)!.slice(2, 7)).toEqual(['ops:usr_sa', 'operations-center: Curtis', ACME.id, 'tenant_user.create', 'viewer@acme.test']);
+    expect((await post(`/tenants/${ACME.id}/users`, { email: 'viewer@acme.test', name: 'Again', role: 'viewer', actor })).status).toBe(409);
+  });
+
+  it('resets a password and switches access off and on, once each', async () => {
+    const reset = await post(`/tenants/${ACME.id}/users/u_ann/reset-password`, { actor });
+    expect(reset.status).toBe(200);
+    expect((await usersOf('db-acme'))[0]!.password_hash).not.toBe('old-hash');
+    expect((await post(`/tenants/${ACME.id}/users/u_ann/deactivate`, { actor })).status).toBe(200);
+    expect((await usersOf('db-acme'))[0]!.active).toBe(0);
+    expect((await post(`/tenants/${ACME.id}/users/u_ann/deactivate`, { actor })).status).toBe(409);
+    // A deactivated account's password is not reset: that would read as giving access back.
+    expect((await post(`/tenants/${ACME.id}/users/u_ann/reset-password`, { actor })).status).toBe(404);
+    expect((await post(`/tenants/${ACME.id}/users/u_ann/reactivate`, { actor })).status).toBe(200);
+    expect((await usersOf('db-acme'))[0]!.active).toBe(1);
+    expect(auditRows.map((r) => r[5])).toEqual(['tenant_user.password_reset', 'tenant_user.deactivate', 'tenant_user.reactivate']);
+  });
+
+  it("cannot reach one client's user through another client's path", async () => {
+    for (const action of ['reset-password', 'deactivate']) {
+      expect((await post(`/tenants/${ACME.id}/users/u_boss/${action}`, { actor })).status).toBeGreaterThanOrEqual(404);
+    }
+    const rival = await usersOf('db-rival');
+    expect(rival[0]).toMatchObject({ active: 1, password_hash: 'rival-hash' });
+  });
+
+  it('is closed to anyone without the token, on a tenant host, or by another method', async () => {
+    expect((await post('/tenants', { slug: 'x', name: 'X', adminEmail: 'x@y.test', adminName: 'X', actor }, 'bi.letlois.com', 'x'.repeat(48))).status).toBe(401);
+    expect((await post(`/tenants/${ACME.id}/users`, { email: 'a@b.test', name: 'A', role: 'viewer', actor }, 'acme.bi.letlois.com')).status).toBe(404);
+    for (const path of [`/tenants/${ACME.id}/users/u_ann/delete`, `/tenants/${ACME.id}/users/x/deactivate`]) {
+      expect((await post(path, { actor })).status).toBe(404);
+    }
+    const put = await app.request(`https://bi.letlois.com/api/service/tenants/${ACME.id}/users`, { method: 'PUT', headers: { authorization: `Bearer ${TOKEN}` } }, env as unknown as Env);
+    expect(put.status).toBe(405);
+    expect((await usersOf('db-acme')).map((u) => u.email)).toEqual(['ann@acme.test']);
+    expect(cloudflare).toEqual([]);
   });
 });

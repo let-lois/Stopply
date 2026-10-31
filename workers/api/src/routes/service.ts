@@ -11,7 +11,12 @@
 // status: which tenant it is, which integrations are connected and when they
 // last synced, who can sign in, and the monthly rollup the sync Worker already
 // computes for the agency view. Never a credential, never a database id, never
-// an event or contact row. Every route is GET; there is no write path here.
+// an event or contact row.
+//
+// The writes are the agency's own account administration for a client:
+// creating the client's BI workspace and managing who can sign in to it.
+// Each names the Operations Center person who acted, and is audited under
+// that name. Nothing here can touch a client's figures.
 
 import { Hono } from 'hono';
 import type { Context } from 'hono';
@@ -22,6 +27,10 @@ import { tenantD1Client } from '../provisioning';
 import { writeAudit } from '../audit';
 import type { TenantRow } from '@letlois/db';
 import { monthPayload } from '../monthPayload';
+import { z } from 'zod';
+import { provisionTenant } from '../provisioning';
+import { timezoneField } from './agency';
+import { createTenantUser, resetTenantUserPassword, setTenantUserActive } from '../tenantUsers';
 
 export const serviceRoutes = new Hono<AppContext>();
 
@@ -50,7 +59,8 @@ serviceRoutes.use('*', async (c, next) => {
   if (!supplied || !(await sameSecret(supplied, expected))) {
     return c.json({ error: 'unauthorized' }, 401);
   }
-  if (c.req.method !== 'GET') return c.json({ error: 'method not allowed' }, 405);
+  // GET reads, and POST for the few writes below. Nothing else exists here.
+  if (c.req.method !== 'GET' && c.req.method !== 'POST') return c.json({ error: 'method not allowed' }, 405);
 
   await next();
   c.header('cache-control', 'no-store');
@@ -90,6 +100,7 @@ interface IntegrationRow {
 }
 
 interface UserRow {
+  id: string;
   name: string;
   email: string;
   role: string;
@@ -139,7 +150,7 @@ serviceRoutes.get('/tenants/:id', async (c) => {
         ),
         d1.query<UserRow>(
           tenant.d1_database_id,
-          `SELECT name, email, role, active, created_at FROM users ORDER BY role, name`
+          `SELECT id, name, email, role, active, created_at FROM users ORDER BY role, name`
         ),
       ]);
       integrations = i.results;
@@ -182,6 +193,7 @@ serviceRoutes.get('/tenants/:id', async (c) => {
       })) ?? null,
     users:
       users?.map((u) => ({
+        id: u.id,
         name: u.name,
         email: u.email,
         role: u.role,
@@ -260,4 +272,149 @@ serviceRoutes.get('/tenants/:id/months/:month', async (c) => {
   if (!found) return c.json({ error: 'not found' }, 404);
   const basis = c.req.query('basis') === 'latest' ? 'latest' : 'first';
   return c.json(await monthPayload(c.env, found.database, month, basis, null));
+});
+
+/* ------------------------------------------------------------------ */
+/* writes: a client's workspace and who can sign in to it             */
+/* ------------------------------------------------------------------ */
+
+// Who in Operations Center asked. Recorded, not trusted for anything else:
+// the shared token is what authorises the call.
+const actorSchema = z.object({ id: z.string().min(1).max(64), name: z.string().min(1).max(160) }).strict();
+
+function asActor(actor: z.infer<typeof actorSchema>) {
+  return { actorType: 'system' as const, actorId: `ops:${actor.id}`, actorName: `operations-center: ${actor.name}` };
+}
+
+const createTenantSchema = z
+  .object({
+    slug: z.string().regex(/^[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?$/),
+    name: z.string().min(1).max(120),
+    adminEmail: z.string().email().max(254),
+    adminName: z.string().min(1).max(120),
+    timezone: timezoneField.optional(),
+    actor: actorSchema,
+  })
+  .strict();
+
+// A new client workspace: its own database, the default sources, and a first
+// client admin whose temporary password comes back exactly once.
+//
+// Unlike the console's provisioning, an address that is already taken is
+// refused rather than resumed: from here, a typo matching another client's
+// address would otherwise add a stranger as that client's admin.
+serviceRoutes.post('/tenants', async (c) => {
+  const body = createTenantSchema.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: 'invalid request' }, 400);
+  const taken = await c.env.CONTROL_DB.prepare(`SELECT id FROM tenants WHERE slug = ?`).bind(body.data.slug).first();
+  if (taken) return c.json({ error: 'slug taken' }, 409);
+  // provisionTenant reuses a database that already has this client's name,
+  // which is right for a console retry and wrong here: a database left behind
+  // by an earlier client still holds that client's users.
+  const leftover = await databaseNamed(c.env, `lbi-tenant-${body.data.slug}`);
+  if (leftover === null) return c.json({ error: 'provisioning failed' }, 502);
+  if (leftover) return c.json({ error: 'database exists' }, 409);
+  const actor = asActor(body.data.actor);
+  try {
+    const result = await provisionTenant(c.env, {
+      slug: body.data.slug,
+      name: body.data.name,
+      adminEmail: body.data.adminEmail,
+      adminName: body.data.adminName,
+      timezone: body.data.timezone,
+      actor: { id: actor.actorId, name: actor.actorName },
+    });
+    return c.json(
+      {
+        tenantId: result.tenantId,
+        slug: result.slug,
+        adminEmail: result.adminEmail,
+        tempPassword: result.tempPassword,
+        dashboardUrl: `https://${result.slug}${c.env.TENANT_HOST_SUFFIX}`,
+      },
+      201
+    );
+  } catch {
+    return c.json({ error: 'provisioning failed' }, 502);
+  }
+});
+
+// Whether a D1 database with this exact name exists in the account. Null when
+// Cloudflare could not be asked, so the caller refuses rather than guesses.
+async function databaseNamed(env: AppContext['Bindings'], name: string): Promise<boolean | null> {
+  try {
+    const res = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/d1/database?name=${encodeURIComponent(name)}`,
+      { headers: { authorization: `Bearer ${env.CF_API_TOKEN}` } }
+    );
+    const json = (await res.json()) as { success?: boolean; result?: Array<{ name: string }> };
+    if (!json.success || !Array.isArray(json.result)) return null;
+    return json.result.some((d) => d.name === name);
+  } catch {
+    return null;
+  }
+}
+
+const inviteSchema = z
+  .object({
+    email: z.string().email().max(254),
+    name: z.string().min(1).max(120),
+    role: z.enum(['account_admin', 'viewer']),
+    actor: actorSchema,
+  })
+  .strict();
+
+serviceRoutes.post('/tenants/:id/users', async (c) => {
+  const found = await tenantDatabase(c);
+  if (!found) return c.json({ error: 'not found' }, 404);
+  const body = inviteSchema.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: 'invalid request' }, 400);
+  const created = await createTenantUser(
+    c.env,
+    { id: found.tenant.id, d1_database_id: found.database },
+    { email: body.data.email, name: body.data.name, role: body.data.role }
+  );
+  if (!created.ok) return c.json({ error: 'email already exists' }, 409);
+  await writeAudit(c.env, {
+    ...asActor(body.data.actor),
+    tenantId: found.tenant.id,
+    action: 'tenant_user.create',
+    target: created.email,
+    after: { id: created.id, role: body.data.role },
+  });
+  return c.json({ id: created.id, email: created.email, tempPassword: created.tempPassword }, 201);
+});
+
+const USER_ID = /^u_[a-z0-9]{1,64}$/;
+const actorOnly = z.object({ actor: actorSchema }).strict();
+
+serviceRoutes.post('/tenants/:id/users/:userId/:action', async (c) => {
+  const action = c.req.param('action');
+  const userId = c.req.param('userId');
+  if (!['reset-password', 'deactivate', 'reactivate'].includes(action) || !USER_ID.test(userId)) {
+    return c.json({ error: 'not found' }, 404);
+  }
+  const found = await tenantDatabase(c);
+  if (!found) return c.json({ error: 'not found' }, 404);
+  const body = actorOnly.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: 'invalid request' }, 400);
+  const actor = asActor(body.data.actor);
+
+  if (action === 'reset-password') {
+    const reset = await resetTenantUserPassword(c.env, found.database, userId);
+    if (!reset.ok) return c.json({ error: 'not found' }, 404);
+    await writeAudit(c.env, { ...actor, tenantId: found.tenant.id, action: 'tenant_user.password_reset', target: reset.email });
+    return c.json({ id: userId, email: reset.email, tempPassword: reset.tempPassword });
+  }
+
+  const active = action === 'reactivate';
+  const changed = await setTenantUserActive(c.env, found.database, userId, active);
+  if (!changed.ok) return c.json({ error: 'no change' }, 409);
+  await writeAudit(c.env, {
+    ...actor,
+    tenantId: found.tenant.id,
+    action: active ? 'tenant_user.reactivate' : 'tenant_user.deactivate',
+    target: changed.email,
+  });
+  return c.json({ id: userId, email: changed.email, active });
 });

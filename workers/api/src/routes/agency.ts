@@ -26,7 +26,7 @@ function isResolvableTimeZone(tz: string): boolean {
   }
 }
 
-const timezoneField = z
+export const timezoneField = z
   .string()
   .max(64)
   .refine(isResolvableTimeZone, {
