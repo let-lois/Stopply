@@ -221,6 +221,64 @@ describe('Operations Center service API', () => {
     expect((await call('/rollup', { headers: bearer() }, 'acme.bi.letlois.com')).status).toBe(404);
   });
 
+  describe('one month of a tenant', () => {
+    beforeEach(async () => {
+      const acme = tenants.of('db-acme');
+      await acme.query('db-acme', `INSERT INTO monthly_metrics (period_month, channel, attribution_basis, leads, scheduled, completed, purchases, revenue, spend)
+        VALUES ('2026-08', 'meta', 'first', 30, 10, 8, 4, 6000, 1500), ('2026-08', 'google', 'first', 10, 2, 1, 1, 2000, 500),
+               ('2026-08', 'meta', 'latest', 25, 9, 7, 4, 5000, 1500), ('2026-07', 'meta', 'first', 20, 5, 4, 2, 3000, 1200)`);
+      await acme.query('db-acme', `INSERT INTO campaign_metrics (period_month, channel, campaign, spend, leads, completed, revenue)
+        VALUES ('2026-08', 'meta', 'Acme spring roofs', 1500, 30, 8, 6000)`);
+      await acme.query('db-acme', `INSERT INTO ad_line_items (period_month, channel, campaign, ad_name, spend, leads_reported)
+        VALUES ('2026-08', 'meta', 'Acme spring roofs', 'Video A', 900, 20), ('2026-08', 'meta', 'Acme spring roofs', 'Image B', 600, 4)`);
+      const rival = tenants.of('db-rival');
+      await rival.query('db-rival', `INSERT INTO monthly_metrics (period_month, channel, attribution_basis, leads, scheduled, completed, purchases, revenue, spend)
+        VALUES ('2026-08', 'meta', 'first', 777, 0, 0, 0, 0, 7777), ('2026-05', 'meta', 'first', 1, 0, 0, 0, 0, 1)`);
+      await rival.query('db-rival', `INSERT INTO campaign_metrics (period_month, channel, campaign, spend, leads, completed, revenue)
+        VALUES ('2026-08', 'meta', 'Rival secret campaign', 7777, 777, 0, 0)`);
+      tenants.opened = [];
+    });
+
+    it("lists that tenant's months only, newest first", async () => {
+      const res = await call(`/tenants/${ACME.id}/months`, { headers: bearer() });
+      expect(await res.json()).toEqual({ months: ['2026-08', '2026-07'] });
+      expect(new Set(tenants.opened)).toEqual(new Set(['db-acme']));
+    });
+
+    it("returns the month exactly as the dashboard builds it, from that tenant's database only", async () => {
+      const res = await call(`/tenants/${ACME.id}/months/2026-08`, { headers: bearer() });
+      expect(res.status).toBe(200);
+      const text = await res.text();
+      expect(text).not.toMatch(/Rival secret campaign|7777|777/);
+      expect(new Set(tenants.opened)).toEqual(new Set(['db-acme']));
+      const body = JSON.parse(text);
+      expect(body.month).toBe('2026-08');
+      expect(body.basis).toBe('first');
+      expect(body.channels.map((c: { channel: string }) => c.channel).sort()).toEqual(['google', 'meta']);
+      expect(body.campaigns[0]).toMatchObject({ campaign: 'Acme spring roofs', spend: 1500, leads: 30 });
+      // The same per ad status the dashboard shows: Video A is cheaper per lead than the campaign.
+      const byAd = Object.fromEntries(body.adLineItems.map((a: { ad_name: string; status: string }) => [a.ad_name, a.status]));
+      expect(byAd).toEqual({ 'Video A': 'top', 'Image B': 'under' });
+    });
+
+    it('serves the latest-touch basis when asked, and the first-touch one otherwise', async () => {
+      const latest = await (await call(`/tenants/${ACME.id}/months/2026-08?basis=latest`, { headers: bearer() })).json() as { basis: string; channels: Array<{ leads: number }> };
+      expect(latest.basis).toBe('latest');
+      expect(latest.channels.map((c) => c.leads)).toEqual([25]);
+      const odd = await (await call(`/tenants/${ACME.id}/months/2026-08?basis=anything`, { headers: bearer() })).json() as { basis: string };
+      expect(odd.basis).toBe('first');
+    });
+
+    it('refuses a malformed month or tenant, and an unauthenticated caller, without opening anything', async () => {
+      for (const path of [`/tenants/${ACME.id}/months/2026-8`, `/tenants/${ACME.id}/months/x`, `/tenants/db-acme/months/2026-08`, `/tenants/t_nope/months`]) {
+        expect((await call(path, { headers: bearer() })).status).toBe(404);
+      }
+      expect((await call(`/tenants/${ACME.id}/months/2026-08`)).status).toBe(401);
+      expect((await call(`/tenants/${ACME.id}/months/2026-08`, { headers: bearer() }, 'acme.bi.letlois.com')).status).toBe(404);
+      expect(tenants.opened).toEqual([]);
+    });
+  });
+
   it('still answers with the rollup when the tenant database cannot be read, and says so', async () => {
     tenants.fail = true;
     const res = await call(`/tenants/${ACME.id}`, { headers: bearer() });

@@ -14,12 +14,14 @@
 // an event or contact row. Every route is GET; there is no write path here.
 
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import type { AppContext } from '../env';
 import { sha256Hex, timingSafeEqualHex } from '../crypto';
 import { getTenantById } from '../tenantResolver';
 import { tenantD1Client } from '../provisioning';
 import { writeAudit } from '../audit';
 import type { TenantRow } from '@letlois/db';
+import { monthPayload } from '../monthPayload';
 
 export const serviceRoutes = new Hono<AppContext>();
 
@@ -223,4 +225,39 @@ serviceRoutes.get('/rollup', async (c) => {
       pulledAt: r.pulled_at,
     })),
   });
+});
+
+const MONTH = /^\d{4}-\d{2}$/;
+
+// The tenant a path names, resolved from the control plane, with its database.
+// Null for a malformed id, an unknown tenant, or one with no database yet.
+async function tenantDatabase(c: Context<AppContext>): Promise<{ tenant: TenantRow; database: string } | null> {
+  const id = c.req.param('id') ?? '';
+  if (!TENANT_ID.test(id)) return null;
+  const tenant = await getTenantById(c.env, id);
+  if (!tenant?.d1_database_id) return null;
+  return { tenant, database: tenant.d1_database_id };
+}
+
+// Months that have figures, newest first, for a month picker.
+serviceRoutes.get('/tenants/:id/months', async (c) => {
+  const found = await tenantDatabase(c);
+  if (!found) return c.json({ error: 'not found' }, 404);
+  const { results } = await tenantD1Client(c.env).query<{ period_month: string }>(
+    found.database,
+    `SELECT DISTINCT period_month FROM monthly_metrics ORDER BY period_month DESC`
+  );
+  return c.json({ months: results.map((r) => r.period_month) });
+});
+
+// One month of the tenant's dashboard, exactly as the dashboard itself builds
+// it (monthPayload), unrestricted because the reader is the agency. Aggregates
+// only: no contact, event or user row is in it, so it is not audited.
+serviceRoutes.get('/tenants/:id/months/:month', async (c) => {
+  const month = c.req.param('month');
+  if (!MONTH.test(month)) return c.json({ error: 'not found' }, 404);
+  const found = await tenantDatabase(c);
+  if (!found) return c.json({ error: 'not found' }, 404);
+  const basis = c.req.query('basis') === 'latest' ? 'latest' : 'first';
+  return c.json(await monthPayload(c.env, found.database, month, basis, null));
 });
