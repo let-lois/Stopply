@@ -198,3 +198,29 @@ serviceRoutes.get('/tenants/:id', async (c) => {
     })),
   });
 });
+
+// Every tenant's monthly rollup in one answer, for Operations Center's
+// cross-client overview. Read from the control plane only: no tenant database
+// is opened and no user is named, so unlike a single tenant read there is
+// nothing here to audit. Bounded to the last 13 months.
+serviceRoutes.get('/rollup', async (c) => {
+  const { results } = await c.env.CONTROL_DB.prepare(
+    `SELECT tenant_id, period_month, leads, scheduled, completed, purchases, revenue, spend, pulled_at
+     FROM agency_rollup
+     WHERE period_month >= strftime('%Y-%m', 'now', 'start of month', '-12 months')
+     ORDER BY tenant_id, period_month DESC`
+  ).all<RollupRow & { tenant_id: string }>();
+  return c.json({
+    rows: results.map((r) => ({
+      tenantId: r.tenant_id,
+      month: r.period_month,
+      leads: r.leads,
+      scheduled: r.scheduled,
+      completed: r.completed,
+      purchases: r.purchases,
+      revenue: r.revenue,
+      spend: r.spend,
+      pulledAt: r.pulled_at,
+    })),
+  });
+});
