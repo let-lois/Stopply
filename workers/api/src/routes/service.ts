@@ -23,13 +23,13 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { AppContext } from '../env';
 import { sha256Hex, timingSafeEqualHex } from '../crypto';
-import { getTenantById } from '../tenantResolver';
+import { clearResolverCache, getTenantById } from '../tenantResolver';
 import { tenantD1Client } from '../provisioning';
 import { writeAudit } from '../audit';
 import type { TenantRow } from '@letlois/db';
 import { monthPayload } from '../monthPayload';
 import { z } from 'zod';
-import { provisionTenant } from '../provisioning';
+import { applyTenantMigrations, provisionTenant } from '../provisioning';
 import { timezoneField } from './agency';
 import { createTenantUser, resetTenantUserPassword, setTenantUserActive } from '../tenantUsers';
 import { PARSER_CATALOG, runCsvImport } from './imports';
@@ -604,4 +604,30 @@ serviceRoutes.get('/tenants/:id/field', async (c) => {
       sample: r.is_sample === 1,
     })),
   });
+});
+
+// Bring a client's database up to the schema this deploy ships, as the
+// agency console's migrate does: the same runner, the version recorded,
+// the change audited under the person who asked. Schema only reaches a
+// tenant database when this runs, and the gap is what leaves a live
+// feature answering "not set up". Safe to repeat: migrations at or below
+// the recorded version are skipped, and the rest are written to be rerun.
+serviceRoutes.post('/tenants/:id/migrate', async (c) => {
+  const found = await tenantDatabase(c);
+  if (!found) return c.json({ error: 'not found' }, 404);
+  const body = actorOnly.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: 'invalid request' }, 400);
+  const from = found.tenant.schema_version ?? 0;
+  const to = await applyTenantMigrations(c.env, found.database, from);
+  await c.env.CONTROL_DB.prepare(`UPDATE tenants SET schema_version = ? WHERE id = ?`).bind(to, found.tenant.id).run();
+  clearResolverCache();
+  await writeAudit(c.env, {
+    ...asActor(body.data.actor),
+    tenantId: found.tenant.id,
+    action: 'tenant.migrate',
+    target: found.tenant.slug,
+    before: { schemaVersion: from },
+    after: { schemaVersion: to },
+  });
+  return c.json({ ok: true, from, to, applied: to - from });
 });

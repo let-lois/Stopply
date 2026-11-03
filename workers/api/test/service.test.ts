@@ -730,6 +730,38 @@ describe('Operations Center service API, door to door', () => {
     expect(rival.totals.visits).toBe(0);
   });
 
+  it("sets a client up for door to door by migrating its database from the recorded version, records the new one, and audits who asked", async () => {
+    const updates: unknown[][] = [];
+    (env.CONTROL_DB as FakeD1).on(/UPDATE tenants SET schema_version/, (params) => {
+      updates.push(params);
+      return {};
+    });
+    expect(((await (await get(`/tenants/${NEWCO.id}/field`)).json()) as Field).ready).toBe(false);
+    const post = (body: unknown) =>
+      app.request(
+        `https://bi.letlois.com/api/service/tenants/${NEWCO.id}/migrate`,
+        { method: 'POST', headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' }, body: JSON.stringify(body) },
+        env as unknown as Env
+      );
+    expect((await post({})).status).toBe(400);
+    const res = await post({ actor: { id: 'usr_sa', name: 'Curtis' } });
+    expect(res.status).toBe(200);
+    const done = (await res.json()) as { from: number; to: number; applied: number };
+    expect(done.from).toBe(5);
+    expect(done.to).toBeGreaterThanOrEqual(7);
+    expect(done.applied).toBe(done.to - 5);
+    expect(updates).toEqual([[done.to, NEWCO.id]]);
+    const audit = auditRows.find((r) => r.includes('tenant.migrate'))!;
+    expect(audit).toContain('ops:usr_sa');
+    expect(audit).toContain(NEWCO.id);
+    // Only that client's database was touched, and it can now record a door.
+    expect(tenants.dbs.has('db-rival')).toBe(false);
+    const after = (await (await get(`/tenants/${NEWCO.id}/field`)).json()) as Field;
+    expect(after).toMatchObject({ ready: true, sampleVisits: 0, roster: [] });
+    expect(after.totals.visits).toBe(0);
+    expect((await app.request(`https://bi.letlois.com/api/service/tenants/t_nobody01/migrate`, { method: 'POST', headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' }, body: JSON.stringify({ actor: { id: 'usr_sa', name: 'Curtis' } }) }, env as unknown as Env)).status).toBe(404);
+  });
+
   it('refuses a backwards window and an unknown client, and keeps the token and host guards', async () => {
     expect((await get(`/tenants/${ACME.id}/field?from=2026-08-31&to=2026-08-01`)).status).toBe(400);
     expect((await get(`/tenants/t_nobody01/field`)).status).toBe(404);
