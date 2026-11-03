@@ -19,7 +19,7 @@ import {
   summarize,
   zonedDayRangeUtc,
 } from '@letlois/field';
-import type { AppContext } from '../env';
+import type { AppContext, Env } from '../env';
 import { tenantScope, tenantWrite } from '../middleware';
 import { tenantD1Client } from '../provisioning';
 import { hashPassword, randomToken } from '../crypto';
@@ -42,16 +42,19 @@ function dbId(c: { get: (k: 'tenant') => { d1_database_id: string | null } | nul
 // chart under them disagree about which day a given evening belongs to.
 const dateParam = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
-function range(
-  c: { req: { query: (k: string) => string | undefined } },
-  timeZone: string
-): { from: string; to: string; fromDay: string; toDay: string } {
+export type FieldWindow = { from: string; to: string; fromDay: string; toDay: string };
+
+function range(c: { req: { query: (k: string) => string | undefined } }, timeZone: string): FieldWindow {
+  return fieldWindow(c.req.query('from'), c.req.query('to'), timeZone);
+}
+
+// The last 30 days unless both ends are given as dates. Shared with
+// Operations Center's service route, so both read the same window.
+export function fieldWindow(from: string | undefined, to: string | undefined, timeZone: string): FieldWindow {
   const today = new Date().toISOString().slice(0, 10);
   const defaultFrom = new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
-  const fromDay = dateParam.safeParse(c.req.query('from')).success
-    ? (c.req.query('from') as string)
-    : defaultFrom;
-  const toDay = dateParam.safeParse(c.req.query('to')).success ? (c.req.query('to') as string) : today;
+  const fromDay = dateParam.safeParse(from).success ? (from as string) : defaultFrom;
+  const toDay = dateParam.safeParse(to).success ? (to as string) : today;
   const bounds = zonedDayRangeUtc(fromDay, toDay, timeZone);
   return { ...bounds, fromDay, toDay };
 }
@@ -64,22 +67,27 @@ function tenantTimezone(c: { get: (k: 'tenant') => { timezone: string } | null }
 // leaderboard, the outcome breakdown, and the daily trend.
 fieldAdminRoutes.get('/overview', async (c) => {
   const timezone = tenantTimezone(c);
-  const window = range(c, timezone);
-  const d1 = tenantD1Client(c.env);
+  return c.json(await fieldOverview(c.env, dbId(c), timezone, range(c, timezone)));
+});
+
+// Shared with Operations Center's service route, so the agency reads the
+// numbers the client's own dashboard shows.
+export async function fieldOverview(env: Env, databaseId: string, timezone: string, window: FieldWindow) {
+  const d1 = tenantD1Client(env);
 
   let dispositions;
   let facts;
   try {
     [dispositions, facts] = await Promise.all([
-      loadDispositions(d1, dbId(c)),
-      listVisitFacts(d1, dbId(c), { from: window.from, to: window.to }),
+      loadDispositions(d1, databaseId),
+      listVisitFacts(d1, databaseId, { from: window.from, to: window.to }),
     ]);
   } catch (err) {
     if (!isMissingFieldTables(err)) throw err;
     // ready:false is the difference between "this client has knocked no
     // doors" and "this client's database cannot record a door yet". They
     // need different words on screen, so they are different answers here.
-    return c.json({
+    return {
       ready: false,
       range: { from: window.fromDay, to: window.toDay },
       timezone,
@@ -87,11 +95,11 @@ fieldAdminRoutes.get('/overview', async (c) => {
       reps: [],
       dispositions: [],
       daily: [],
-    });
+    };
   }
   const index = dispositionIndex(dispositions);
 
-  return c.json({
+  return {
     ready: true,
     range: { from: window.fromDay, to: window.toDay },
     timezone,
@@ -99,8 +107,8 @@ fieldAdminRoutes.get('/overview', async (c) => {
     reps: byRep(facts, index, timezone),
     dispositions: byDisposition(facts, dispositions),
     daily: byDay(facts, index, timezone, { from: window.fromDay, to: window.toDay }),
-  });
-});
+  };
+}
 
 // The visit log itself. Capped hard: this is a browsable table, not an
 // export path. Use the CSV route for a full pull.
