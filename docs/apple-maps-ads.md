@@ -93,7 +93,7 @@ A failure in one client, or one integration, is recorded on that integration and
 
 Each has a one-line hint saying what to do next, and integration lists return `state`, `stateLabel` and `stateHint`.
 
-## What Dalysha needs to provide
+## What the Apple Ads account owner needs to provide
 
 1. **Which clients run Apple Maps ads.** For each one, give the Apple Ads ad account id. If one ad account carries more than one client's brand, also give the brand id for each client.
 2. **An Apple Ads API user** on the Apple Ads organization that owns those ad accounts, with the **API Account Read Only** role on each client's Apple Maps ad account. An Apple Ads account administrator invites it under Account Settings > User Management.
