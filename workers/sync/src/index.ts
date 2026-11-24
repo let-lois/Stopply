@@ -3,7 +3,10 @@
 // the current and previous month, rollups for the trailing 4 months,
 // the agency rollup pull into the control plane, and database backups
 // to R2 with 30 day retention. Per tenant failures isolate: one tenant's
-// bad credentials never block the loop.
+// bad credentials never block the loop. A connection's first sync reaches
+// further back when its connector asks for history (Apple Maps: 90 days by
+// default), and every nightly run re-reads the previous month too, which is
+// what picks up conversions a platform attributes late.
 
 import { runRollup, isFunnelStage } from '@letlois/attribution';
 import { CONNECTORS } from '@letlois/connectors';
@@ -43,6 +46,19 @@ function dbFor(env: SyncEnv, databaseId: string) {
   };
 }
 
+// Every month touched by the last `days` days, newest first.
+export function monthsCovering(days: number, nowMs = Date.now()): string[] {
+  const start = new Date(nowMs - Math.max(0, days - 1) * 86_400_000);
+  const now = new Date(nowMs);
+  const span = (now.getUTCFullYear() - start.getUTCFullYear()) * 12 + now.getUTCMonth() - start.getUTCMonth() + 1;
+  return monthsBack(span);
+}
+
+function failureOf(err: unknown): string {
+  const failure = err && typeof err === 'object' ? (err as { failure?: unknown }).failure : undefined;
+  return typeof failure === 'string' ? failure : 'error';
+}
+
 function monthsBack(n: number): string[] {
   const out: string[] = [];
   const now = new Date();
@@ -68,7 +84,10 @@ async function decryptCreds(env: SyncEnv, ciphertext: string, ivB64: string): Pr
   return JSON.parse(new TextDecoder().decode(pt)) as Record<string, string>;
 }
 
-async function syncTenantIntegrations(env: SyncEnv, tenant: TenantRow, months: string[]): Promise<void> {
+// Returns every month written to, so the caller can roll up a backfilled
+// month at once instead of waiting for the nightly window to reach it.
+async function syncTenantIntegrations(env: SyncEnv, tenant: TenantRow, months: string[]): Promise<Set<string>> {
+  const touched = new Set<string>(months);
   const d1 = client(env);
   const databaseId = tenant.d1_database_id!;
   const { results: integrations } = await d1.query<{
@@ -77,7 +96,11 @@ async function syncTenantIntegrations(env: SyncEnv, tenant: TenantRow, months: s
     status: string;
     credentials_ciphertext: string | null;
     credentials_iv: string | null;
-  }>(databaseId, `SELECT key, provider, status, credentials_ciphertext, credentials_iv FROM integrations WHERE status = 'connected'`);
+    last_sync_at: string | null;
+  }>(
+    databaseId,
+    `SELECT key, provider, status, credentials_ciphertext, credentials_iv, last_sync_at FROM integrations WHERE status = 'connected'`
+  );
 
   for (const integration of integrations) {
     const connector = CONNECTORS[integration.provider];
@@ -92,7 +115,12 @@ async function syncTenantIntegrations(env: SyncEnv, tenant: TenantRow, months: s
       const stageMap = new Map(
         mapRows.filter((r) => isFunnelStage(r.stage)).map((r) => [r.external_event, r.stage as never])
       );
-      for (const month of months) {
+      // Never synced and the connector wants history: backfill, oldest
+      // month first so last_sync_result ends on the current month.
+      const backfill = !integration.last_sync_at && connector.backfillDays ? monthsCovering(connector.backfillDays(creds)) : null;
+      const toSync = backfill ? [...new Set([...backfill, ...months])].sort() : months;
+      for (const month of toSync) {
+        touched.add(month);
         const stats = await connector.syncMonth(creds, month, dbFor(env, databaseId), integration.key, { stageMap });
         await d1.query(
           databaseId,
@@ -111,12 +139,13 @@ async function syncTenantIntegrations(env: SyncEnv, tenant: TenantRow, months: s
       const message = err instanceof Error ? err.message : 'sync failed';
       await d1
         .query(databaseId, `UPDATE integrations SET status = 'error', last_sync_result = ? WHERE key = ?`, [
-          JSON.stringify({ ok: false, error: message }),
+          JSON.stringify({ ok: false, error: message, failure: failureOf(err), at: new Date().toISOString() }),
           integration.key,
         ])
         .catch(() => undefined);
     }
   }
+  return touched;
 }
 
 async function runTenantRollups(env: SyncEnv, tenant: TenantRow, months: string[]): Promise<void> {
@@ -201,8 +230,8 @@ export async function runHourly(env: SyncEnv): Promise<void> {
   const currentMonth = monthsBack(1);
   for (const tenant of tenants) {
     try {
-      await syncTenantIntegrations(env, tenant, currentMonth);
-      await runTenantRollups(env, tenant, currentMonth);
+      const touched = await syncTenantIntegrations(env, tenant, currentMonth);
+      await runTenantRollups(env, tenant, [...touched]);
     } catch (err) {
       console.error(`hourly sync failed for ${tenant.slug}`, err instanceof Error ? err.message : err);
     }
@@ -216,8 +245,8 @@ export async function runNightly(env: SyncEnv): Promise<void> {
   const rollupMonths = monthsBack(4);
   for (const tenant of tenants) {
     try {
-      await syncTenantIntegrations(env, tenant, syncMonths);
-      await runTenantRollups(env, tenant, rollupMonths);
+      const touched = await syncTenantIntegrations(env, tenant, syncMonths);
+      await runTenantRollups(env, tenant, [...new Set([...rollupMonths, ...touched])]);
       await pullAgencyRollup(env, tenant, rollupMonths);
       await backupTenant(env, tenant);
     } catch (err) {

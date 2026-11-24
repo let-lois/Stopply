@@ -37,7 +37,7 @@ export interface SyncStats {
   clientRecords: number;
 }
 
-// Ad-spend connectors (Meta, eventually Google) sync spend/lead rows
+// Ad-spend connectors (Meta, Apple Maps, eventually Google) sync spend/lead rows
 // instead of CRM stage events, so "scheduled/completed/purchases" would
 // be meaningless zeros for them - this is the stats shape they report.
 export interface AdSyncStats {
@@ -47,13 +47,19 @@ export interface AdSyncStats {
 
 export interface ConnectorContext {
   fetchImpl?: typeof fetch;
+  // Injected by tests so retries and token expiry run without real waiting.
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
   // Stage map overrides from funnel_stage_map rows.
   stageMap?: Map<string, 'lead' | 'scheduled' | 'completed' | 'purchase'>;
 }
 
 export interface Connector {
-  provider: 'boulevard' | 'housecallpro' | 'jobber' | 'meta-ads';
+  provider: 'boulevard' | 'housecallpro' | 'jobber' | 'meta-ads' | 'apple-maps-ads';
   getRequirements(): ConnectorRequirements;
+  // How far back the first sync of a new connection reaches, for platforms
+  // whose history is worth pulling in. Absent means the current month only.
+  backfillDays?(creds: Record<string, string>): number;
   testConnection(creds: Record<string, string>, ctx?: ConnectorContext): Promise<TestConnectionResult>;
   syncMonth(
     creds: Record<string, string>,

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { CONNECTORS, type ConnectorDb } from '@letlois/connectors';
+import { CONNECTORS, describeIntegrationState, type ConnectorDb } from '@letlois/connectors';
 import { isFunnelStage } from '@letlois/attribution';
 import type { AppContext, Env } from '../env';
 import { tenantScope, tenantWrite } from '../middleware';
@@ -24,21 +24,47 @@ interface IntegrationRow {
   last_sync_at: string | null;
   last_sync_result: string | null;
   plan_check_json: string | null;
+  // Added by tenant migration 0008. Undefined until a database has it.
+  enabled?: number | null;
 }
 
+// Every provider an integration row may hold, for request validation.
+export const PROVIDERS = ['boulevard', 'housecallpro', 'jobber', 'meta-ads', 'apple-maps-ads'] as const;
+
 // Credentials are write only: the public shape never includes ciphertext,
-// IVs, or anything derived from the secret material.
-function publicShape(row: IntegrationRow) {
+// IVs, or anything derived from the secret material. state is derived from
+// the stored columns (see integrationState.ts) and says what to do next.
+function publicShape(row: IntegrationRow, running = false) {
+  const described = describeIntegrationState({
+    hasCredentials: Boolean(row.credentials_ciphertext),
+    status: row.status,
+    enabled: row.enabled,
+    lastSyncAt: row.last_sync_at,
+    lastSyncResult: row.last_sync_result,
+    planCheck: row.plan_check_json,
+    running,
+  });
   return {
     key: row.key,
     provider: row.provider,
     status: row.status,
+    enabled: row.enabled !== 0,
+    state: described.state,
+    stateLabel: described.label,
+    stateHint: described.hint,
     connectedAs: row.connected_as,
     connectedAt: row.connected_at,
     lastSyncAt: row.last_sync_at,
     lastSyncResult: row.last_sync_result,
     planCheck: row.plan_check_json ? JSON.parse(row.plan_check_json) : null,
   };
+}
+
+// What a thrown sync error says about its cause, for the state above.
+// Connectors that classify their failures (Apple Maps) put it on the error.
+function failureOf(err: unknown): string {
+  const failure = err && typeof err === 'object' ? (err as { failure?: unknown }).failure : undefined;
+  return typeof failure === 'string' ? failure : 'error';
 }
 
 function dbIdOf(c: { get: (k: 'tenant') => { d1_database_id: string | null } | null }): string {
@@ -75,7 +101,7 @@ integrationRoutes.get('/', async (c) => {
 
 const credsSchema = z
   .object({
-    provider: z.enum(['boulevard', 'housecallpro', 'jobber', 'meta-ads']),
+    provider: z.enum(PROVIDERS),
     credentials: z.record(z.string().max(60), z.string().max(2048)).refine((r) => Object.keys(r).length <= 10),
   })
   .strict();
@@ -107,6 +133,21 @@ integrationRoutes.post('/:key/test', tenantWrite, async (c) => {
 
 const syncSchema = z.object({ month: z.string().regex(/^\d{4}-\d{2}$/) }).strict();
 
+// Reporting off or back on without touching the credentials, and
+// disconnect, which forgets them. Same operations Operations Center uses.
+for (const action of ['disable', 'enable', 'disconnect'] as const) {
+  integrationRoutes.post(`/:key/${action}`, tenantWrite, async (c) => {
+    const tenant = c.get('tenant')!;
+    const session = c.get('session')!;
+    const result = await setIntegrationEnabled(c.env, { id: tenant.id, d1_database_id: dbIdOf(c) }, c.req.param('key') ?? '', action, {
+      actorType: session.userType,
+      actorId: session.userId,
+    });
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json(result);
+  });
+}
+
 integrationRoutes.post('/:key/sync', tenantWrite, async (c) => {
   const tenant = c.get('tenant')!;
   const session = c.get('session')!;
@@ -136,7 +177,62 @@ export async function listIntegrations(env: Env, databaseId: string) {
   const requirements = Object.fromEntries(
     Object.entries(CONNECTORS).map(([key, conn]) => [key, conn.getRequirements()])
   );
-  return { integrations: results.map(publicShape), requirements };
+  // A run still marked running after fifteen minutes died with its Worker,
+  // so it does not count. The table arrives with migration 0008; a database
+  // without it simply has nothing running.
+  const running = new Set<string>();
+  try {
+    const since = new Date(Date.now() - 15 * 60_000).toISOString();
+    const { results: runs } = await d1.query<{ integration_key: string }>(
+      databaseId,
+      `SELECT DISTINCT integration_key FROM ad_platform_sync_runs WHERE status = 'running' AND started_at > ?`,
+      [since]
+    );
+    for (const r of runs) running.add(r.integration_key);
+  } catch {
+    // not migrated yet
+  }
+  return { integrations: results.map((r) => publicShape(r, running.has(r.key))), requirements };
+}
+
+export async function setIntegrationEnabled(
+  env: Env,
+  tenant: TenantDb,
+  key: string,
+  action: 'disable' | 'enable' | 'disconnect',
+  actor: Actor
+): Promise<{ ok: true; status: string } | { ok: false; status: 404 | 409; error: string }> {
+  const d1 = tenantD1Client(env);
+  const { results } = await d1.query<IntegrationRow>(tenant.d1_database_id, `SELECT * FROM integrations WHERE key = ?`, [key]);
+  const row = results[0];
+  if (!row) return { ok: false, status: 404, error: 'not found' };
+  if (row.enabled === undefined) {
+    return { ok: false, status: 409, error: 'This client’s database needs migrating before reporting can be switched off.' };
+  }
+  if (action === 'disconnect') {
+    // The credentials go. Synced figures stay: they are the client's
+    // history, and a reconnect continues it.
+    await d1.query(
+      tenant.d1_database_id,
+      `UPDATE integrations SET status = 'disconnected', credentials_ciphertext = NULL, credentials_iv = NULL, connected_as = NULL, plan_check_json = NULL, enabled = 1 WHERE key = ?`,
+      [key]
+    );
+  } else if (action === 'disable') {
+    // The sync Worker only reads connected integrations, so this stops it.
+    await d1.query(tenant.d1_database_id, `UPDATE integrations SET status = 'disconnected', enabled = 0 WHERE key = ?`, [key]);
+  } else {
+    // Back on, but unverified until the next Test: credentials may have
+    // changed on the platform while reporting was off.
+    await d1.query(tenant.d1_database_id, `UPDATE integrations SET enabled = 1 WHERE key = ?`, [key]);
+  }
+  await writeAudit(env, {
+    ...actor,
+    tenantId: tenant.id,
+    action: `integration.${action}`,
+    target: key,
+    before: { status: row.status, enabled: row.enabled !== 0 },
+  });
+  return { ok: true, status: action === 'enable' ? row.status : 'disconnected' };
 }
 
 export async function saveIntegrationCredentials(
@@ -187,10 +283,17 @@ export async function testIntegration(env: Env, tenant: TenantDb, key: string, a
 
   const result = await connector.testConnection(creds);
   const status = result.ok ? 'connected' : 'error';
+  // A failed test records what kind of failure it was and when, so the
+  // integration's state can say "authentication expired" rather than just
+  // "error". A connector's own planCheck wins where it says more.
+  const failureKind = result.failure === 'bad_credentials' ? 'auth' : result.failure === 'insufficient_plan' ? 'permission' : 'error';
+  const planCheck = result.ok
+    ? result.planCheck ?? null
+    : { failureKind, checkedAt: new Date().toISOString(), ...(result.planCheck ?? {}) };
   await d1.query(
     tenant.d1_database_id,
     `UPDATE integrations SET status = ?, connected_as = ?, plan_check_json = ? WHERE key = ?`,
-    [status, result.connectedAs ?? null, result.planCheck ? JSON.stringify(result.planCheck) : null, key]
+    [status, result.connectedAs ?? null, planCheck ? JSON.stringify(planCheck) : null, key]
   );
   await writeAudit(env, {
     ...actor,
@@ -214,12 +317,13 @@ export async function syncIntegration(
   key: string,
   month: string,
   actor: Actor
-): Promise<{ ok: true; stats: unknown } | { ok: false; status: 400 | 404 | 502; error: string }> {
+): Promise<{ ok: true; stats: unknown } | { ok: false; status: 400 | 404 | 409 | 502; error: string }> {
   const d1 = tenantD1Client(env);
   const databaseId = tenant.d1_database_id;
   const { results } = await d1.query<IntegrationRow>(databaseId, `SELECT * FROM integrations WHERE key = ?`, [key]);
   const row = results[0];
   if (!row) return { ok: false, status: 404, error: 'not found' };
+  if (row.enabled === 0) return { ok: false, status: 409, error: 'Reporting is disabled for this integration. Enable it first.' };
   const connector = CONNECTORS[row.provider];
   if (!connector) return { ok: false, status: 400, error: 'unknown provider' };
   const creds = await loadCredentials(env, row);
@@ -251,9 +355,16 @@ export async function syncIntegration(
     const message = err instanceof Error ? err.message : 'sync failed';
     // A failed sync flips the integration to error and the source red.
     await d1.query(databaseId, `UPDATE integrations SET status = 'error', last_sync_result = ? WHERE key = ?`, [
-      JSON.stringify({ ok: false, error: message }),
+      JSON.stringify({ ok: false, error: message, failure: failureOf(err), at: new Date().toISOString() }),
       key,
     ]);
+    await writeAudit(env, {
+      ...actor,
+      tenantId: tenant.id,
+      action: 'integration.sync_failed',
+      target: `${key}/${month}`,
+      after: { failure: failureOf(err) },
+    });
     return { ok: false, status: 502, error: message };
   }
 }

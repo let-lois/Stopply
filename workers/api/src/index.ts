@@ -8,6 +8,7 @@ import { tenantRoutes } from './routes/tenant';
 import { ingestRoutes } from './routes/ingest';
 import { importRoutes } from './routes/imports';
 import { integrationRoutes } from './routes/integrations';
+import { adPlatformRoutes } from './routes/adPlatforms';
 import { settingsRoutes } from './routes/settings';
 import { chatRoutes, helpRoutes } from './routes/chat';
 import { fieldRoutes } from './routes/field';
@@ -42,6 +43,7 @@ app.route('/api/agency', agencyRoutes);
 app.route('/api/tenant', tenantRoutes);
 app.route('/api/imports', importRoutes);
 app.route('/api/tenant/integrations', integrationRoutes);
+app.route('/api/tenant/ad-platforms', adPlatformRoutes);
 app.route('/api/tenant/settings', settingsRoutes);
 // Door to door field tracking: /api/field is the reps' phones, and
 // /api/tenant/field is the reporting and roster the client sees.
