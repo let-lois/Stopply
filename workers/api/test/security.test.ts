@@ -248,16 +248,21 @@ describe('secrets never serialize into API responses', () => {
     expect(text).not.toContain(ciphertext);
     expect(text).not.toContain(iv);
     expect(text).not.toContain('credentials_ciphertext');
-    // Snapshot of the public serializer shape: only these keys appear.
+    // Snapshot of the public serializer shape: only these keys appear. The
+    // state fields are derived from status and sync results, never secrets.
     const body = JSON.parse(text) as { integrations: Array<Record<string, unknown>> };
     expect(Object.keys(body.integrations[0]!).sort()).toEqual([
       'connectedAs',
       'connectedAt',
+      'enabled',
       'key',
       'lastSyncAt',
       'lastSyncResult',
       'planCheck',
       'provider',
+      'state',
+      'stateHint',
+      'stateLabel',
       'status',
     ]);
   });

@@ -33,7 +33,8 @@ import { applyTenantMigrations, provisionTenant } from '../provisioning';
 import { timezoneField } from './agency';
 import { createTenantUser, resetTenantUserPassword, setTenantUserActive } from '../tenantUsers';
 import { PARSER_CATALOG, runCsvImport } from './imports';
-import { listIntegrations, saveIntegrationCredentials, syncIntegration, testIntegration } from './integrations';
+import { PROVIDERS, listIntegrations, saveIntegrationCredentials, setIntegrationEnabled, syncIntegration, testIntegration } from './integrations';
+import { adPlatformReport, parseReportRange } from '../adPlatformReport';
 import { fieldOverview, fieldWindow } from './fieldAdmin';
 import { isMissingFieldTables } from '../field/repo';
 
@@ -513,7 +514,7 @@ serviceRoutes.get('/tenants/:id/integrations', async (c) => {
 
 const credentialsSchema = z
   .object({
-    provider: z.enum(['boulevard', 'housecallpro', 'jobber', 'meta-ads']),
+    provider: z.enum(PROVIDERS),
     credentials: z.record(z.string().max(60), z.string().max(2048)).refine((r) => Object.keys(r).length <= 10),
     actor: actorSchema,
   })
@@ -522,7 +523,9 @@ const credentialsSchema = z
 serviceRoutes.post('/tenants/:id/integrations/:key/:action', async (c) => {
   const key = c.req.param('key');
   const action = c.req.param('action');
-  if (!SOURCE_KEY.test(key) || !['credentials', 'test', 'sync'].includes(action)) return c.json({ error: 'not found' }, 404);
+  if (!SOURCE_KEY.test(key) || !['credentials', 'test', 'sync', 'disable', 'enable', 'disconnect'].includes(action)) {
+    return c.json({ error: 'not found' }, 404);
+  }
   const found = await tenantDatabase(c);
   if (!found) return c.json({ error: 'not found' }, 404);
   const tenant = { id: found.tenant.id, d1_database_id: found.database };
@@ -544,11 +547,32 @@ serviceRoutes.post('/tenants/:id/integrations/:key/:action', async (c) => {
     return c.json(result);
   }
 
+  if (action === 'disable' || action === 'enable' || action === 'disconnect') {
+    const body = actorOnly.safeParse(raw);
+    if (!body.success) return c.json({ error: 'invalid request' }, 400);
+    const result = await setIntegrationEnabled(c.env, tenant, key, action, asActor(body.data.actor));
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json(result);
+  }
+
   const body = z.object({ month: z.string().regex(MONTH), actor: actorSchema }).strict().safeParse(raw);
   if (!body.success) return c.json({ error: 'invalid request' }, 400);
   const result = await syncIntegration(c.env, tenant, key, body.data.month, asActor(body.data.actor));
   if (!result.ok) return c.json({ ok: false, error: result.error }, result.status);
   return c.json(result);
+});
+
+// A client's ad platform report (today: apple_maps) for a window of days,
+// exactly as the client's own dashboard reads it. Aggregates only, no
+// contact or user row, so like the monthly payload it is not audited.
+serviceRoutes.get('/tenants/:id/ad-platforms/:platform', async (c) => {
+  const found = await tenantDatabase(c);
+  if (!found) return c.json({ error: 'not found' }, 404);
+  const range = parseReportRange(c.req.query('from'), c.req.query('to'), found.tenant.timezone || 'UTC');
+  if (!range.ok) return c.json({ error: range.error }, 400);
+  const result = await adPlatformReport(c.env, found.database, c.req.param('platform'), range.value);
+  if (!result.ok) return c.json({ error: result.error }, result.status);
+  return c.json(result.report);
 });
 
 // Door to door reporting for a window of days, as the client's own Door to

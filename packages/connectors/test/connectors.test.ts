@@ -40,7 +40,7 @@ describe('connector requirements', () => {
   it('CRM connectors state a default stage mapping; ad-spend connectors have none', () => {
     for (const [provider, connector] of Object.entries(CONNECTORS)) {
       const req = connector.getRequirements();
-      if (provider === 'meta-ads') {
+      if (provider === 'meta-ads' || provider === 'apple-maps-ads') {
         expect(req.defaultStageMap).toHaveLength(0);
       } else {
         expect(req.defaultStageMap.length).toBeGreaterThan(0);

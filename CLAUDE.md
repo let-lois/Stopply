@@ -95,6 +95,18 @@ All Star's reps also get the field app as a real installable app, built with Cap
 - **`/field-preview` never navigates its frame twice.** A Next static export page mounts once per browsing context, so a reload or a keyed remount leaves an empty document. Changing device resizes the frame and the app reflows; Restart is `__fieldDemo.restart()`, which remounts in place. Do not "fix" it by reloading the iframe.
 - **Links into `/field-preview` must open a new tab.** Reaching it by a same tab link from another dashboard page leaves the framed app unhydrated and blank, which is the same Next constraint as above seen from the other side. The `/prototypes` cards carry `target="_blank"` for that reason, not as a preference.
 
+## Apple Maps Ads (reporting only)
+
+See `docs/apple-maps-ads.md`. The facts that must survive a session:
+
+- **Read only, enforced.** `AppleAdsClient` sends GET, and POST only to `/query` endpoints. Never add a call that creates, changes, pauses or deletes a campaign: LetLois reports on Apple Maps ads, it does not manage them.
+- **Apple Ads Platform API 1.0** (`https://api.ads.apple.com/v1`), not the Campaign Management API v5, which Apple sunsets 26 January 2027. Only `/v1/reports/business-brands/*` is read, never `/v1/reports/apps/*`, so App Store ads cannot leak in.
+- **Three cuts, never added together.** `ad_platform_daily` holds the same campaigns by campaign, by location and by placement (`breakdown`). Totals come from the campaign cut only, or a campaign in three places is counted three times.
+- **Apple Maps actions are not leads.** Spend goes to `raw_ad_spend` under channel `Apple Maps` with `leads_reported = NULL`, and only when the account reports in USD. Never fold actions into leads or sum them with Meta or Google conversions.
+- **Absent is N/A, not zero.** Ratios are computed from sums and are null with nothing to divide by.
+- **One client tenant = one Apple ad account (plus an optional brand id),** chosen by an administrator from the accounts the API user can see. Nothing is matched by business name.
+- **Built against mock responses.** Fixtures live in `packages/connectors/test/fixtures/apple-maps-ads/` and must never be imported by shipped code (`test/no-mock-in-src.test.ts`). Do not call it operational until the live checklist in the doc passes.
+
 ## Code conventions
 
 - **Never use em dashes** in any copy, content, comments, or UI text. Use periods, commas, or rewrite the sentence.
