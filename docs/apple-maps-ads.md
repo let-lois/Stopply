@@ -78,6 +78,11 @@ These are Apple's counts under Apple's attribution model. They are never added t
 
 A failure in one client, or one integration, is recorded on that integration and the loop continues.
 
+- **Temporary failures retry by themselves.** A rate limit, a 5xx or a network failure leaves the integration connected, so the next scheduled sync tries again. Anything else (refused credentials, lost permission, a bad request) marks it failing until someone fixes it and runs Test.
+- **A half-finished sync leaves the old figures, not a gap.** Each sync writes its rows first and only then removes the rows in its window that it did not write. The tenant database is reached over the D1 HTTP API, which has no transactions, so a sync that dies halfway keeps last time's numbers.
+- **Backfill finishes or starts again.** During a backfill the sync clock is stamped only once the whole run is through, so a run cut short starts over next hour. A history month Apple refuses is skipped (it shows in the sync history and can be synced by hand) so it cannot block the current month.
+- **Changing the ad account or brand replaces the history.** Each sync records what it reported on. When that changes, everything synced for the old account or brand is deleted from the detail tables and the monthly spend, those months are rolled up again, and the backfill runs for the new one. This happens only after the new account is confirmed readable, so a typo cannot wipe anything. With one shared API user the old account may be another client's, which is why nothing of it is kept.
+
 **States.** These are derived, never stored:
 
 - Not connected
@@ -110,14 +115,14 @@ Each has a one-line hint saying what to do next, and integration lists return `s
 From Operations Center, open the client's BI page, then the Data tab, then integrations. A client account admin can do the same through the tenant integrations API (`/api/tenant/integrations/:key/*`). The new BI web app has no integrations screen yet.
 
 1. Fill in the Apple Maps Ads connector. Operations Center files it under the integration key `apple-maps-ads`. Enter the clientId, teamId, keyId and private key, and **leave Ad account ID blank**.
-2. Run **Test**. Because no account is chosen, the test lists every ad account this API user can see and marks the Apple Maps ones. It never picks one itself.
+2. Run **Test**. Because no account is chosen, the test lists the Apple Maps ad accounts this API user can see. It never picks one itself. The list appears only in the reply to LetLois staff (Operations Center) and is never stored, because the stored test result is readable by the client's own users and one API user usually reaches every client's account. A client admin who runs Test is told to ask LetLois instead.
 3. Enter the client's Apple Maps ad account id, plus a brand id if the account carries several clients, and save.
 4. Run **Test** again. It checks that the user can see the account, that it is an Apple Maps account, and that the brand is delegated. It notes if the role is broader than read only.
 5. The next hourly sync backfills 90 days, or **Sync** a month by hand.
 
 Mapping is explicit: one BI client tenant is one ad account, plus an optional brand. Nothing is matched by business name, and no client name or account id is written in code. Locations are whatever the brand's campaigns target, and the report names them from Apple's location list.
 
-**Disable** stops syncing and keeps the credentials. **Enable**, then Test, resumes. **Disconnect** forgets the credentials and keeps the synced history. All three, plus credential saves, tests, syncs and failed syncs, write audit rows.
+**Disable** stops syncing and keeps the credentials; a Test while disabled checks the connection without switching it back on. **Enable**, then Test, resumes. **Disconnect** forgets the credentials, keeps the synced history and resets the sync clock, so a reconnect backfills (and a reconnect to a different account replaces the history). All three, plus credential saves, tests, syncs and failed syncs, write audit rows.
 
 ## Live verification (needs an authorised account)
 
@@ -136,9 +141,9 @@ Nothing below has been checked against Apple yet:
 ## Deploying
 
 1. Merge. The API and sync Workers deploy through Workers Builds. Check both "Workers Builds" checks, since a merge does not prove a deploy.
-2. Migrate tenant databases: `pnpm migrate:tenants`, or Operations Center's per-client migrate. Migration 0008 rebuilds `integrations` the same way 0005 did, and is written to be re-run safely.
+2. Migrate tenant databases: `pnpm migrate:tenants`, or Operations Center's per-client migrate. Migration 0008 rebuilds `integrations` the same way 0005 did. The runner sends one statement at a time and records the version only at the end, so 0008 is written to survive a rerun from any point, including after `integrations` was dropped but before the rename. A rerun after a complete run switches every integration's `enabled` back on.
 3. Until a client is migrated, the new code still works for it:
-   - Integration lists show the state fields without `enabled`.
+   - Integration lists still show the state fields, with `enabled` reported as true (the column does not exist yet).
    - The report answers `ready: false`, as door to door does, and Operations Center offers its migrate action.
    - Apple Maps cannot be connected for that client.
 

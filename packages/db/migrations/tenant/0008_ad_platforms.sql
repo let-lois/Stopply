@@ -15,9 +15,13 @@
 -- rather than duplicates. No personal data is stored: campaigns, business
 -- locations (name and city only) and aggregate counts.
 --
--- Safe to run again after a partial failure: the scratch table is dropped
--- first, the copy reads only columns both shapes have, and every new table
--- and index is IF NOT EXISTS.
+-- Safe to run again after a partial failure. The runner sends one statement
+-- at a time and records the version only at the end, so a rerun can meet any
+-- intermediate state. The scratch table is never dropped: if an earlier run
+-- got as far as dropping integrations, its rows live only in
+-- integrations_new, and the copy below (INSERT OR REPLACE from a freshly
+-- created, empty integrations) leaves them there. Every new table and index
+-- is IF NOT EXISTS.
 
 CREATE TABLE IF NOT EXISTS integrations (
   key TEXT PRIMARY KEY,
@@ -32,8 +36,7 @@ CREATE TABLE IF NOT EXISTS integrations (
   last_sync_result TEXT,
   plan_check_json TEXT
 );
-DROP TABLE IF EXISTS integrations_new;
-CREATE TABLE integrations_new (
+CREATE TABLE IF NOT EXISTS integrations_new (
   key TEXT PRIMARY KEY,
   provider TEXT NOT NULL CHECK (provider IN ('boulevard', 'housecallpro', 'jobber', 'meta-ads', 'apple-maps-ads')),
   status TEXT NOT NULL DEFAULT 'disconnected' CHECK (status IN ('disconnected', 'connected', 'error')),
@@ -47,7 +50,7 @@ CREATE TABLE integrations_new (
   plan_check_json TEXT,
   enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1))
 );
-INSERT INTO integrations_new (key, provider, status, credentials_ciphertext, credentials_iv, connected_as, connected_by, connected_at, last_sync_at, last_sync_result, plan_check_json)
+INSERT OR REPLACE INTO integrations_new (key, provider, status, credentials_ciphertext, credentials_iv, connected_as, connected_by, connected_at, last_sync_at, last_sync_result, plan_check_json)
   SELECT key, provider, status, credentials_ciphertext, credentials_iv, connected_as, connected_by, connected_at, last_sync_at, last_sync_result, plan_check_json FROM integrations;
 DROP TABLE integrations;
 ALTER TABLE integrations_new RENAME TO integrations;
@@ -97,7 +100,10 @@ CREATE TABLE IF NOT EXISTS ad_platform_locations (
 -- time and never adds them together. clicks is the platform's own unit
 -- (taps for Apple Maps). conversions is NULL when the platform reports none,
 -- which is not the same as zero. conversions_json keeps the platform's own
--- action breakdown under its own names.
+-- action breakdown under its own names. sync_run is the run that last wrote
+-- the row: a sync writes its rows first and only then removes the window's
+-- rows it did not write, so a sync that dies halfway leaves the old figures
+-- in place rather than a gap.
 CREATE TABLE IF NOT EXISTS ad_platform_daily (
   platform TEXT NOT NULL,
   account_id TEXT NOT NULL,
@@ -111,6 +117,7 @@ CREATE TABLE IF NOT EXISTS ad_platform_daily (
   clicks INTEGER NOT NULL DEFAULT 0,
   conversions INTEGER,
   conversions_json TEXT,
+  sync_run TEXT,
   synced_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   PRIMARY KEY (platform, account_id, metric_date, campaign_id, breakdown, dimension),
   FOREIGN KEY (platform, account_id, campaign_id) REFERENCES ad_platform_campaigns (platform, account_id, campaign_id)
@@ -125,6 +132,9 @@ CREATE TABLE IF NOT EXISTS ad_platform_sync_runs (
   integration_key TEXT NOT NULL,
   platform TEXT NOT NULL,
   account_id TEXT,
+  -- What the integration reported on: ad account plus optional brand. A
+  -- change means everything synced before belongs to something else.
+  scope TEXT,
   status TEXT NOT NULL CHECK (status IN ('running', 'succeeded', 'no_campaigns', 'failed')),
   range_from TEXT NOT NULL,
   range_to TEXT NOT NULL,

@@ -298,14 +298,73 @@ describe('Apple Maps Ads integration', () => {
     expect(await integration()).toMatchObject({ state: 'pending', enabled: true });
 
     expect((await call('/api/tenant/integrations/apple-maps/disconnect', { method: 'POST', body: '{}' })).status).toBe(200);
-    const [row] = await rows(`SELECT status, credentials_ciphertext, credentials_iv FROM integrations WHERE key = 'apple-maps'`);
-    expect(row).toEqual({ status: 'disconnected', credentials_ciphertext: null, credentials_iv: null });
+    const [row] = await rows(`SELECT status, credentials_ciphertext, credentials_iv, last_sync_at FROM integrations WHERE key = 'apple-maps'`);
+    expect(row).toEqual({ status: 'disconnected', credentials_ciphertext: null, credentials_iv: null, last_sync_at: null });
     expect(await integration()).toMatchObject({ state: 'not_connected' });
     // Synced figures are the client's history and stay.
     expect(await rows(`SELECT COUNT(*) AS n FROM ad_platform_daily`)).toEqual([{ n: 12 }]);
     expect(actions()).toEqual(
       expect.arrayContaining(['integration.disable', 'integration.enable', 'integration.disconnect'])
     );
+  });
+
+  it('testing a disabled integration checks it without switching syncing back on', async () => {
+    await connect();
+    await call('/api/tenant/integrations/apple-maps/disable', { method: 'POST', body: '{}' });
+    const test = await call('/api/tenant/integrations/apple-maps/test', { method: 'POST', body: '{}' });
+    expect(await test.json()).toMatchObject({ ok: true });
+    expect(await rows(`SELECT status, enabled FROM integrations WHERE key = 'apple-maps'`)).toEqual([{ status: 'disconnected', enabled: 0 }]);
+    expect(await integration()).toMatchObject({ state: 'disabled' });
+  });
+
+  it('keeps a busy Apple connected, so the next scheduled sync retries by itself', async () => {
+    await connect();
+    await sync();
+    useApple({ override: { campaigns: { status: 429, body: { error: { code: 'rate_limit_exceeded' } }, headers: { 'retry-after': '0' } } } });
+    expect((await sync()).status).toBe(502);
+    expect(await rows(`SELECT status FROM integrations WHERE key = 'apple-maps'`)).toEqual([{ status: 'connected' }]);
+    expect(await integration()).toMatchObject({ state: 'sync_failed' });
+    // The figures from the last good sync are still there.
+    expect(await rows(`SELECT SUM(spend) AS s FROM ad_platform_daily WHERE breakdown = 'campaign'`)).toEqual([{ s: 60 }]);
+    useApple();
+    await sync();
+    expect(await integration()).toMatchObject({ state: 'synced' });
+  });
+
+  it('drops everything synced for the old account or brand when it changes, and backfills afresh', async () => {
+    await connect();
+    await sync();
+    // History from before, as an older month would hold it.
+    await rows(`INSERT INTO raw_ad_spend (period_month, channel, campaign, spend) VALUES ('2026-08', 'Apple Maps', '[MOCK] Old account campaign', 999)`);
+    await rows(`INSERT INTO ad_platform_campaigns (platform, account_id, campaign_id, name) VALUES ('apple_maps', '1111111111', 'old', '[MOCK] Old')`);
+    await connect({ brandId: MOCK.brandId });
+    const res = await sync();
+    expect(await res.json()).toMatchObject({ ok: true, stats: { alsoChanged: ['2026-08'], restartBackfill: true } });
+    expect(await rows(`SELECT DISTINCT account_id FROM ad_platform_campaigns`)).toEqual([{ account_id: MOCK.mapsAccountId }]);
+    expect(await rows(`SELECT period_month, SUM(spend) AS s FROM raw_ad_spend WHERE channel = 'Apple Maps' GROUP BY period_month`)).toEqual([{ period_month: '2026-10', s: 60 }]);
+    // The purged month was rolled up again, and the history will be refetched.
+    expect(await rows(`SELECT spend FROM monthly_metrics WHERE period_month = '2026-08' AND channel = 'Apple Maps'`)).toEqual([]);
+    expect(await rows(`SELECT last_sync_at FROM integrations WHERE key = 'apple-maps'`)).toEqual([{ last_sync_at: null }]);
+    // A second sync of the same scope purges nothing.
+    expect(await (await sync()).json()).toMatchObject({ stats: { alsoChanged: [], restartBackfill: false } });
+  });
+
+  it('shows the account list only to LetLois staff, and never stores it', async () => {
+    const save = await call('/api/tenant/integrations/apple-maps/credentials', {
+      method: 'PUT',
+      body: JSON.stringify({ provider: 'apple-maps-ads', credentials: mockCredentials(privateKey, { adAccountId: '' }) }),
+    });
+    expect(save.status).toBe(200);
+    const asClient = await (await call('/api/tenant/integrations/apple-maps/test', { method: 'POST', body: '{}' })).text();
+    expect(asClient).not.toContain(MOCK.mapsAccountId);
+    const svc = await app.request(
+      `https://bi.letlois.com/api/service/tenants/${ACME.id}/integrations/apple-maps/test`,
+      { method: 'POST', headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' }, body: JSON.stringify({ actor: { id: 'ops-1', name: 'Ops' } }) },
+      env as unknown as Env
+    );
+    expect(await svc.text()).toContain(MOCK.mapsAccountId);
+    expect(JSON.stringify(await rows(`SELECT plan_check_json FROM integrations`))).not.toContain(MOCK.mapsAccountId);
+    expect(await (await call('/api/tenant/integrations', {}, viewer)).text()).not.toContain(MOCK.mapsAccountId);
   });
 
   it('never returns the private key or a token in any response', async () => {
@@ -391,6 +450,22 @@ describe('first sync backfill', () => {
 });
 
 describe('migration 0008 rerun', () => {
+  it('survives a run that died after dropping integrations, keeping every row', async () => {
+    const Database = (await import('better-sqlite3')).default;
+    const { TENANT_MIGRATIONS, splitStatements } = await import('@letlois/db/migrations');
+    const db = new Database(':memory:');
+    for (const m of TENANT_MIGRATIONS.filter((x) => x.version < 8)) for (const s of splitStatements(m.sql)) db.exec(s);
+    db.prepare(`INSERT INTO integrations (key, provider, status, credentials_ciphertext) VALUES ('meta', 'meta-ads', 'connected', 'CT')`).run();
+    const m8 = splitStatements(TENANT_MIGRATIONS.find((m) => m.version === 8)!.sql);
+    // The runner sends one statement at a time: stop right before the rename.
+    const rename = m8.findIndex((s) => /RENAME TO integrations/.test(s));
+    for (const s of m8.slice(0, rename)) db.exec(s);
+    expect(db.prepare(`SELECT name FROM sqlite_master WHERE name = 'integrations'`).all()).toEqual([]);
+    // The rerun of the whole migration.
+    for (const s of m8) db.exec(s);
+    expect(db.prepare(`SELECT key, provider, credentials_ciphertext FROM integrations`).all()).toEqual([{ key: 'meta', provider: 'meta-ads', credentials_ciphertext: 'CT' }]);
+  });
+
   it('can run twice without losing an integration', async () => {
     const Database = (await import('better-sqlite3')).default;
     const { TENANT_MIGRATIONS, splitStatements } = await import('@letlois/db/migrations');

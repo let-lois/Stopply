@@ -32,7 +32,10 @@ export const INTEGRATION_STATES: Record<IntegrationState, { label: string; hint:
     label: 'Authentication expired',
     hint: 'The platform refused the credentials. They may have been revoked or replaced. Re-enter them and Test.',
   },
-  sync_failed: { label: 'Synchronization failed', hint: 'The last sync failed. Its message says why. The next scheduled sync will try again.' },
+  sync_failed: {
+    label: 'Synchronization failed',
+    hint: 'The last sync failed and its message says why. A busy or unreachable platform is retried on the next scheduled sync; anything else needs fixing, then Test.',
+  },
   disabled: { label: 'Reporting disabled', hint: 'Credentials are kept but nothing syncs. Enable it to resume.' },
 };
 
@@ -81,6 +84,8 @@ export function deriveIntegrationState(input: IntegrationStateInput): Integratio
     return 'sync_failed';
   }
   if (input.status === 'connected') {
+    // A temporary failure keeps the integration connected, to be retried.
+    if (result && result.ok === false) return fromFailure(result.failure);
     if (!input.lastSyncAt) return 'connected';
     const stats = result && typeof result.stats === 'object' && result.stats ? (result.stats as Record<string, unknown>) : null;
     if (result && result.ok === true && stats && stats.campaigns === 0) return 'no_campaigns';

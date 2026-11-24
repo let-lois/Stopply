@@ -277,6 +277,7 @@ describe('Apple Maps normalisation', () => {
     const { dailyRows, statements } = adPlatformStatements({
       platform: 'apple_maps',
       accountId: '1',
+      runId: 'run_1',
       range: { from: '2026-10-01', to: '2026-10-31' },
       campaigns: [],
       daily: [row, { ...row, spend: 2 }],
@@ -284,7 +285,14 @@ describe('Apple Maps normalisation', () => {
     });
     expect(dailyRows).toBe(1);
     const insert = statements.find((s) => s.sql.includes('INSERT INTO ad_platform_daily'))!;
-    expect(JSON.parse(String(insert.params[2]))).toEqual([expect.objectContaining({ spend: 2 })]);
+    expect(insert.params[2]).toBe('run_1');
+    expect(JSON.parse(String(insert.params[3]))).toEqual([expect.objectContaining({ spend: 2 })]);
+    // Writes first, prune of what this run did not write last, so a sync
+    // that dies halfway leaves the old figures rather than a gap.
+    const last = statements.at(-1)!;
+    expect(last.sql).toMatch(/^DELETE FROM ad_platform_daily .* sync_run IS NOT \?$/);
+    expect(last.params.at(-1)).toBe('run_1');
+    expect(statements.filter((s) => s.sql.startsWith('DELETE'))).toHaveLength(1);
     // Every statement stays well under D1's 100 bound parameter limit.
     expect(statements.every((s) => s.params.length <= 100)).toBe(true);
   });
@@ -308,19 +316,24 @@ describe('Apple Maps connector', () => {
     expect(readAppleMapsSettings({ ...mockCredentials('k'), adAccountId: '' })).toMatchObject({ ok: true, value: { adAccountId: '' } });
   });
 
-  it('lists the accessible accounts when none is chosen yet, and never picks one itself', async () => {
+  it('lists the accessible Apple Maps accounts to staff when none is chosen yet, and never picks one itself', async () => {
     const mock = appleAdsMock();
-    const result = await appleMapsAdsConnector.testConnection(mockCredentials(keys.sec1.privateKey, { adAccountId: '' }), { fetchImpl: mock.fetchImpl });
+    const result = await appleMapsAdsConnector.testConnection(mockCredentials(keys.sec1.privateKey, { adAccountId: '' }), { fetchImpl: mock.fetchImpl, discover: true });
     expect(result.ok).toBe(false);
-    expect(result.planCheck).toMatchObject({
-      failureKind: 'select_account',
-      accounts: [
-        { id: MOCK.mapsAccountId, appleMaps: true },
-        { id: MOCK.appStoreAccountId, appleMaps: false },
-      ],
-    });
+    expect(result.planCheck).toMatchObject({ failureKind: 'select_account' });
     expect(result.message).toContain(MOCK.mapsAccountId);
     expect(result.message).not.toContain(MOCK.appStoreAccountId);
+  });
+
+  it('never stores the account list, and never shows it to a client user', async () => {
+    const asClient = await appleMapsAdsConnector.testConnection(mockCredentials(keys.sec1.privateKey, { adAccountId: '' }), { fetchImpl: appleAdsMock().fetchImpl });
+    expect(asClient.message).not.toContain(MOCK.mapsAccountId);
+    expect(asClient.message).toContain('Ask LetLois');
+    const unseen = await appleMapsAdsConnector.testConnection(mockCredentials(keys.sec1.privateKey, { adAccountId: '3333333333' }), { fetchImpl: appleAdsMock().fetchImpl, discover: true });
+    for (const r of [asClient, unseen]) {
+      expect(JSON.stringify(r.planCheck)).not.toContain(MOCK.mapsAccountId);
+      expect(JSON.stringify(r.planCheck)).not.toContain('[MOCK] Demo');
+    }
   });
 
   it('passes for an Apple Maps account the user can read, and notes a read only role is enough', async () => {
@@ -372,6 +385,10 @@ describe('integration states', () => {
     expect(deriveIntegrationState({ ...base, status: 'error', lastSyncResult: failed('auth') })).toBe('auth_expired');
     expect(deriveIntegrationState({ ...base, status: 'error', lastSyncResult: failed('server') })).toBe('sync_failed');
     expect(deriveIntegrationState({ ...base, enabled: 0 })).toBe('disabled');
+    // A busy platform keeps the integration connected, and says the sync failed.
+    expect(deriveIntegrationState({ ...base, lastSyncResult: failed('rate_limited') })).toBe('sync_failed');
+    // A month not started yet is not "no campaigns".
+    expect(deriveIntegrationState({ ...base, lastSyncResult: JSON.stringify({ ok: true, stats: { campaigns: null } }) })).toBe('synced');
   });
 
   it('lets the most recent of a failed test and a failed sync decide', () => {

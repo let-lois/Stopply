@@ -105,6 +105,8 @@ export interface NormalizedDailyMetric {
 export interface AdPlatformSnapshot {
   platform: AdPlatformId;
   accountId: string;
+  // The sync run writing it. Rows the run did not write are pruned last.
+  runId: string;
   range: { from: string; to: string };
   campaigns: NormalizedCampaign[];
   daily: NormalizedDailyMetric[];

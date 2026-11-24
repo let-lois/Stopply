@@ -30,7 +30,6 @@ import {
   type DailyBreakdown,
 } from './adPlatform';
 import { writeAdPlatformSnapshot } from './adPlatformWriter';
-import { writeAdLineItemRows, writeAdSpendRows } from './adSpendWriter';
 import type { AdLineItemRow, AdSpendRow } from './parsers';
 import type { AdSyncStats, Connector, ConnectorContext, ConnectorDb, TestConnectionResult } from './types';
 import { syntheticId } from './types';
@@ -356,7 +355,8 @@ export async function fetchAppleMapsSnapshot(
   client: AppleAdsClient,
   settings: AppleMapsSettings,
   account: AppleAdAccount,
-  range: { from: string; to: string }
+  range: { from: string; to: string },
+  runId: string
 ): Promise<AppleMapsFetchResult> {
   const currency = account.currency ?? null;
   const warnings: string[] = [];
@@ -417,6 +417,7 @@ export async function fetchAppleMapsSnapshot(
     snapshot: {
       platform: 'apple_maps',
       accountId: settings.adAccountId,
+      runId,
       range,
       campaigns: [...campaigns.values()],
       daily: [...c.daily, ...l.daily, ...p.daily],
@@ -432,7 +433,7 @@ export async function fetchAppleMapsSnapshot(
 /* sync history                                                        */
 /* ------------------------------------------------------------------ */
 
-async function startRun(db: ConnectorDb, id: string, key: string, accountId: string, range: { from: string; to: string }) {
+async function startRun(db: ConnectorDb, id: string, key: string, accountId: string, scope: string, range: { from: string; to: string }) {
   await db.batch([
     // Ninety days of history is plenty to read a failure pattern from.
     {
@@ -440,8 +441,66 @@ async function startRun(db: ConnectorDb, id: string, key: string, accountId: str
       params: [key],
     },
     {
-      sql: `INSERT INTO ad_platform_sync_runs (id, integration_key, platform, account_id, status, range_from, range_to) VALUES (?, ?, 'apple_maps', ?, 'running', ?, ?)`,
-      params: [id, key, accountId, range.from, range.to],
+      sql: `INSERT INTO ad_platform_sync_runs (id, integration_key, platform, account_id, scope, status, range_from, range_to) VALUES (?, ?, 'apple_maps', ?, ?, 'running', ?, ?)`,
+      params: [id, key, accountId, scope, range.from, range.to],
+    },
+  ]);
+}
+
+// What the last successful sync reported on, or null if nothing has synced.
+async function previousScope(db: ConnectorDb): Promise<string | null> {
+  const rows = await db.query<{ scope: string | null }>(
+    `SELECT scope FROM ad_platform_sync_runs WHERE platform = 'apple_maps' AND status IN ('succeeded', 'no_campaigns') AND scope IS NOT NULL ORDER BY started_at DESC LIMIT 1`
+  );
+  return rows[0]?.scope ?? null;
+}
+
+// The ad account or brand changed: everything synced so far is about some
+// other account, possibly another client's. It all goes, from the detail
+// tables and from the monthly spend, so no report mixes the two. Returns the
+// months whose rollup must be rerun.
+async function purgeAppleMaps(db: ConnectorDb): Promise<string[]> {
+  const months = await db.query<{ period_month: string }>(
+    `SELECT period_month FROM raw_ad_spend WHERE channel = ? UNION SELECT period_month FROM ad_line_items WHERE channel = ?`,
+    [APPLE_MAPS.channel, APPLE_MAPS.channel]
+  );
+  await db.batch([
+    { sql: `DELETE FROM ad_platform_daily WHERE platform = 'apple_maps'`, params: [] },
+    { sql: `DELETE FROM ad_platform_campaigns WHERE platform = 'apple_maps'`, params: [] },
+    { sql: `DELETE FROM ad_platform_locations WHERE platform = 'apple_maps'`, params: [] },
+    { sql: `DELETE FROM raw_ad_spend WHERE channel = ?`, params: [APPLE_MAPS.channel] },
+    { sql: `DELETE FROM ad_line_items WHERE channel = ?`, params: [APPLE_MAPS.channel] },
+  ]);
+  return months.map((m) => m.period_month).sort();
+}
+
+// Spend and ad rows for the month: upserted first, then whatever this sync
+// did not write is pruned. A sync that dies halfway leaves last time's
+// figures, never a month with spend missing.
+async function writeMonthlyRows(db: ConnectorDb, month: string, spend: AdSpendRow[], lines: AdLineItemRow[]): Promise<void> {
+  const channel = APPLE_MAPS.channel;
+  await db.batch([
+    ...spend.map((r) => ({
+      sql: `INSERT INTO raw_ad_spend (period_month, channel, campaign, spend, leads_reported) VALUES (?, ?, ?, ?, NULL)
+            ON CONFLICT (period_month, channel, campaign) DO UPDATE SET spend = excluded.spend, leads_reported = NULL`,
+      params: [month, channel, r.campaign, r.spend],
+    })),
+    ...lines.map((r) => ({
+      // A creative type staff corrected by hand is kept.
+      sql: `INSERT INTO ad_line_items (period_month, channel, campaign, ad_name, ad_id, creative_type, creative_type_source, spend, leads_reported)
+            VALUES (?, ?, ?, ?, ?, ?, 'auto', ?, NULL)
+            ON CONFLICT (period_month, channel, campaign, ad_name) DO UPDATE SET
+              ad_id = excluded.ad_id, spend = excluded.spend, leads_reported = NULL,
+              creative_type = CASE WHEN ad_line_items.creative_type_source = 'manual' THEN ad_line_items.creative_type ELSE excluded.creative_type END`,
+      params: [month, channel, r.campaign, r.adName, r.adId, r.creativeType, r.spend],
+    })),
+    {
+      sql: `DELETE FROM raw_ad_spend WHERE period_month = ? AND channel = ? AND campaign NOT IN (SELECT value FROM json_each(?))`,
+      params: [month, channel, JSON.stringify(spend.map((r) => r.campaign))],
+    },
+    {
+      sql: `DELETE FROM ad_line_items WHERE period_month = ? AND channel = ? AND (campaign || char(31) || ad_name) NOT IN (SELECT value FROM json_each(?))`,
+      params: [month, channel, JSON.stringify(lines.map((r) => `${r.campaign}\u001f${r.adName}`))],
     },
   ]);
 }
@@ -478,7 +537,9 @@ async function failRun(db: ConnectorDb, id: string, err: unknown) {
 /* ------------------------------------------------------------------ */
 
 export interface AppleMapsSyncStats extends AdSyncStats {
-  campaigns: number;
+  // Null when the month has not started in the account's timezone: nothing
+  // was asked of Apple, which is not "no campaigns".
+  campaigns: number | null;
   dailyRows: number;
   locations: number;
   range: { from: string; to: string } | null;
@@ -574,16 +635,21 @@ export const appleMapsAdsConnector: Connector = {
     const client = new AppleAdsClient(settings, null, clientOptions(ctx));
     try {
       const accounts = await listAppleAdAccounts(client);
-      const listed = accounts.map((a) => ({ id: a.id, name: a.name, roles: a.roles, appleMaps: a.eligible }));
+      // One API user usually reaches every client's ad account. The list is
+      // shown once, in the reply, and only to LetLois staff (ctx.discover):
+      // it is never stored, because the stored test result is readable by
+      // the client's own users.
       if (!settings.adAccountId) {
         const maps = accounts.filter((a) => a.eligible);
         return {
           ok: false,
           failure: 'error',
-          message: maps.length
-            ? `The credentials work. Choose this client’s Apple Maps ad account and save its ID: ${maps.map((a) => `${a.name} (${a.id})`).join(', ')}.`
-            : 'The credentials work, but this API user cannot see any Apple Maps ad account. Ask an Apple Ads administrator to give it a role on the client’s Apple Maps account.',
-          planCheck: { failureKind: maps.length ? 'select_account' : 'permission', accounts: listed, checkedAt },
+          message: !maps.length
+            ? 'The credentials work, but this API user cannot see any Apple Maps ad account. Ask an Apple Ads administrator to give it a role on the client’s Apple Maps account.'
+            : ctx?.discover
+              ? `The credentials work. Choose this client’s Apple Maps ad account and save its ID: ${maps.map((a) => `${a.name} (${a.id})`).join(', ')}.`
+              : 'The credentials work. Ask LetLois to choose which Apple Maps ad account is yours.',
+          planCheck: { failureKind: maps.length ? 'select_account' : 'permission', checkedAt },
         };
       }
       const acl = accounts.find((a) => a.id === settings.adAccountId);
@@ -592,7 +658,7 @@ export const appleMapsAdsConnector: Connector = {
           ok: false,
           failure: 'insufficient_plan',
           message: `This API user has no access to ad account ${settings.adAccountId}. Ask an Apple Ads administrator to give it the API Account Read Only role on that account.`,
-          planCheck: { failureKind: 'permission', accounts: listed, checkedAt },
+          planCheck: { failureKind: 'permission', checkedAt },
         };
       }
       const account = await readAccount(client, settings.adAccountId);
@@ -648,19 +714,41 @@ export const appleMapsAdsConnector: Connector = {
     const client = new AppleAdsClient(settings, settings.adAccountId, clientOptions(ctx));
     const runId = syntheticId('adsync');
     const monthEnd = monthWindow(month, '9999-12-31')!;
-    await startRun(db, runId, sourceKey, settings.adAccountId, monthEnd);
+    const scope = `${settings.adAccountId}|${settings.brandId ?? ''}`;
+    await startRun(db, runId, sourceKey, settings.adAccountId, scope, monthEnd);
 
     try {
       const account = await readAccount(client, settings.adAccountId);
       assertMapsAccount(account, settings.adAccountId);
+
+      // A different account or brand than last time: drop everything synced
+      // for the old one before writing anything for the new one, and ask the
+      // caller to roll those months up again and backfill afresh. Done only
+      // once the new account is known to be readable, so a typo cannot wipe
+      // a client's history.
+      const before = await previousScope(db);
+      const purged = before !== null && before !== scope ? await purgeAppleMaps(db) : [];
+      const changed = { alsoChanged: purged.filter((m) => m !== month), restartBackfill: purged.length > 0 || (before !== null && before !== scope) };
+
       const range = monthWindow(month, todayIn(account.timezone, now()));
       const currency = account.currency ?? null;
       if (!range) {
         await finishRun(db, runId, 'succeeded', monthEnd, 0, 0);
-        return { adSpendRows: 0, adLineItemRows: 0, campaigns: 0, dailyRows: 0, locations: 0, range: null, currency, unifiedSpend: false, warnings: ['That month has not started in the ad account’s timezone.'] };
+        return {
+          adSpendRows: 0,
+          adLineItemRows: 0,
+          campaigns: null,
+          dailyRows: 0,
+          locations: 0,
+          range: null,
+          currency,
+          unifiedSpend: false,
+          warnings: ['That month has not started in the ad account’s timezone.'],
+          ...changed,
+        };
       }
 
-      const fetched = await fetchAppleMapsSnapshot(client, settings, account, range);
+      const fetched = await fetchAppleMapsSnapshot(client, settings, account, range, runId);
       const { snapshot, warnings } = fetched;
       const dailyRows = await writeAdPlatformSnapshot(db, snapshot);
 
@@ -673,12 +761,7 @@ export const appleMapsAdsConnector: Connector = {
       if (unifiedSpend) {
         const spend = monthlySpendRows(month, snapshot);
         const lines = adLineItemRows(month, fetched.ads, snapshot);
-        await db.batch([
-          { sql: `DELETE FROM raw_ad_spend WHERE period_month = ? AND channel = ?`, params: [month, APPLE_MAPS.channel] },
-          { sql: `DELETE FROM ad_line_items WHERE period_month = ? AND channel = ?`, params: [month, APPLE_MAPS.channel] },
-        ]);
-        await writeAdSpendRows(db, month, spend);
-        await writeAdLineItemRows(db, month, lines);
+        await writeMonthlyRows(db, month, spend, lines);
         adSpendRows = spend.length;
         adLineItems = lines.length;
       } else {
@@ -699,6 +782,7 @@ export const appleMapsAdsConnector: Connector = {
         currency,
         unifiedSpend,
         warnings,
+        ...changed,
       };
     } catch (err) {
       await failRun(db, runId, err).catch(() => undefined);

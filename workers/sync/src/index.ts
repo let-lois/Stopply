@@ -9,7 +9,7 @@
 // what picks up conversions a platform attributes late.
 
 import { runRollup, isFunnelStage } from '@letlois/attribution';
-import { CONNECTORS } from '@letlois/connectors';
+import { CONNECTORS, isTransientFailure, type AdSyncStats } from '@letlois/connectors';
 import { TenantD1, exportDatabase } from '@letlois/tenant-d1';
 
 export interface SyncEnv {
@@ -118,13 +118,32 @@ async function syncTenantIntegrations(env: SyncEnv, tenant: TenantRow, months: s
       // Never synced and the connector wants history: backfill, oldest
       // month first so last_sync_result ends on the current month.
       const backfill = !integration.last_sync_at && connector.backfillDays ? monthsCovering(connector.backfillDays(creds)) : null;
+      const historyOnly = new Set((backfill ?? []).filter((m) => !months.includes(m)));
       const toSync = backfill ? [...new Set([...backfill, ...months])].sort() : months;
+      let restartBackfill = false;
       for (const month of toSync) {
         touched.add(month);
-        const stats = await connector.syncMonth(creds, month, dbFor(env, databaseId), integration.key, { stageMap });
+        let stats: unknown;
+        try {
+          stats = await connector.syncMonth(creds, month, dbFor(env, databaseId), integration.key, { stageMap });
+        } catch (err) {
+          // History is a best effort: an old month the platform will not
+          // serve does not stop the current one. It is in the sync history
+          // and can be synced by hand. A busy platform is not skipped: the
+          // whole backfill runs again next hour.
+          if (historyOnly.has(month) && !isTransientFailure(err)) continue;
+          throw err;
+        }
+        const ad = stats as Partial<AdSyncStats>;
+        for (const m of ad.alsoChanged ?? []) touched.add(m);
+        if (ad.restartBackfill) restartBackfill = true;
+        // During a backfill the clock is stamped only once the whole run is
+        // through, so a run cut short starts the backfill again next hour.
         await d1.query(
           databaseId,
-          `UPDATE integrations SET last_sync_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), last_sync_result = ? WHERE key = ?`,
+          backfill
+            ? `UPDATE integrations SET last_sync_result = ? WHERE key = ?`
+            : `UPDATE integrations SET last_sync_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), last_sync_result = ? WHERE key = ?`,
           [JSON.stringify({ ok: true, month, stats }), integration.key]
         );
         await d1.query(
@@ -133,12 +152,20 @@ async function syncTenantIntegrations(env: SyncEnv, tenant: TenantRow, months: s
           [integration.key]
         );
       }
+      if (backfill) {
+        await d1.query(databaseId, `UPDATE integrations SET last_sync_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE key = ?`, [integration.key]);
+      } else if (restartBackfill) {
+        // The connection now reports on a different account: backfill it.
+        await d1.query(databaseId, `UPDATE integrations SET last_sync_at = NULL WHERE key = ?`, [integration.key]);
+      }
     } catch (err) {
       // Errors land on the integration and flag the source red; the loop
-      // continues with the next integration and tenant.
+      // continues with the next integration and tenant. A platform that was
+      // only busy or unreachable stays connected, so the next run retries.
       const message = err instanceof Error ? err.message : 'sync failed';
       await d1
-        .query(databaseId, `UPDATE integrations SET status = 'error', last_sync_result = ? WHERE key = ?`, [
+        .query(databaseId, `UPDATE integrations SET status = ?, last_sync_result = ? WHERE key = ?`, [
+          isTransientFailure(err) ? 'connected' : 'error',
           JSON.stringify({ ok: false, error: message, failure: failureOf(err), at: new Date().toISOString() }),
           integration.key,
         ])

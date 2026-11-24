@@ -43,6 +43,22 @@ export interface SyncStats {
 export interface AdSyncStats {
   adSpendRows: number;
   adLineItemRows: number;
+  // Months besides the one synced whose figures this sync changed (an ad
+  // account change purges history), which the caller must roll up again.
+  alsoChanged?: string[];
+  // True when the connection now reports on something new, so the history
+  // backfill should run again for it.
+  restartBackfill?: boolean;
+}
+
+// Failures worth retrying on the next scheduled run without anybody acting:
+// the platform was busy or unreachable, not wrong. Everything else needs a
+// person, so the integration is marked failing until somebody fixes it.
+export const TRANSIENT_FAILURES = ['rate_limited', 'server', 'network'] as const;
+
+export function isTransientFailure(err: unknown): boolean {
+  const failure = err && typeof err === 'object' ? (err as { failure?: unknown }).failure : undefined;
+  return typeof failure === 'string' && (TRANSIENT_FAILURES as readonly string[]).includes(failure);
 }
 
 export interface ConnectorContext {
@@ -50,6 +66,9 @@ export interface ConnectorContext {
   // Injected by tests so retries and token expiry run without real waiting.
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
+  // True when the caller is LetLois staff, who may see every account the
+  // credentials reach. A client's own user is never shown other accounts.
+  discover?: boolean;
   // Stage map overrides from funnel_stage_map rows.
   stageMap?: Map<string, 'lead' | 'scheduled' | 'completed' | 'purchase'>;
 }

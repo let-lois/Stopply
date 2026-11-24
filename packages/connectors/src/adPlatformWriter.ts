@@ -5,6 +5,10 @@
 // window twice leaves exactly one row per (day, campaign, cut, dimension).
 // A campaign that stopped appearing in the window loses its rows there.
 //
+// Writes come first and the prune comes last. Calls over the D1 HTTP API are
+// not one transaction, so a sync that dies halfway must leave the previous
+// figures standing, never a window with days missing.
+//
 // Tenant databases are reached over the D1 HTTP API, one statement per
 // call and at most 100 bound parameters per statement. So rows travel as
 // one JSON parameter per chunk and are unpacked with json_each: a month of
@@ -38,8 +42,8 @@ const CAMPAIGN_UPSERT = `INSERT INTO ad_platform_campaigns
     synced_at = excluded.synced_at`;
 
 const DAILY_INSERT = `INSERT INTO ad_platform_daily
-  (platform, account_id, metric_date, campaign_id, breakdown, dimension, currency, spend, impressions, clicks, conversions, conversions_json, synced_at)
-  SELECT ?, ?, json_extract(value, '$.date'), json_extract(value, '$.campaignId'), json_extract(value, '$.breakdown'),
+  (platform, account_id, sync_run, metric_date, campaign_id, breakdown, dimension, currency, spend, impressions, clicks, conversions, conversions_json, synced_at)
+  SELECT ?, ?, ?, json_extract(value, '$.date'), json_extract(value, '$.campaignId'), json_extract(value, '$.breakdown'),
     json_extract(value, '$.dimension'), json_extract(value, '$.currency'), json_extract(value, '$.spend'),
     json_extract(value, '$.impressions'), json_extract(value, '$.clicks'), json_extract(value, '$.conversions'),
     json_extract(value, '$.conversionsJson'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
@@ -47,7 +51,7 @@ const DAILY_INSERT = `INSERT INTO ad_platform_daily
   ON CONFLICT (platform, account_id, metric_date, campaign_id, breakdown, dimension) DO UPDATE SET
     currency = excluded.currency, spend = excluded.spend, impressions = excluded.impressions,
     clicks = excluded.clicks, conversions = excluded.conversions, conversions_json = excluded.conversions_json,
-    synced_at = excluded.synced_at`;
+    sync_run = excluded.sync_run, synced_at = excluded.synced_at`;
 
 const LOCATION_UPSERT = `INSERT INTO ad_platform_locations
   (platform, account_id, location_id, brand_id, name, locality, admin_area, country, status, synced_at)
@@ -75,11 +79,6 @@ export function adPlatformStatements(snapshot: AdPlatformSnapshot): {
     });
   }
 
-  statements.push({
-    sql: `DELETE FROM ad_platform_daily WHERE platform = ? AND account_id = ? AND metric_date >= ? AND metric_date <= ?`,
-    params: [platform, accountId, range.from, range.to],
-  });
-
   // Last write wins on a repeated key, so a row Apple repeats across pages
   // is stored once rather than counted twice.
   const unique = new Map<string, AdPlatformSnapshot['daily'][number]>();
@@ -93,6 +92,7 @@ export function adPlatformStatements(snapshot: AdPlatformSnapshot): {
       params: [
         platform,
         accountId,
+        snapshot.runId,
         JSON.stringify(
           part.map((r) => ({
             date: r.date,
@@ -114,6 +114,13 @@ export function adPlatformStatements(snapshot: AdPlatformSnapshot): {
   for (const part of chunks(snapshot.locations)) {
     statements.push({ sql: LOCATION_UPSERT, params: [platform, accountId, JSON.stringify(part)] });
   }
+
+  // Last: whatever this run did not write in its window is gone from the
+  // platform, a campaign that stopped or a day restated to nothing.
+  statements.push({
+    sql: `DELETE FROM ad_platform_daily WHERE platform = ? AND account_id = ? AND metric_date >= ? AND metric_date <= ? AND sync_run IS NOT ?`,
+    params: [platform, accountId, range.from, range.to, snapshot.runId],
+  });
   return { statements, dailyRows: unique.size };
 }
 

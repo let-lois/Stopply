@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { CONNECTORS, describeIntegrationState, type ConnectorDb } from '@letlois/connectors';
+import { CONNECTORS, describeIntegrationState, isTransientFailure, type AdSyncStats, type ConnectorDb } from '@letlois/connectors';
 import { isFunnelStage } from '@letlois/attribution';
 import type { AppContext, Env } from '../env';
 import { tenantScope, tenantWrite } from '../middleware';
@@ -211,10 +211,13 @@ export async function setIntegrationEnabled(
   }
   if (action === 'disconnect') {
     // The credentials go. Synced figures stay: they are the client's
-    // history, and a reconnect continues it.
+    // history. The sync clock resets so a reconnect backfills, and a
+    // reconnect to a different account replaces that history (see the
+    // connector's scope check).
     await d1.query(
       tenant.d1_database_id,
-      `UPDATE integrations SET status = 'disconnected', credentials_ciphertext = NULL, credentials_iv = NULL, connected_as = NULL, plan_check_json = NULL, enabled = 1 WHERE key = ?`,
+      `UPDATE integrations SET status = 'disconnected', credentials_ciphertext = NULL, credentials_iv = NULL, connected_as = NULL, plan_check_json = NULL,
+         last_sync_at = NULL, last_sync_result = NULL, enabled = 1 WHERE key = ?`,
       [key]
     );
   } else if (action === 'disable') {
@@ -281,8 +284,11 @@ export async function testIntegration(env: Env, tenant: TenantDb, key: string, a
   const creds = await loadCredentials(env, row);
   if (!creds) return { error: 'no credentials saved', status: 400 as const };
 
-  const result = await connector.testConnection(creds);
-  const status = result.ok ? 'connected' : 'error';
+  // Only LetLois staff are shown every account the credentials reach.
+  const result = await connector.testConnection(creds, { discover: actor.actorType !== 'tenant' });
+  // Testing a connection whose reporting is switched off checks it without
+  // switching it back on: the sync Worker reads connected rows only.
+  const status = row.enabled === 0 ? 'disconnected' : result.ok ? 'connected' : 'error';
   // A failed test records what kind of failure it was and when, so the
   // integration's state can say "authentication expired" rather than just
   // "error". A connector's own planCheck wins where it says more.
@@ -349,12 +355,20 @@ export async function syncIntegration(
     );
     await d1.query(databaseId, `UPDATE sources SET last_import_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE key = ?`, [key]);
     await runTenantRollup(env, databaseId, month);
+    const ad = stats as Partial<AdSyncStats>;
+    // An ad account change purged other months: their rollup goes too.
+    for (const other of ad.alsoChanged ?? []) await runTenantRollup(env, databaseId, other);
+    // ...and the history for the new account is backfilled by the next run.
+    if (ad.restartBackfill) await d1.query(databaseId, `UPDATE integrations SET last_sync_at = NULL WHERE key = ?`, [key]);
     await writeAudit(env, { ...actor, tenantId: tenant.id, action: 'integration.sync', target: `${key}/${month}`, after: stats });
     return { ok: true, stats };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'sync failed';
-    // A failed sync flips the integration to error and the source red.
-    await d1.query(databaseId, `UPDATE integrations SET status = 'error', last_sync_result = ? WHERE key = ?`, [
+    // A failed sync flips the integration to error and the source red,
+    // unless the platform was only busy or unreachable: then it stays
+    // connected so the next scheduled sync tries again by itself.
+    await d1.query(databaseId, `UPDATE integrations SET status = ?, last_sync_result = ? WHERE key = ?`, [
+      isTransientFailure(err) ? row.status : 'error',
       JSON.stringify({ ok: false, error: message, failure: failureOf(err), at: new Date().toISOString() }),
       key,
     ]);
