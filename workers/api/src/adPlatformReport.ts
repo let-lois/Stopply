@@ -133,7 +133,7 @@ export async function adPlatformReport(
   databaseId: string,
   platformId: string,
   range: ReportRange
-): Promise<{ ok: true; report: Record<string, unknown> } | { ok: false; status: 404 | 409; error: string }> {
+): Promise<{ ok: true; report: Record<string, unknown> } | { ok: false; status: 404; error: string }> {
   const platform: AdPlatformDescriptor | null = adPlatformById(platformId);
   if (!platform) return { ok: false, status: 404, error: 'unknown platform' };
   const d1 = tenantD1Client(env);
@@ -311,6 +311,7 @@ export async function adPlatformReport(
     return {
       ok: true,
       report: {
+        ready: true,
         platform: platform.id,
         displayName: platform.displayName,
         labels: platform.labels,
@@ -347,9 +348,9 @@ export async function adPlatformReport(
       },
     };
   } catch (err) {
-    if (isMissingTable(err)) {
-      return { ok: false, status: 409, error: 'This client’s database needs migrating before ad platform reports can be read.' };
-    }
+    // Like door to door: a database without the tables yet is a client that
+    // is not set up, not an error. The agency's migrate action fixes it.
+    if (isMissingTable(err)) return { ok: true, report: { ready: false, platform: platform.id, range } };
     throw err;
   }
 }

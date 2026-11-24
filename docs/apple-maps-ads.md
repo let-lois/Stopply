@@ -109,7 +109,7 @@ Each has a one-line hint saying what to do next, and integration lists return `s
 
 From Operations Center, open the client's BI page, then the Data tab, then integrations. A client account admin can do the same through the tenant integrations API (`/api/tenant/integrations/:key/*`). The new BI web app has no integrations screen yet.
 
-1. Add an integration with provider `apple-maps-ads`, using the key `apple-maps`. Enter the clientId, teamId, keyId and private key, and **leave Ad account ID blank**.
+1. Fill in the Apple Maps Ads connector. Operations Center files it under the integration key `apple-maps-ads`. Enter the clientId, teamId, keyId and private key, and **leave Ad account ID blank**.
 2. Run **Test**. Because no account is chosen, the test lists every ad account this API user can see and marks the Apple Maps ones. It never picks one itself.
 3. Enter the client's Apple Maps ad account id, plus a brand id if the account carries several clients, and save.
 4. Run **Test** again. It checks that the user can see the account, that it is an Apple Maps account, and that the brand is delegated. It notes if the role is broader than read only.
@@ -139,7 +139,7 @@ Nothing below has been checked against Apple yet:
 2. Migrate tenant databases: `pnpm migrate:tenants`, or Operations Center's per-client migrate. Migration 0008 rebuilds `integrations` the same way 0005 did, and is written to be re-run safely.
 3. Until a client is migrated, the new code still works for it:
    - Integration lists show the state fields without `enabled`.
-   - The report answers 409 "needs migrating".
+   - The report answers `ready: false`, as door to door does, and Operations Center offers its migrate action.
    - Apple Maps cannot be connected for that client.
 
 No Worker secrets or bindings are needed. Credentials live per client, encrypted in the client's `integrations` row like Meta's.

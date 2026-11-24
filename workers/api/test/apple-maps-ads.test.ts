@@ -227,9 +227,16 @@ describe('Apple Maps Ads integration', () => {
   it('answers a client with nothing connected with an empty report, not an error', async () => {
     const res = await call('/api/tenant/ad-platforms/apple_maps?from=2026-10-01&to=2026-10-31');
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ connection: null, campaigns: [], totals: { spend: 0, ctr: null, conversions: null } });
+    expect(await res.json()).toMatchObject({ ready: true, connection: null, campaigns: [], totals: { spend: 0, ctr: null, conversions: null } });
     expect((await call('/api/tenant/ad-platforms/tiktok')).status).toBe(404);
     expect((await call('/api/tenant/ad-platforms/apple_maps?from=2026-10-31&to=2026-10-01')).status).toBe(400);
+  });
+
+  it('answers ready:false, not an error, for a client database without the tables yet', async () => {
+    dbs.of('db-acme').db.exec('DROP TABLE ad_platform_daily');
+    const res = await call('/api/tenant/ad-platforms/apple_maps?from=2026-10-01&to=2026-10-31');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ready: false, platform: 'apple_maps', range: { from: '2026-10-01', to: '2026-10-31' } });
   });
 
   it('keeps a non USD account out of the combined USD totals and says so', async () => {
